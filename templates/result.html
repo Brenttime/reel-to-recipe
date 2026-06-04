@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recipe Result</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 2rem; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { margin-bottom: 1rem; }
+        a { color: #e94560; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .section { background: #16213e; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section h2 { color: #e94560; margin-bottom: 0.75rem; font-size: 1.2rem; }
+        .section pre { white-space: pre-wrap; word-wrap: break-word; font-family: inherit; line-height: 1.6; }
+        .error { background: #2e1111; border: 1px solid #661111; color: #ff6666; }
+        .meta { color: #666; font-size: 0.85rem; margin-bottom: 1rem; }
+        .back { display: inline-block; margin-top: 1rem; padding: 0.75rem 1.5rem; background: #e94560; color: white; border-radius: 8px; font-weight: 600; }
+        .back:hover { background: #c23152; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🍳 Recipe Result</h1>
+        <p class="meta">
+            Source: <a href="{{ url }}" target="_blank">{{ url }}</a>
+            {% if elapsed %}
+            <br>⏱️ Download: {{ "%.1f"|format(elapsed.get('download', 0)) }}s
+            | Transcribe: {{ "%.1f"|format(elapsed.get('transcribe', 0)) }}s
+            | Format: {{ "%.1f"|format(elapsed.get('format', 0)) }}s
+            {% endif %}
+        </p>
+
+        {% if errors %}
+        <div class="section error">
+            <h2>❌ Errors</h2>
+            {% for err in errors %}
+            <p>{{ err }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if recipe %}
+        <div class="section">
+            <h2>📋 Recipe</h2>
+            <pre>{{ recipe }}</pre>
+        </div>
+        {% endif %}
+
+        {% if transcript %}
+        <div class="section">
+            <h2>🎙️ Transcript</h2>
+            <pre>{{ transcript }}</pre>
+        </div>
+        {% endif %}
+
+        <a href="/" class="back">← Convert Another</a>
+    </div>
+</body>
+</html>
