@@ -1,0 +1,15 @@
+[Unit]
+Description=Reel to Recipe MCP Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=HOMEDIR/projects/tiktok-recipe
+ExecStart=HOMEDIR/projects/tiktok-recipe/.venv/bin/python mcp_server.py
+Restart=on-failure
+RestartSec=5
+Environment=WHISPER_MODEL=base
+Environment=PATH=HOMEDIR/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target
