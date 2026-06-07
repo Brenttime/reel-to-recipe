@@ -726,7 +726,10 @@ function renderEditModal(recipe) {
             <input type="text" class="edit-input" id="edit-source_url" value="${escapeAttr(recipe.source_url)}">
 
             <label class="edit-label">Added by</label>
-            <input type="text" class="edit-input" id="edit-added_by" value="${escapeAttr(recipe.added_by || '')}">
+            <div class="edit-added-by-wrapper" id="editAddedByWrapper">
+                <input type="text" class="edit-input" id="edit-added_by" value="${escapeAttr(recipe.added_by || '')}" autocomplete="off" placeholder="Type or select a user…">
+                <div class="edit-added-by-dropdown" id="editAddedByDropdown"></div>
+            </div>
 
             <label class="edit-label">Ingredients <span class="edit-hint">(one per line)</span></label>
             <textarea class="edit-textarea" id="edit-ingredients" rows="8">${recipe.ingredients.map(ing => ingText(ing)).join('\n')}</textarea>
@@ -754,6 +757,58 @@ function renderEditModal(recipe) {
     document.getElementById('editForm').addEventListener('submit', (e) => {
         e.preventDefault();
         saveRecipe(recipe.id);
+    });
+
+    // "Added by" user dropdown
+    initAddedByDropdown();
+}
+
+async function initAddedByDropdown() {
+    const input = document.getElementById('edit-added_by');
+    const dropdown = document.getElementById('editAddedByDropdown');
+    if (!input || !dropdown) return;
+
+    let users = [];
+    try {
+        const res = await fetch('/api/users', { credentials: 'same-origin' });
+        users = await res.json();
+    } catch (e) { return; }
+
+    function renderDropdown(filter = '') {
+        const filtered = filter
+            ? users.filter(u => u.display_name.toLowerCase().includes(filter.toLowerCase()))
+            : users;
+
+        if (filtered.length === 0) {
+            dropdown.classList.remove('open');
+            return;
+        }
+
+        dropdown.innerHTML = filtered.map(u => `
+            <div class="added-by-option" data-name="${escapeAttr(u.display_name)}">
+                <img class="added-by-option-avatar" src="${u.avatar_url || `https://cdn.discordapp.com/embed/avatars/${parseInt(u.username, 36) % 5}.png`}" alt="" />
+                <span class="added-by-option-name">${escapeHtml(u.display_name)}</span>
+                <span class="added-by-option-username">@${escapeHtml(u.username)}</span>
+            </div>
+        `).join('');
+        dropdown.classList.add('open');
+    }
+
+    input.addEventListener('focus', () => renderDropdown(input.value));
+    input.addEventListener('input', () => renderDropdown(input.value));
+
+    dropdown.addEventListener('click', (e) => {
+        const option = e.target.closest('.added-by-option');
+        if (!option) return;
+        input.value = option.dataset.name;
+        dropdown.classList.remove('open');
+    });
+
+    // Close dropdown on outside click
+    document.addEventListener('click', (e) => {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.classList.remove('open');
+        }
     });
 }
 

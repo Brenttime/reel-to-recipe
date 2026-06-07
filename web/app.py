@@ -455,6 +455,27 @@ def api_creators():
     return jsonify([row["creator"] for row in rows])
 
 
+@app.route("/api/users")
+def api_users():
+    """Get all registered users (for 'Added by' dropdown)."""
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, username, display_name, discord_id, avatar FROM users ORDER BY display_name"
+    ).fetchall()
+    users = []
+    for row in rows:
+        avatar_url = None
+        if row['avatar']:
+            avatar_url = f"https://cdn.discordapp.com/avatars/{row['discord_id']}/{row['avatar']}.png?size=64"
+        users.append({
+            'id': row['id'],
+            'display_name': row['display_name'] or row['username'],
+            'username': row['username'],
+            'avatar_url': avatar_url,
+        })
+    return jsonify(users)
+
+
 @app.route("/api/categories")
 def api_categories():
     """Get food categories (from tags) with counts for DoorDash-style filter chips."""

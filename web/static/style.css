@@ -2431,6 +2431,97 @@ body {
     padding-left: 7px;
 }
 
+/* ─── "Added by" edit dropdown ─── */
+.edit-added-by-wrapper {
+    position: relative;
+}
+
+.edit-added-by-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 180px;
+    overflow-y: auto;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    z-index: 100;
+    margin-top: 4px;
+}
+
+.edit-added-by-dropdown.open {
+    display: block;
+}
+
+.added-by-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+.added-by-option:hover {
+    background: rgba(0, 122, 255, 0.08);
+}
+
+.added-by-option:first-child {
+    border-radius: 10px 10px 0 0;
+}
+
+.added-by-option:last-child {
+    border-radius: 0 0 10px 10px;
+}
+
+.added-by-option-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid rgba(0, 0, 0, 0.08);
+}
+
+.added-by-option-name {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: rgba(0, 0, 0, 0.85);
+}
+
+.added-by-option-username {
+    font-size: 0.78rem;
+    color: rgba(0, 0, 0, 0.4);
+    margin-left: auto;
+}
+
+/* Dark mode */
+[data-theme="dark"] .edit-added-by-dropdown {
+    background: rgba(44, 44, 46, 0.95);
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .added-by-option:hover {
+    background: rgba(10, 132, 255, 0.12);
+}
+
+[data-theme="dark"] .added-by-option-avatar {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .added-by-option-name {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="dark"] .added-by-option-username {
+    color: rgba(255, 255, 255, 0.4);
+}
+
 .dropdown-theme-label {
     font-size: 0.75rem;
     font-weight: 600;
