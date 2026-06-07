@@ -6,6 +6,11 @@ services:
       - "5100:5100"
     volumes:
       - cookbook-data:/data
+    environment:
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:-1508578934621474846}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:-}
+      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI:-http://192.168.4.37:5100/auth/callback}
+      - SECRET_KEY=${SECRET_KEY:-onlypans-change-me-in-prod}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
