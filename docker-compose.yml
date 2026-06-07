@@ -1,0 +1,12 @@
+services:
+  reel-cookbook:
+    build: ./web
+    container_name: reel-cookbook
+    ports:
+      - "5100:5100"
+    volumes:
+      - cookbook-data:/data
+    restart: unless-stopped
+
+volumes:
+  cookbook-data:
