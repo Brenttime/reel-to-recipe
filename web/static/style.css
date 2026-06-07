@@ -21,6 +21,33 @@
     --radius-xl: 32px;
     --transition: 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     --spring: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+    /* Dark mode specific */
+    --bg-gradient-light: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #5ee7df 75%, #b8cbb8 100%);
+    --bg-gradient-dark: linear-gradient(135deg, #0f0c29 0%, #1a1a2e 25%, #302b63 50%, #1a1a2e 75%, #0f0c29 100%);
+    --mesh-1-light: rgba(255, 154, 158, 0.3);
+    --mesh-2-light: rgba(162, 155, 254, 0.3);
+    --mesh-3-light: rgba(94, 231, 223, 0.3);
+    --mesh-4-light: rgba(248, 187, 208, 0.2);
+    --mesh-1-dark: rgba(99, 65, 175, 0.25);
+    --mesh-2-dark: rgba(45, 85, 180, 0.2);
+    --mesh-3-dark: rgba(30, 150, 140, 0.15);
+    --mesh-4-dark: rgba(120, 50, 150, 0.15);
+}
+
+/* ─── Dark Theme ─── */
+[data-theme="dark"] {
+    --glass-bg: rgba(255, 255, 255, 0.06);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    --glass-inner-glow: inset 0 1px 1px rgba(255, 255, 255, 0.08);
+    --text-primary: rgba(255, 255, 255, 0.92);
+    --text-secondary: rgba(255, 255, 255, 0.6);
+    --text-tertiary: rgba(255, 255, 255, 0.35);
+    --accent: #0A84FF;
+    --accent-soft: rgba(10, 132, 255, 0.18);
+    --surface: rgba(30, 30, 30, 0.72);
+    --surface-elevated: rgba(44, 44, 46, 0.88);
 }
 
 * {
@@ -38,12 +65,17 @@ html {
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #5ee7df 75%, #b8cbb8 100%);
+    background: var(--bg-gradient-light);
     background-size: 400% 400%;
     animation: meshGradient 20s ease infinite;
     min-height: 100vh;
     color: var(--text-primary);
     overflow-x: hidden;
+}
+
+[data-theme="dark"] body {
+    background: var(--bg-gradient-dark);
+    background-size: 400% 400%;
 }
 
 @keyframes meshGradient {
@@ -58,12 +90,20 @@ body {
     position: fixed;
     inset: 0;
     background:
-        radial-gradient(ellipse at 20% 30%, rgba(255, 154, 158, 0.3) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 20%, rgba(162, 155, 254, 0.3) 0%, transparent 50%),
-        radial-gradient(ellipse at 50% 80%, rgba(94, 231, 223, 0.3) 0%, transparent 50%),
-        radial-gradient(ellipse at 10% 80%, rgba(248, 187, 208, 0.2) 0%, transparent 40%);
+        radial-gradient(ellipse at 20% 30%, var(--mesh-1-light) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, var(--mesh-2-light) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, var(--mesh-3-light) 0%, transparent 50%),
+        radial-gradient(ellipse at 10% 80%, var(--mesh-4-light) 0%, transparent 40%);
     z-index: -1;
     pointer-events: none;
+}
+
+[data-theme="dark"] .bg-mesh {
+    background:
+        radial-gradient(ellipse at 20% 30%, var(--mesh-1-dark) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, var(--mesh-2-dark) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, var(--mesh-3-dark) 0%, transparent 50%),
+        radial-gradient(ellipse at 10% 80%, var(--mesh-4-dark) 0%, transparent 40%);
 }
 
 .app-container {
@@ -2110,4 +2150,324 @@ body {
     font-size: 0.88rem;
     color: var(--text-primary);
     line-height: 1.4;
+}
+
+/* ============================================
+   Dark Mode Overrides
+   ============================================ */
+
+/* Card shine/glow — softer in dark */
+[data-theme="dark"] .recipe-card::before {
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+}
+
+[data-theme="dark"] .recipe-card::after {
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 60%);
+}
+
+[data-theme="dark"] .recipe-card:hover {
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), var(--glass-inner-glow);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Header glow */
+[data-theme="dark"] .glass-header::before {
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+}
+
+/* Search bar */
+[data-theme="dark"] .search-container {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .search-container:focus-within {
+    border-color: rgba(10, 132, 255, 0.5);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .search-input {
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .search-input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+/* Filter chips */
+[data-theme="dark"] .chip {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .chip:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: rgba(10, 132, 255, 0.3);
+}
+
+[data-theme="dark"] .chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+/* Modal */
+[data-theme="dark"] .modal-overlay {
+    background: rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="dark"] .glass-modal {
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), var(--glass-inner-glow);
+}
+
+[data-theme="dark"] .modal-close {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .modal-close:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
+}
+
+/* Header action buttons */
+[data-theme="dark"] .header-action-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .header-action-btn:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+/* Cart badge */
+[data-theme="dark"] .cart-badge {
+    background: #FF453A;
+}
+
+/* NEW badge */
+[data-theme="dark"] .new-badge {
+    background: rgba(10, 132, 255, 0.2);
+    color: #0A84FF;
+}
+
+/* Servings scaler */
+[data-theme="dark"] .serving-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .serving-btn:hover {
+    border-color: rgba(10, 132, 255, 0.4);
+    color: var(--accent);
+}
+
+[data-theme="dark"] .serving-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+}
+
+/* Reviews section */
+[data-theme="dark"] .reviews-header {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .reviews-header:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .reviews-count {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+[data-theme="dark"] .reviews-chevron {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+[data-theme="dark"] .reviews-loading {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+[data-theme="dark"] .review-star {
+    color: rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="dark"] .review-form-container {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .review-comment-input {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .review-comment-input:focus {
+    border-color: rgba(10, 132, 255, 0.6);
+}
+
+[data-theme="dark"] .review-comment-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+[data-theme="dark"] .review-delete-btn {
+    background: rgba(255, 69, 58, 0.12);
+    border-color: rgba(255, 69, 58, 0.25);
+    color: #FF453A;
+}
+
+[data-theme="dark"] .review-delete-btn:hover {
+    background: rgba(255, 69, 58, 0.2);
+}
+
+[data-theme="dark"] .reviews-empty {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+[data-theme="dark"] .review-item {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .review-item.own-review {
+    border-color: rgba(10, 132, 255, 0.3);
+    background: rgba(10, 132, 255, 0.06);
+}
+
+[data-theme="dark"] .review-date {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* Spotlight overlay */
+[data-theme="dark"] .spotlight-bar {
+    background: rgba(30, 30, 30, 0.92);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .spotlight-input {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+[data-theme="dark"] .spotlight-input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+}
+
+/* Shopping list panel */
+[data-theme="dark"] .shopping-panel {
+    background: rgba(30, 30, 30, 0.92);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .shopping-header {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .shopping-item {
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Cook mode */
+[data-theme="dark"] .cook-mode-overlay {
+    background: rgba(10, 10, 12, 0.96);
+}
+
+/* Action bar buttons in modal */
+[data-theme="dark"] .action-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .action-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+/* Meta bar */
+[data-theme="dark"] .meta-bar {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Ingredients/instructions sections */
+[data-theme="dark"] .section-title {
+    color: var(--text-primary);
+}
+
+/* Edit modal inputs */
+[data-theme="dark"] .edit-input,
+[data-theme="dark"] .edit-textarea {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: var(--text-primary);
+}
+
+/* Theme toggle in dropdown */
+.dropdown-theme-section {
+    padding: 8px 16px;
+}
+
+.dropdown-theme-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+}
+
+.theme-toggle-group {
+    display: flex;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+}
+
+.theme-toggle-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.theme-toggle-btn:hover {
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.theme-toggle-btn.active {
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.theme-toggle-btn .theme-icon {
+    font-size: 0.85rem;
+    line-height: 1;
+}
+
+/* Transition for theme changes */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+    transition: background 0.4s ease, background-color 0.4s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
 }

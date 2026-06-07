@@ -1,8 +1,26 @@
 /**
  * Reel Cookbook — Frontend Logic
  * Features: Search, Filter, Recipe Modal, Edit, Delete,
- *           Shopping List, Serving Scaler, Cook Mode
+ *           Shopping List, Serving Scaler, Cook Mode, Dark Mode
  */
+
+/* ─── Theme System (runs immediately to prevent flash) ─── */
+(function() {
+    function getEffectiveTheme(preference) {
+        if (preference === 'system') {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        return preference;
+    }
+
+    const stored = localStorage.getItem('onlypans-theme') || 'system';
+    const effective = getEffectiveTheme(stored);
+    if (effective === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+    }
+})();
 
 const searchInput = document.getElementById('searchInput');
 const clearBtn = document.getElementById('clearSearch');
@@ -284,9 +302,67 @@ async function loadUserProfile() {
                 dropdown.classList.remove('open');
             }
         });
+
+        // Theme toggle
+        initThemeToggle();
     } catch (e) {
         console.error('Failed to load user profile:', e);
     }
+}
+
+/* ─── Theme Toggle ─── */
+function initThemeToggle() {
+    const toggleGroup = document.getElementById('themeToggleGroup');
+    if (!toggleGroup) return;
+
+    const stored = localStorage.getItem('onlypans-theme') || 'system';
+
+    // Set initial active state
+    toggleGroup.querySelectorAll('.theme-toggle-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.theme === stored);
+    });
+
+    toggleGroup.addEventListener('click', (e) => {
+        const btn = e.target.closest('.theme-toggle-btn');
+        if (!btn) return;
+
+        const preference = btn.dataset.theme;
+        localStorage.setItem('onlypans-theme', preference);
+
+        // Update active state
+        toggleGroup.querySelectorAll('.theme-toggle-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        applyTheme(preference);
+    });
+
+    // Listen for system theme changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        const current = localStorage.getItem('onlypans-theme') || 'system';
+        if (current === 'system') {
+            applyTheme('system');
+        }
+    });
+}
+
+function applyTheme(preference) {
+    const effective = preference === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : preference;
+
+    // Add transition class for smooth change
+    document.documentElement.classList.add('theme-transitioning');
+
+    if (effective === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+    }
+
+    // Remove transition class after animation
+    setTimeout(() => {
+        document.documentElement.classList.remove('theme-transitioning');
+    }, 450);
 }
 
 async function openRecipeFromUrl() {
