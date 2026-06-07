@@ -15,7 +15,7 @@ AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
 TOKEN_URL = "https://discord.com/api/oauth2/token"
 
 # Config from environment
-CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "1508578934621474846")
+CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "1513301068111548527")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "http://192.168.4.37:5100/auth/callback")
 

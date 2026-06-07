@@ -345,9 +345,8 @@ function renderGrid(recipes) {
     emptyState.style.display = 'none';
     const cart = getCart();
     recipeGrid.innerHTML = recipes.map((r, i) => `
-        <article class="recipe-card ${r.image_url ? 'has-thumb' : ''}" data-id="${r.id}" style="animation-delay: ${i * 0.05}s">
+        <article class="recipe-card" data-id="${r.id}" style="animation-delay: ${i * 0.05}s">
             ${isNewRecipe(r) ? '<span class="new-badge">NEW</span>' : ''}
-            ${r.image_url ? `<div class="card-thumb"><img src="/api/thumbnail/${r.id}" alt="" loading="lazy"></div>` : ''}
             <div class="card-body">
                 <div class="card-platform">
                     <span class="dot"></span>
@@ -1144,6 +1143,7 @@ function openSpotlight() {
 function closeSpotlight() {
     spotlightOverlay.classList.remove('active');
     document.body.style.overflow = '';
+    clearTimeout(window._spotlightNudgeTimer);
 }
 
 function toggleSpotlight() {
@@ -1174,6 +1174,7 @@ async function convertReel() {
     }
 
     // Show loading state — spinner replaces esc hint
+    clearTimeout(window._spotlightNudgeTimer);
     hint.style.display = 'none';
     spinner.style.display = 'inline-block';
     input.disabled = true;
@@ -1202,8 +1203,14 @@ async function convertReel() {
             input.value = '';
             await loadRecipes(searchInput.value);
             await loadCategories();
-            // Auto-close after a beat
-            setTimeout(() => closeSpotlight(), 1200);
+            // After 10s, show a gentle nudge that they can leave or keep going
+            clearTimeout(window._spotlightNudgeTimer);
+            window._spotlightNudgeTimer = setTimeout(() => {
+                if (spotlightOverlay.classList.contains('active')) {
+                    status.textContent = 'You can close this or paste another reel ✨';
+                    status.className = 'spotlight-status spotlight-nudge';
+                }
+            }, 10000);
         } else {
             status.textContent = data.message || 'Check results';
             status.className = 'spotlight-status';
