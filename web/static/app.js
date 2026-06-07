@@ -236,6 +236,7 @@ async function init() {
     await loadCategories();
     setupListeners();
     updateCartBadge();
+    await loadUserProfile();
     // Deep-link: open recipe if URL is /recipe/<id>/...
     await openRecipeFromUrl();
     // Handle browser back/forward
@@ -246,6 +247,46 @@ async function init() {
             closeModal();
         }
     });
+}
+
+// ─── User Profile ────────────────────────────────
+async function loadUserProfile() {
+    try {
+        const res = await fetch('/auth/me', { credentials: 'same-origin' });
+        const data = await res.json();
+        if (!data.authenticated) return;
+
+        const profileEl = document.getElementById('userProfile');
+        const avatarEl = document.getElementById('userAvatar');
+        const dropdownAvatarEl = document.getElementById('dropdownAvatar');
+        const nameEl = document.getElementById('dropdownName');
+        const usernameEl = document.getElementById('dropdownUsername');
+        const avatarBtn = document.getElementById('userAvatarBtn');
+        const dropdown = document.getElementById('userDropdown');
+
+        // Set avatar (fallback to Discord default)
+        const avatarUrl = data.avatar_url || `https://cdn.discordapp.com/embed/avatars/${parseInt(data.discord_id) % 5}.png`;
+        avatarEl.src = avatarUrl;
+        dropdownAvatarEl.src = avatarUrl;
+        nameEl.textContent = data.display_name || data.username;
+        usernameEl.textContent = `@${data.username}`;
+        profileEl.style.display = 'block';
+
+        // Toggle dropdown on click
+        avatarBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('open');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!dropdown.contains(e.target) && !avatarBtn.contains(e.target)) {
+                dropdown.classList.remove('open');
+            }
+        });
+    } catch (e) {
+        console.error('Failed to load user profile:', e);
+    }
 }
 
 async function openRecipeFromUrl() {
