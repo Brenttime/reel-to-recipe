@@ -1205,75 +1205,129 @@ async function generateShareCard(recipe) {
     const footerW = ctx.measureText(footer).width;
     ctx.fillText(footer, (W - footerW) / 2, H - 40);
 
-    // ── Export ──
+    // ── Export & Share ──
     canvas.toBlob(async (blob) => {
-        const url = URL.createObjectURL(blob);
         const fileName = `${recipe.title.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
+        const shareText = formatRecipeForSharing(recipe);
 
-        // Try native share first (requires HTTPS — works on localhost or mobile apps)
-        if (navigator.share && navigator.canShare) {
+        // 1) Try native share with image (works on HTTPS / localhost)
+        if (navigator.share) {
             try {
                 const file = new File([blob], fileName, { type: 'image/png' });
-                if (navigator.canShare({ files: [file] })) {
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
                     await navigator.share({
                         title: recipe.title,
-                        text: `Check out this recipe: ${recipe.title}`,
+                        text: shareText,
                         files: [file]
                     });
-                    URL.revokeObjectURL(url);
-                    return;
+                    return; // Shared successfully
                 }
             } catch (e) {
-                // User cancelled or not supported — fall through to preview
+                if (e.name === 'AbortError') return; // User cancelled — done
+                // Not supported with files — try text-only below
+            }
+
+            // 2) Fall back to text-only native share (works on HTTP in Safari)
+            try {
+                await navigator.share({
+                    title: recipe.title,
+                    text: shareText,
+                });
+                return; // Shared successfully
+            } catch (e) {
+                if (e.name === 'AbortError') return; // User cancelled — done
+                // Not supported at all — fall through to desktop fallback
             }
         }
 
-        // Fallback: show share preview overlay
-        showSharePreview(url, fileName, recipe);
+        // 3) Desktop fallback — copy recipe text + download image
+        const url = URL.createObjectURL(blob);
+        showDesktopShareFallback(url, fileName, shareText);
     }, 'image/png');
 }
 
-function showSharePreview(imageUrl, fileName, recipe) {
-    // Remove existing preview if any
+// Format recipe as clean shareable text (for Notes, Messages, etc.)
+function formatRecipeForSharing(recipe) {
+    let text = `🍽️ ${recipe.title}`;
+    if (recipe.creator) text += `\nby ${recipe.creator}`;
+    text += '\n';
+
+    // Ingredients
+    const ings = recipe.ingredients.map(i => ingText(i));
+    if (ings.length > 0) {
+        text += '\n📝 Ingredients:\n';
+        text += ings.map(i => `• ${i}`).join('\n');
+    }
+
+    // Instructions
+    if (recipe.instructions && recipe.instructions.length > 0) {
+        text += '\n\n👩‍🍳 Instructions:\n';
+        text += recipe.instructions.map((s, i) => `${i + 1}. ${s}`).join('\n');
+    }
+
+    // Source link
+    if (recipe.source_url) {
+        text += `\n\n🔗 ${recipe.source_url}`;
+    }
+
+    return text;
+}
+
+// Desktop-only fallback (no native share sheet available)
+function showDesktopShareFallback(imageUrl, fileName, shareText) {
     document.getElementById('sharePreviewOverlay')?.remove();
 
     const overlay = document.createElement('div');
     overlay.id = 'sharePreviewOverlay';
     overlay.style.cssText = `
         position:fixed; inset:0; z-index:5000;
-        background:rgba(0,0,0,0.85);
-        backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
-        display:flex; flex-direction:column; align-items:center; justify-content:center;
-        padding:24px; opacity:0; transition:opacity 0.2s ease;
+        background:rgba(0,0,0,0.6);
+        backdrop-filter:blur(30px); -webkit-backdrop-filter:blur(30px);
+        display:flex; align-items:center; justify-content:center;
+        padding:24px; opacity:0; transition:opacity 0.25s ease;
     `;
 
-    const sourceUrl = recipe.source_url || '';
-    const shareText = `${recipe.title}${recipe.creator ? ' by ' + recipe.creator : ''}${sourceUrl ? '\n' + sourceUrl : ''}`;
-
     overlay.innerHTML = `
-        <div style="position:relative; max-width:360px; width:100%; display:flex; flex-direction:column; align-items:center; gap:16px;">
-            <img src="${imageUrl}" alt="Share card" style="
-                width:100%; border-radius:16px;
-                box-shadow:0 24px 80px rgba(0,0,0,0.5);
-            ">
-            <p style="color:rgba(255,255,255,0.4); font-size:13px; text-align:center; font-family:-apple-system,sans-serif;">
-                Long-press the image to share · or use the buttons below
-            </p>
-            <div style="display:flex; gap:10px; width:100%;">
-                <button id="shareDownloadBtn" style="
-                    flex:1; padding:14px; border-radius:14px; border:none;
-                    background:rgba(255,255,255,0.1); color:white;
-                    font-size:15px; font-weight:600; cursor:pointer;
-                    font-family:-apple-system,sans-serif;
-                    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
-                    border:1px solid rgba(255,255,255,0.1);
-                ">💾 Save Image</button>
+        <div style="
+            max-width:340px; width:100%; border-radius:20px;
+            background:rgba(40,40,40,0.85);
+            backdrop-filter:blur(40px); -webkit-backdrop-filter:blur(40px);
+            border:1px solid rgba(255,255,255,0.12);
+            overflow:hidden;
+            box-shadow:0 24px 80px rgba(0,0,0,0.6);
+        ">
+            <div style="padding:20px 20px 12px; text-align:center; border-bottom:1px solid rgba(255,255,255,0.06);">
+                <div style="font-size:15px; font-weight:600; color:white; font-family:-apple-system,sans-serif;">
+                    Share Recipe
+                </div>
+            </div>
+            <div style="display:flex; flex-direction:column;">
                 <button id="shareCopyBtn" style="
-                    flex:1; padding:14px; border-radius:14px; border:none;
-                    background:#007AFF; color:white;
-                    font-size:15px; font-weight:600; cursor:pointer;
-                    font-family:-apple-system,sans-serif;
-                ">📋 Copy Text</button>
+                    padding:16px 20px; border:none; background:transparent;
+                    color:white; font-size:16px; cursor:pointer;
+                    font-family:-apple-system,sans-serif; text-align:left;
+                    display:flex; align-items:center; gap:12px;
+                    border-bottom:1px solid rgba(255,255,255,0.06);
+                ">
+                    <span style="font-size:20px;">📋</span>
+                    <span>Copy Recipe Text</span>
+                </button>
+                <button id="shareDownloadBtn" style="
+                    padding:16px 20px; border:none; background:transparent;
+                    color:white; font-size:16px; cursor:pointer;
+                    font-family:-apple-system,sans-serif; text-align:left;
+                    display:flex; align-items:center; gap:12px;
+                ">
+                    <span style="font-size:20px;">💾</span>
+                    <span>Save Share Card</span>
+                </button>
+            </div>
+            <div style="padding:8px 20px 16px; border-top:1px solid rgba(255,255,255,0.06);">
+                <button id="shareCancelBtn" style="
+                    width:100%; padding:12px; border-radius:12px; border:none;
+                    background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.5);
+                    font-size:15px; cursor:pointer; font-family:-apple-system,sans-serif;
+                ">Cancel</button>
             </div>
         </div>
     `;
@@ -1281,45 +1335,38 @@ function showSharePreview(imageUrl, fileName, recipe) {
     document.body.appendChild(overlay);
     requestAnimationFrame(() => overlay.style.opacity = '1');
 
-    // Close on backdrop click
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) {
-            overlay.style.opacity = '0';
-            setTimeout(() => { overlay.remove(); URL.revokeObjectURL(imageUrl); }, 200);
+    const close = () => {
+        overlay.style.opacity = '0';
+        setTimeout(() => { overlay.remove(); URL.revokeObjectURL(imageUrl); }, 250);
+    };
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.getElementById('shareCancelBtn').addEventListener('click', close);
+    document.addEventListener('keydown', function esc(e) {
+        if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+    });
+
+    // Copy recipe text
+    document.getElementById('shareCopyBtn').addEventListener('click', async () => {
+        const ok = await copyToClipboard(shareText);
+        const btn = document.getElementById('shareCopyBtn');
+        if (ok) {
+            btn.querySelector('span:last-child').textContent = '✓ Copied!';
+            setTimeout(close, 800);
+        } else {
+            showCopyFallback(shareText);
         }
     });
 
-    // Escape to close
-    const escHandler = (e) => {
-        if (e.key === 'Escape') {
-            overlay.style.opacity = '0';
-            setTimeout(() => { overlay.remove(); URL.revokeObjectURL(imageUrl); }, 200);
-            document.removeEventListener('keydown', escHandler);
-        }
-    };
-    document.addEventListener('keydown', escHandler);
-
-    // Download button
+    // Download share card image
     document.getElementById('shareDownloadBtn').addEventListener('click', () => {
         const a = document.createElement('a');
         a.href = imageUrl;
         a.download = fileName;
         a.click();
         const btn = document.getElementById('shareDownloadBtn');
-        btn.textContent = '✓ Saved!';
-        setTimeout(() => { btn.textContent = '💾 Save Image'; }, 1500);
-    });
-
-    // Copy text button
-    document.getElementById('shareCopyBtn').addEventListener('click', async () => {
-        const ok = await copyToClipboard(shareText);
-        const btn = document.getElementById('shareCopyBtn');
-        if (ok) {
-            btn.textContent = '✓ Copied!';
-            setTimeout(() => { btn.textContent = '📋 Copy Text'; }, 1500);
-        } else {
-            showCopyFallback(shareText);
-        }
+        btn.querySelector('span:last-child').textContent = '✓ Saved!';
+        setTimeout(close, 800);
     });
 }
 
