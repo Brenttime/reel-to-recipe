@@ -2414,6 +2414,23 @@ body {
     padding: 8px 16px;
 }
 
+/* ─── "Added by Me" chip avatar ─── */
+.chip-avatar {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] .chip-avatar {
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.chip-added-by-me {
+    padding-left: 7px;
+}
+
 .dropdown-theme-label {
     font-size: 0.75rem;
     font-weight: 600;

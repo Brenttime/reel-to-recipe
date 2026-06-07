@@ -250,11 +250,11 @@ function parseServingsNumber(servingsStr) {
 
 // ─── Init ───────────────────────────────────────
 async function init() {
+    await loadUserProfile();
     await loadRecipes();
     await loadCategories();
     setupListeners();
     updateCartBadge();
-    await loadUserProfile();
     // Deep-link: open recipe if URL is /recipe/<id>/...
     await openRecipeFromUrl();
     // Handle browser back/forward
@@ -273,6 +273,9 @@ async function loadUserProfile() {
         const res = await fetch('/auth/me', { credentials: 'same-origin' });
         const data = await res.json();
         if (!data.authenticated) return;
+
+        // Populate shared currentUser for reviews + filters
+        currentUser = data;
 
         const profileEl = document.getElementById('userProfile');
         const avatarEl = document.getElementById('userAvatar');
@@ -441,16 +444,27 @@ function getCategoryIcon(name) {
 
 // ─── Rendering ──────────────────────────────────
 function renderCategoryChips(categories) {
-    if (categories.length === 0) {
-        filterChips.innerHTML = '';
-        return;
+    let chips = '';
+
+    // "Added by Me" chip (only if logged in)
+    if (currentUser && currentUser.authenticated) {
+        const avatarUrl = currentUser.avatar_url || `https://cdn.discordapp.com/embed/avatars/${parseInt(currentUser.discord_id) % 5}.png`;
+        chips += `
+            <button class="chip chip-added-by-me" data-filter="added-by-me">
+                <img class="chip-avatar" src="${avatarUrl}" alt="" />
+                <span class="chip-label">Added by Me</span>
+            </button>
+        `;
     }
-    filterChips.innerHTML = categories.map(c => `
+
+    chips += categories.map(c => `
         <button class="chip" data-category="${escapeAttr(c.name)}">
             <span class="chip-icon">${getCategoryIcon(c.name)}</span>
             <span class="chip-label">${escapeHtml(c.name)}</span>
         </button>
     `).join('');
+
+    filterChips.innerHTML = chips;
 }
 function renderGrid(recipes) {
     if (recipes.length === 0) {
@@ -1402,7 +1416,7 @@ function setupListeners() {
         if (e.key === 'Enter') convertReel();
     });
 
-    // Filter chips (categories)
+    // Filter chips (categories + Added by Me)
     filterChips.addEventListener('click', (e) => {
         const chip = e.target.closest('.chip');
         if (!chip) return;
@@ -1415,10 +1429,22 @@ function setupListeners() {
             loadRecipes();
         } else {
             chip.classList.add('active');
-            const category = chip.dataset.category;
-            searchInput.value = category;
-            clearBtn.style.display = 'flex';
-            loadRecipes(category);
+
+            // Special "Added by Me" filter — client-side
+            if (chip.dataset.filter === 'added-by-me') {
+                const myName = currentUser?.display_name || currentUser?.username || '';
+                if (myName) {
+                    const filtered = allRecipes.filter(r => r.added_by === myName);
+                    renderGrid(filtered);
+                    searchInput.value = '';
+                    clearBtn.style.display = 'none';
+                }
+            } else {
+                const category = chip.dataset.category;
+                searchInput.value = category;
+                clearBtn.style.display = 'flex';
+                loadRecipes(category);
+            }
         }
     });
 

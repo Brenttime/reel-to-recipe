@@ -293,8 +293,9 @@ def api_recipes():
                     SELECT * FROM recipes
                     WHERE title LIKE ? OR creator LIKE ? OR ingredients LIKE ?
                         OR instructions LIKE ? OR tips LIKE ? OR tags LIKE ?
+                        OR added_by LIKE ?
                     ORDER BY created_at DESC
-                """, (like_pattern,) * 6).fetchall()
+                """, (like_pattern,) * 7).fetchall()
         except Exception:
             # FTS corrupted or query syntax issue — fall back to LIKE
             like_pattern = f"%{query}%"
@@ -302,8 +303,9 @@ def api_recipes():
                 SELECT * FROM recipes
                 WHERE title LIKE ? OR creator LIKE ? OR ingredients LIKE ?
                     OR instructions LIKE ? OR tips LIKE ? OR tags LIKE ?
+                    OR added_by LIKE ?
                 ORDER BY created_at DESC
-            """, (like_pattern,) * 6).fetchall()
+            """, (like_pattern,) * 7).fetchall()
     else:
         rows = db.execute(
             "SELECT * FROM recipes ORDER BY created_at DESC"
