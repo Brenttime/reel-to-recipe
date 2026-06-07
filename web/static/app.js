@@ -253,18 +253,10 @@ const CATEGORY_ICONS = {
     'soup': '🍲', 'salad': '🥗', 'bowl': '🥣', 'rice': '🍚',
     'noodles': '🍜', 'curry': '🍛', 'wings': '🍗', 'dumplings': '🥟',
     'pasta': '🍝', 'fries': '🍟', 'wrap': '🌯',
-    // Cooking methods
-    'air fryer': '💨', 'grilled': '🔥', 'bbq': '🍖', 'fried': '🍳',
-    'baked': '🍞', 'roasted': '🔥', 'smoked': '💨',
-    'slow cooker': '🫕', 'instant pot': '⏱️', 'rice cooker': '🍚',
-    'one pot': '🫕', 'one pan': '🍳', 'sheet pan': '🫓', 'no cook': '❄️',
-    // Styles & dietary
-    'spicy': '🌶️', 'healthy': '🥗', 'comfort food': '🫕', 'quick': '⚡',
-    'easy': '👌', 'high protein': '💪', 'low carb': '📉',
-    'vegan': '🌱', 'vegetarian': '🥬', 'keto': '🥑', 'gluten-free': '🌾',
-    'dairy-free': '🥛', 'meal prep': '📦', 'budget': '💰',
-    'copycat': '🏪', 'fast food': '🍔', 'street food': '🛒',
-    'party food': '🎉', 'game day': '🏈',
+    // Cooking style
+    'air fryer': '💨', 'bbq': '🍖', 'fried': '🍳',
+    // Dietary
+    'spicy': '🌶️', 'vegan': '🌱', 'vegetarian': '🥬',
 };
 
 function getCategoryIcon(name) {
