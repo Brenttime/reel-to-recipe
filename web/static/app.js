@@ -245,6 +245,12 @@ function renderChips(creators) {
 }
 
 function renderModal(recipe) {
+    // Normalize tags (API returns comma-separated string)
+    if (typeof recipe.tags === 'string') {
+        recipe.tags = recipe.tags ? recipe.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+    } else if (!Array.isArray(recipe.tags)) {
+        recipe.tags = [];
+    }
     currentRecipe = recipe;
     originalServings = parseServingsNumber(recipe.servings) || 1;
     currentScale = 1;
