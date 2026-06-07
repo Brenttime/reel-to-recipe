@@ -313,6 +313,22 @@ def api_recipes():
         recipe["tags"] = json.loads(recipe["tags"])
         recipes.append(recipe)
 
+    # Attach review averages in bulk
+    if recipes:
+        recipe_ids = [r["id"] for r in recipes]
+        placeholders = ",".join("?" * len(recipe_ids))
+        avg_rows = db.execute(f"""
+            SELECT recipe_id, ROUND(AVG(rating), 1) as avg_rating, COUNT(*) as review_count
+            FROM reviews
+            WHERE recipe_id IN ({placeholders})
+            GROUP BY recipe_id
+        """, recipe_ids).fetchall()
+        avg_map = {r["recipe_id"]: {"avg": r["avg_rating"], "count": r["review_count"]} for r in avg_rows}
+        for recipe in recipes:
+            info = avg_map.get(recipe["id"])
+            recipe["rating_avg"] = info["avg"] if info else None
+            recipe["rating_count"] = info["count"] if info else 0
+
     return jsonify(recipes)
 
 
