@@ -28,6 +28,9 @@ COOKIES_FILE = Path(__file__).parent / "cookies.txt"
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 VENV_PYTHON = str(Path(__file__).parent / ".venv" / "bin" / "python")
 
+# Recipe Glass integration — save converted recipes to the web viewer
+RECIPE_GLASS_URL = os.environ.get("RECIPE_GLASS_URL", "http://localhost:5100")
+
 _whisper_model = None
 
 
@@ -268,6 +271,169 @@ def _strip_hermes_chrome(output: str) -> str:
     return "\n".join(content_lines).strip() if content_lines else output
 
 
+def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
+    """Parse recipe text and POST to Recipe Glass for persistent storage.
+
+    Best-effort: failures are logged but don't break the MCP response.
+    """
+    try:
+        lines = recipe_text.strip().split("\n")
+        title = ""
+        creator = ""
+        ingredients = []
+        instructions = []
+        tips = ""
+        macros = ""
+        servings = ""
+        prep_time = ""
+        cook_time = ""
+        total_time = ""
+        tags = []
+
+        section = None  # current section being parsed
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("---") or stripped.startswith("⏱️"):
+                continue
+
+            # Detect title (first non-empty line, or after # header)
+            if not title and stripped and not stripped.startswith("-") and not stripped.startswith("*"):
+                if stripped.startswith("#"):
+                    title = stripped.lstrip("#").strip()
+                else:
+                    title = stripped
+                continue
+
+            low = stripped.lower()
+
+            # Detect metadata lines
+            if low.startswith("prep time:") or low.startswith("prep:"):
+                prep_time = stripped.split(":", 1)[1].strip()
+                continue
+            if low.startswith("cook time:") or low.startswith("cook:"):
+                cook_time = stripped.split(":", 1)[1].strip()
+                continue
+            if low.startswith("total time:") or low.startswith("total:"):
+                total_time = stripped.split(":", 1)[1].strip()
+                continue
+            if low.startswith("serves:") or low.startswith("servings:"):
+                servings = stripped.split(":", 1)[1].strip()
+                continue
+            if low.startswith("yield:"):
+                servings = stripped.split(":", 1)[1].strip()
+                continue
+
+            # Detect sections
+            if "ingredient" in low and (stripped.startswith("#") or stripped.startswith("**") or stripped.endswith(":") or low.strip() == "ingredients"):
+                section = "ingredients"
+                continue
+            if "instruction" in low or "direction" in low or "steps" in low or "method" in low:
+                if stripped.startswith("#") or stripped.startswith("**") or stripped.endswith(":") or low.strip() in ("instructions", "directions", "steps", "method"):
+                    section = "instructions"
+                    continue
+            if "tip" in low and (stripped.startswith("#") or stripped.startswith("**") or stripped.endswith(":") or low.strip() in ("tips", "tip")):
+                section = "tips"
+                continue
+            if ("nutrition" in low or "macro" in low or "calori" in low) and (stripped.startswith("#") or stripped.startswith("**") or stripped.startswith("-") or low.strip() in ("nutrition", "macros", "nutrition info")):
+                section = "macros"
+                continue
+
+            # Parse section content
+            if section == "ingredients":
+                item = stripped.lstrip("-*•● ").strip()
+                if item:
+                    ingredients.append(item)
+            elif section == "instructions":
+                item = re.sub(r"^\d+[\.\)]\s*", "", stripped).strip()
+                if item:
+                    instructions.append(item)
+            elif section == "tips":
+                item = stripped.lstrip("-*•● ").strip()
+                if item:
+                    tips += (" " if tips else "") + item
+            elif section == "macros":
+                item = stripped.lstrip("-*•● ").strip()
+                if item:
+                    macros += (" | " if macros else "") + item
+            elif section is None:
+                # Auto-detect section from content patterns
+                if stripped.startswith("-") or stripped.startswith("•"):
+                    section = "ingredients"
+                    item = stripped.lstrip("-*•● ").strip()
+                    if item:
+                        ingredients.append(item)
+                elif re.match(r"^\d+[\.\)]", stripped):
+                    section = "instructions"
+                    item = re.sub(r"^\d+[\.\)]\s*", "", stripped).strip()
+                    if item:
+                        instructions.append(item)
+
+        # Infer creator from URL
+        if "instagram.com" in url:
+            # Try to extract from URL path — /reel/ doesn't have username
+            # Leave empty; caption may have it
+            pass
+        if "tiktok.com" in url:
+            match = re.search(r"tiktok\.com/@([^/]+)", url)
+            if match:
+                creator = f"@{match.group(1)}"
+
+        # Detect platform from URL
+        if not platform:
+            if "tiktok.com" in url:
+                platform = "TikTok"
+            elif "instagram.com" in url:
+                platform = "Instagram"
+
+        # Auto-tag based on content
+        all_text = (title + " " + " ".join(ingredients)).lower()
+        tag_keywords = {
+            "chicken": "chicken", "beef": "beef", "shrimp": "seafood",
+            "fish": "seafood", "salmon": "seafood", "pasta": "pasta",
+            "breakfast": "breakfast", "dessert": "dessert", "cookie": "dessert",
+            "cake": "dessert", "sandwich": "sandwich", "taco": "Mexican",
+            "korean": "Korean", "japanese": "Japanese", "spicy": "spicy",
+            "vegan": "vegan", "vegetarian": "vegetarian",
+        }
+        for keyword, tag in tag_keywords.items():
+            if keyword in all_text and tag not in tags:
+                tags.append(tag)
+
+        if not title:
+            title = "Untitled Recipe"
+
+        # POST to Recipe Glass
+        payload = {
+            "title": title,
+            "creator": creator,
+            "source_url": url,
+            "platform": platform,
+            "servings": servings,
+            "prep_time": prep_time,
+            "cook_time": cook_time,
+            "total_time": total_time,
+            "ingredients": ingredients,
+            "instructions": instructions,
+            "tips": tips,
+            "macros": macros,
+            "tags": tags,
+        }
+
+        resp = httpx.post(
+            f"{RECIPE_GLASS_URL}/api/recipes",
+            json=payload,
+            timeout=10
+        )
+        if resp.status_code == 201:
+            print(f"[Recipe Glass] Saved: {title}")
+        else:
+            print(f"[Recipe Glass] Failed ({resp.status_code}): {resp.text[:100]}")
+
+    except Exception as e:
+        print(f"[Recipe Glass] Error saving recipe: {e}")
+
+
 def format_recipe(caption: str, transcript: str) -> str:
     """Send to Hermes for recipe formatting (audio pipeline)."""
     prompt = f"""Format this cooking video into a clean recipe. You have two sources:
@@ -379,6 +545,9 @@ def convert_reel_to_recipe(url: str) -> str:
     recipe = format_recipe_combined(caption, transcript, ocr_text)
     timings["format"] = time.time() - t0
 
+    # Save to Recipe Glass
+    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
+
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe}\n\n---\n⏱️ {timing_str}"
 
@@ -448,6 +617,9 @@ def convert_reel_to_recipe_audio(url: str) -> str:
     recipe = format_recipe(caption, transcript)
     timings["format"] = time.time() - t0
 
+    # Save to Recipe Glass
+    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
+
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe}\n\n---\n⏱️ {timing_str}"
 
@@ -490,6 +662,9 @@ def convert_reel_to_recipe_ocr(url: str) -> str:
     t0 = time.time()
     recipe = format_recipe_from_ocr(caption, ocr_text)
     timings["format"] = time.time() - t0
+
+    # Save to Recipe Glass
+    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
 
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe}\n\n---\n⏱️ {timing_str}"

@@ -15,3 +15,9 @@ test_ocr.mp4
 test_reel.mp3
 test_tiktok.mp4
 frames/
+
+# Cookies (user-specific)
+cookies.txt
+
+# Docker data
+cookbook-data/
