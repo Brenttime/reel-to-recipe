@@ -165,9 +165,14 @@ Run the included helper script:
 
 It will prompt you for your Instagram `sessionid`. To find it:
 
+> ℹ️ The `sessionid` cookie is **HttpOnly** — it's invisible to `document.cookie` and the browser console. You must copy it from DevTools storage.
+
 1. Open **instagram.com** in your browser, logged into your account
-2. Open DevTools (`F12`) → **Application** → **Cookies** → `.instagram.com`
-3. Copy the `sessionid` value
+2. Open DevTools:
+   - **Chrome / Edge:** `F12` → **Application** → **Cookies** → `.instagram.com`
+   - **Firefox:** `F12` → **Storage** → **Cookies** → `.instagram.com`
+   - **Safari:** `⌥⌘I` → **Storage** → **Cookies** → `.instagram.com`
+3. Find the `sessionid` row and double-click the **Value** cell to copy it
 4. Paste it when the script asks
 
 Or skip the prompt and pass it directly:
