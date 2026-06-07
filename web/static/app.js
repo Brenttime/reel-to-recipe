@@ -546,7 +546,7 @@ function renderModal(recipe) {
             ${recipe.creator ? `by <strong>${escapeHtml(recipe.creator)}</strong>` : ''}
             ${recipe.source_url ? ` · <a href="${escapeHtml(recipe.source_url)}" target="_blank" rel="noopener">View original</a>` : ''}
         </p>
-        ${recipe.created_at ? `<p class="modal-date-added">${isNewRecipe(recipe) ? '<span class="new-badge-inline">NEW</span> ' : ''}Added ${formatDateAdded(recipe.created_at)}</p>` : ''}
+        ${recipe.created_at ? `<p class="modal-date-added">${isNewRecipe(recipe) ? '<span class="new-badge-inline">NEW</span> ' : ''}Added ${formatDateAdded(recipe.created_at)}${recipe.added_by ? ` by <strong>${escapeHtml(recipe.added_by)}</strong>` : ''}</p>` : ''}
 
         <!-- Rating & Reviews Section -->
         <div class="reviews-section" id="reviewsSection">

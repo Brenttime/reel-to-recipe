@@ -88,6 +88,7 @@ def init_db():
             tags TEXT DEFAULT '[]',
             image_url TEXT DEFAULT '',
             user_id INTEGER DEFAULT NULL,
+            added_by TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -114,6 +115,10 @@ def init_db():
             VALUES (new.id, new.title, new.creator, new.ingredients, new.instructions, new.tips, new.tags);
         END;
     """)
+    # Migrate: add added_by column if missing
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(recipes)").fetchall()]
+    if "added_by" not in cols:
+        conn.execute("ALTER TABLE recipes ADD COLUMN added_by TEXT DEFAULT ''")
     conn.close()
     # Initialize auth tables
     init_auth_db(DB_PATH)
@@ -401,11 +406,21 @@ def api_add_recipe():
     data = request.get_json()
     db = get_db()
 
+    # Determine who added this recipe
+    added_by = ""
+    if session.get("user_id"):
+        user_row = db.execute(
+            "SELECT display_name, username FROM users WHERE id = ?",
+            (session["user_id"],)
+        ).fetchone()
+        if user_row:
+            added_by = user_row["display_name"] or user_row["username"] or ""
+
     db.execute("""
         INSERT INTO recipes (title, creator, source_url, platform, servings,
                            prep_time, cook_time, total_time, ingredients,
-                           instructions, tips, macros, tags)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           instructions, tips, macros, tags, added_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data.get("title", "Untitled"),
         data.get("creator", ""),
@@ -420,6 +435,7 @@ def api_add_recipe():
         data.get("tips", ""),
         data.get("macros", ""),
         json.dumps(data.get("tags", [])),
+        added_by,
     ))
     db.commit()
     return jsonify({"status": "ok", "id": db.execute("SELECT last_insert_rowid()").fetchone()[0]}), 201
