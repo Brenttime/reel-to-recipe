@@ -224,15 +224,17 @@ def extract_text_from_video(video_path: str) -> str:
         texts = []
         prev_text = ""
         for f in frames:
-            img = Image.open(os.path.join(frames_dir, f))
-            # Pre-processing: improve OCR on stylized fonts / busy backgrounds
-            # TODO: Remove or tune if too aggressive (losing thin/light text)
-            img = img.convert("L")  # grayscale
-            img = img.point(lambda x: 0 if x < 140 else 255)  # binarize
-            text = pytesseract.image_to_string(img).strip()
-            if text and text != prev_text:
-                texts.append(text)
-                prev_text = text
+            try:
+                img = Image.open(os.path.join(frames_dir, f))
+                # Pre-processing: improve OCR on stylized fonts / busy backgrounds
+                img = img.convert("L")  # grayscale
+                img = img.point(lambda x: 0 if x < 140 else 255)  # binarize
+                text = pytesseract.image_to_string(img).strip()
+                if text and text != prev_text:
+                    texts.append(text)
+                    prev_text = text
+            except Exception:
+                continue  # Skip frames that Tesseract can't handle
 
         return "\n---\n".join(texts)
     finally:
@@ -259,11 +261,14 @@ def format_recipe_from_ocr(caption: str, ocr_text: str) -> str:
 
 Produce a structured recipe with:
 - Recipe title
-- Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere)
-- Ingredients list with quantities — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [other]
-  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]"
+- Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere). For cocktails/drinks, include ABV or calories per serving if available.
+- Ingredients list with quantities — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [bar], [other]
+  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]", "2 oz vodka [bar]", "1 oz simple syrup [bar]", "club soda [beverages]"
+  Use [bar] for spirits, liqueurs, bitters, vermouths, and cocktail-specific ingredients (e.g. vodka, gin, rum, tequila, whiskey, bourbon, triple sec, Campari, Angostura bitters, maraschino liqueur). Use [beverages] for non-alcoholic mixers (club soda, tonic water, juice as a mixer). Use [produce] for fresh garnishes (lime, lemon, mint, cucumber).
 - Numbered step-by-step instructions
 - Tips section
+
+NOTE: This may be a cocktail, drink, or beverage recipe — not just food. Adapt accordingly: use "Ingredients" not "Grocery List", steps might be "shake", "stir", "muddle", "strain", "garnish" etc. If it's a drink, include glassware and garnish in the tips.
 
 IMPORTANT: Start your response with the recipe title on the FIRST line. Do NOT write any preamble like "Here's the recipe" or "Sure!". Output the recipe content only. The ingredients section is REQUIRED — always include it, even if you have to infer ingredients from the instructions.
 
@@ -562,9 +567,32 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, thumbnail_u
             "gochujang": "spicy", "chili flake": "spicy",
             "vegan": "vegan", "vegetarian": "vegetarian",
         }
+        # ── Drinks & Cocktails ──
+        _drink_tags = {
+            "cocktail": "cocktail", "mocktail": "mocktail",
+            "margarita": "cocktail", "martini": "cocktail", "mojito": "cocktail",
+            "old fashioned": "cocktail", "negroni": "cocktail", "daiquiri": "cocktail",
+            "manhattan": "cocktail", "cosmopolitan": "cocktail", "paloma": "cocktail",
+            "whiskey sour": "cocktail", "mai tai": "cocktail", "pina colada": "cocktail",
+            "piña colada": "cocktail", "espresso martini": "cocktail",
+            "bloody mary": "cocktail", "moscow mule": "cocktail",
+            "aperol spritz": "cocktail", "tom collins": "cocktail",
+            "gin and tonic": "cocktail", "long island": "cocktail",
+            "mimosa": "cocktail", "bellini": "cocktail", "sangria": "cocktail",
+            "highball": "cocktail", "sour": "cocktail",
+            "vodka": "spirits", "gin": "spirits", "rum": "spirits",
+            "tequila": "spirits", "mezcal": "spirits",
+            "whiskey": "spirits", "whisky": "spirits", "bourbon": "spirits",
+            "scotch": "spirits", "brandy": "spirits", "cognac": "spirits",
+            "absinthe": "spirits", "sake": "spirits",
+            "smoothie": "smoothie", "milkshake": "shake",
+            "lemonade": "lemonade", "punch": "punch",
+            "coffee": "coffee", "latte": "coffee", "espresso": "coffee",
+            "matcha": "matcha",
+        }
 
         # Merge all tag dictionaries and scan (word-boundary matching to avoid substrings)
-        for tag_map in [_protein_tags, _cuisine_tags, _meal_tags, _dish_tags, _method_tags, _attr_tags]:
+        for tag_map in [_protein_tags, _cuisine_tags, _meal_tags, _dish_tags, _method_tags, _attr_tags, _drink_tags]:
             for keyword, tag in tag_map.items():
                 if tag not in tags and re.search(r'\b' + re.escape(keyword) + r'\b', all_text):
                     tags.append(tag)
@@ -633,11 +661,14 @@ def format_recipe(caption: str, transcript: str) -> str:
 
 Return a structured recipe with:
 - Recipe title
-- Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere)
-- Ingredients list with exact quantities (from caption) — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [other]
-  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]"
+- Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere). For cocktails/drinks, include ABV or calories per serving if available.
+- Ingredients list with exact quantities (from caption) — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [bar], [other]
+  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]", "2 oz vodka [bar]", "1 oz simple syrup [bar]", "club soda [beverages]"
+  Use [bar] for spirits, liqueurs, bitters, vermouths, and cocktail-specific ingredients (e.g. vodka, gin, rum, tequila, whiskey, bourbon, triple sec, Campari, Angostura bitters, maraschino liqueur). Use [beverages] for non-alcoholic mixers (club soda, tonic water, juice as a mixer). Use [produce] for fresh garnishes (lime, lemon, mint, cucumber).
 - Numbered step-by-step instructions (combine both sources)
 - Tips section (from transcript)
+
+NOTE: This may be a cocktail, drink, or beverage recipe — not just food. Adapt accordingly: use "Ingredients" not "Grocery List", steps might be "shake", "stir", "muddle", "strain", "garnish" etc. If it's a drink, include glassware and garnish in the tips.
 
 IMPORTANT: Start your response with the recipe title on the FIRST line. Do NOT write any preamble like "Here's the recipe" or "Sure!". Output the recipe content only. The ingredients section is REQUIRED — always include it, even if you have to infer ingredients from the instructions.
 
@@ -670,11 +701,14 @@ Use all three to build the most complete recipe possible.
 
 Return a structured recipe with:
 - Recipe title
-- Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere in any source)
-- Ingredients list with exact quantities — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [other]
-  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]"
+- Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere in any source). For cocktails/drinks, include ABV or calories per serving if available.
+- Ingredients list with exact quantities — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [bar], [other]
+  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]", "2 oz vodka [bar]", "1 oz simple syrup [bar]", "club soda [beverages]"
+  Use [bar] for spirits, liqueurs, bitters, vermouths, and cocktail-specific ingredients (e.g. vodka, gin, rum, tequila, whiskey, bourbon, triple sec, Campari, Angostura bitters, maraschino liqueur). Use [beverages] for non-alcoholic mixers (club soda, tonic water, juice as a mixer). Use [produce] for fresh garnishes (lime, lemon, mint, cucumber).
 - Numbered step-by-step instructions
 - Tips section
+
+NOTE: This may be a cocktail, drink, or beverage recipe — not just food. Adapt accordingly: use "Ingredients" not "Grocery List", steps might be "shake", "stir", "muddle", "strain", "garnish" etc. If it's a drink, include glassware and garnish in the tips.
 
 IMPORTANT: Start your response with the recipe title on the FIRST line. Do NOT write any preamble like "Here's the recipe" or "Sure!". Output the recipe content only. The ingredients section is REQUIRED — always include it, even if you have to infer ingredients from the instructions.
 
