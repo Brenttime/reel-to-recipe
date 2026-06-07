@@ -23,6 +23,8 @@ const cartBadge = document.getElementById('cartBadge');
 let allRecipes = [];
 let currentRecipe = null;
 let debounceTimer = null;
+let currentScale = 1;
+let originalServings = 1;
 let wakeLockSentinel = null;
 
 // ─── Ingredient Helpers ─────────────────────────
@@ -151,6 +153,20 @@ function parseIngredientQuantity(ingredient) {
     return { quantity, rest };
 }
 
+function scaleIngredient(ingredient, ratio) {
+    const { quantity, rest } = parseIngredientQuantity(ingredient);
+    if (quantity === null) return ingredient;
+    const scaled = quantity * ratio;
+    return `${formatNumber(scaled)} ${rest}`;
+}
+
+function parseServingsNumber(servingsStr) {
+    if (!servingsStr) return null;
+    // Try to get first number from string like "4", "2-4", "8 tacos", "4 servings"
+    const match = servingsStr.match(/(\d+)/);
+    return match ? parseInt(match[1]) : null;
+}
+
 // ─── Init ───────────────────────────────────────
 async function init() {
     await loadRecipes();
@@ -244,6 +260,8 @@ function renderModal(recipe) {
         recipe.tags = [];
     }
     currentRecipe = recipe;
+    originalServings = parseServingsNumber(recipe.servings) || 1;
+    currentScale = 1;
 
     const cart = getCart();
     const inCart = cart.includes(recipe.id);
@@ -266,7 +284,18 @@ function renderModal(recipe) {
 
         ${(recipe.servings || recipe.prep_time || recipe.cook_time || recipe.total_time) ? `
             <div class="modal-meta-bar">
-                ${recipe.servings ? `<div class="modal-meta-item"><strong>Servings:</strong> ${escapeHtml(recipe.servings)}</div>` : ''}
+                ${recipe.servings ? `
+                    <div class="modal-meta-item">
+                        <strong>Servings:</strong>
+                        ${parseServingsNumber(recipe.servings) ? `
+                            <span class="scaler-widget">
+                                <button class="scaler-btn" id="scalerMinus">−</button>
+                                <span class="scaler-value" id="scalerValue">${parseServingsNumber(recipe.servings)}</span>
+                                <button class="scaler-btn" id="scalerPlus">+</button>
+                            </span>
+                        ` : `${escapeHtml(recipe.servings)}`}
+                    </div>
+                ` : ''}
                 ${recipe.prep_time ? `<div class="modal-meta-item"><strong>Prep:</strong> ${escapeHtml(recipe.prep_time)}</div>` : ''}
                 ${recipe.cook_time ? `<div class="modal-meta-item"><strong>Cook:</strong> ${escapeHtml(recipe.cook_time)}</div>` : ''}
                 ${recipe.total_time ? `<div class="modal-meta-item"><strong>Total:</strong> ${escapeHtml(recipe.total_time)}</div>` : ''}
@@ -309,17 +338,59 @@ function renderModal(recipe) {
             addBtn.textContent = '🛒 Add to Shopping List';
             addBtn.classList.remove('in-cart');
         } else {
-            addToCart(recipe.id);
+            addToCartWithScaledIngredients(recipe);
             addBtn.textContent = '✓ In Shopping List';
             addBtn.classList.add('in-cart');
         }
         renderGrid(allRecipes);
     });
 
+    // Bind scaler buttons
+    const scalerMinus = document.getElementById('scalerMinus');
+    const scalerPlus = document.getElementById('scalerPlus');
+    if (scalerMinus && scalerPlus) {
+        scalerMinus.addEventListener('click', () => updateScale(-1));
+        scalerPlus.addEventListener('click', () => updateScale(1));
+    }
+
     // Bind cook mode button
     const cookBtn = document.getElementById('startCookModeBtn');
     if (cookBtn) {
         cookBtn.addEventListener('click', () => openCookMode(recipe));
+    }
+}
+
+function addToCartWithScaledIngredients(recipe) {
+    addToCart(recipe.id);
+    // Store scaled ingredients if scale != 1
+    if (currentScale !== 1) {
+        const scaledKey = `reel-cookbook-scaled-${recipe.id}`;
+        const ratio = currentScale / originalServings;
+        const scaledIngredients = recipe.ingredients.map(ing => scaleIngredient(ingText(ing), ratio));
+        localStorage.setItem(scaledKey, JSON.stringify(scaledIngredients));
+    } else {
+        // Remove any old scaled data
+        localStorage.removeItem(`reel-cookbook-scaled-${recipe.id}`);
+    }
+}
+
+function updateScale(delta) {
+    const newVal = currentScale + delta;
+    if (newVal < 1) return;
+    currentScale = newVal;
+
+    const scalerValue = document.getElementById('scalerValue');
+    if (scalerValue) scalerValue.textContent = currentScale;
+
+    // Update ingredients display
+    const ratio = currentScale / originalServings;
+    const ingredientsList = document.getElementById('ingredientsList');
+    if (ingredientsList && currentRecipe) {
+        ingredientsList.innerHTML = currentRecipe.ingredients.map(ing => {
+            const text = ingText(ing);
+            const scaled = ratio === 1 ? text : scaleIngredient(text, ratio);
+            return `<li>${escapeHtml(scaled)}</li>`;
+        }).join('');
     }
 }
 
@@ -423,7 +494,10 @@ async function renderShoppingPanel() {
     // Build combined ingredient list
     const allIngredients = [];
     for (const recipe of recipes) {
-        const ingredients = recipe.ingredients;
+        // Check if we have scaled ingredients stored
+        const scaledKey = `reel-cookbook-scaled-${recipe.id}`;
+        const scaledData = localStorage.getItem(scaledKey);
+        const ingredients = scaledData ? JSON.parse(scaledData) : recipe.ingredients;
 
         for (const ing of ingredients) {
             // Handle both formats: string (old) and {text, section} (new)
@@ -504,6 +578,7 @@ async function renderShoppingPanel() {
         btn.addEventListener('click', (e) => {
             const id = btn.dataset.removeId;
             removeFromCart(id);
+            localStorage.removeItem(`reel-cookbook-scaled-${id}`);
             renderShoppingPanel();
             renderGrid(allRecipes);
         });
@@ -534,6 +609,8 @@ async function renderShoppingPanel() {
 
     document.getElementById('clearAllBtn').addEventListener('click', () => {
         if (!confirm('Clear entire shopping list?')) return;
+        const cart = getCart();
+        cart.forEach(id => localStorage.removeItem(`reel-cookbook-scaled-${id}`));
         setCart([]);
         setChecked([]);
         renderShoppingPanel();
@@ -547,8 +624,12 @@ async function renderShoppingPanel() {
         const recipes = allRecipes.filter(r => cart.includes(parseInt(r.id)));
         const allIngredients = [];
         recipes.forEach(r => {
+            const scaledKey = `reel-cookbook-scaled-${r.id}`;
+            const scaledData = localStorage.getItem(scaledKey);
             let ingredients = [];
-            if (Array.isArray(r.ingredients)) {
+            if (scaledData) {
+                try { ingredients = JSON.parse(scaledData); } catch(e) {}
+            } else if (Array.isArray(r.ingredients)) {
                 ingredients = r.ingredients;
             } else if (typeof r.ingredients === 'string') {
                 ingredients = r.ingredients.split('\n').filter(Boolean);
@@ -804,6 +885,7 @@ async function deleteRecipe(recipe) {
     if (res.ok) {
         // Also remove from cart if present
         removeFromCart(recipe.id);
+        localStorage.removeItem(`reel-cookbook-scaled-${recipe.id}`);
         closeModal();
         await loadRecipes(searchInput.value);
         await loadCreators();
@@ -913,6 +995,7 @@ function setupListeners() {
             const cart = getCart();
             if (cart.includes(id)) {
                 removeFromCart(id);
+                localStorage.removeItem(`reel-cookbook-scaled-${id}`);
             } else {
                 addToCart(id);
             }
