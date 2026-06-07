@@ -194,6 +194,14 @@ Open **http://localhost:5100** — that's it.
 
 The cookbook stores recipes in a SQLite database on a Docker volume (`cookbook-data`), so data persists across container rebuilds.
 
+### 4. Discord Authentication
+
+The cookbook is gated behind Discord OAuth2 — you'll need to set up a Discord app to log in.
+
+👉 **[Discord Auth Setup Guide](docs/discord-auth-setup.md)**
+
+Short version: create an app at [discord.com/developers](https://discord.com/developers/applications), copy the Client ID + Secret into your `.env`, add the redirect URI, and `docker compose up -d`.
+
 ---
 
 ## MCP Tools
