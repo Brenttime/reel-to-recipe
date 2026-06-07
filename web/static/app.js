@@ -38,6 +38,30 @@ function ingText(ing) {
     return String(ing);
 }
 
+// ─── Date Helpers ───────────────────────────────
+function isNewRecipe(recipe) {
+    if (!recipe.created_at) return false;
+    const created = new Date(recipe.created_at.replace(' ', 'T') + 'Z');
+    const now = new Date();
+    return (now - created) < 24 * 60 * 60 * 1000;
+}
+
+function formatDateAdded(dateStr) {
+    if (!dateStr) return '';
+    const created = new Date(dateStr.replace(' ', 'T') + 'Z');
+    const now = new Date();
+    const diffMs = now - created;
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+
+    return created.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 // ─── Shopping List State ─────────────────────────
 const CART_KEY = 'reel-cookbook-cart';
 const CHECKED_KEY = 'reel-cookbook-checked';
@@ -222,6 +246,7 @@ function renderGrid(recipes) {
     const cart = getCart();
     recipeGrid.innerHTML = recipes.map((r, i) => `
         <article class="recipe-card ${r.image_url ? 'has-thumb' : ''}" data-id="${r.id}" style="animation-delay: ${i * 0.05}s">
+            ${isNewRecipe(r) ? '<span class="new-badge">NEW</span>' : ''}
             ${r.image_url ? `<div class="card-thumb"><img src="/api/thumbnail/${r.id}" alt="" loading="lazy"></div>` : ''}
             <div class="card-body">
                 <div class="card-platform">
@@ -255,6 +280,12 @@ function renderGrid(recipes) {
                     <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
                     ${r.ingredients.length} ingredients
                 </span>
+                ${r.created_at ? `
+                    <span class="meta-item meta-date">
+                        <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
+                        ${formatDateAdded(r.created_at)}
+                    </span>
+                ` : ''}
             </div>
             </div>
         </article>
@@ -297,6 +328,7 @@ function renderModal(recipe) {
             ${recipe.creator ? `by <strong>${escapeHtml(recipe.creator)}</strong>` : ''}
             ${recipe.source_url ? ` · <a href="${escapeHtml(recipe.source_url)}" target="_blank" rel="noopener">View original</a>` : ''}
         </p>
+        ${recipe.created_at ? `<p class="modal-date-added">${isNewRecipe(recipe) ? '<span class="new-badge-inline">NEW</span> ' : ''}Added ${formatDateAdded(recipe.created_at)}</p>` : ''}
 
         ${(recipe.servings || recipe.prep_time || recipe.cook_time || recipe.total_time) ? `
             <div class="modal-meta-bar">

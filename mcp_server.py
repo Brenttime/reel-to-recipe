@@ -265,6 +265,8 @@ Produce a structured recipe with:
 - Numbered step-by-step instructions
 - Tips section
 
+IMPORTANT: Start your response with the recipe title on the FIRST line. Do NOT write any preamble like "Here's the recipe" or "Sure!". Output the recipe content only. The ingredients section is REQUIRED — always include it, even if you have to infer ingredients from the instructions.
+
 If the OCR is messy, use your best judgment to clean up typos and interpret ingredients."""
 
     result = subprocess.run(
@@ -325,8 +327,11 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, thumbnail_u
             # Skip separator lines (━━━, ═══, ───, etc.)
             if all(c in "━═─—" for c in stripped) and len(stripped) > 3:
                 continue
-            # Skip common preamble lines from Hermes output
-            if stripped.lower().startswith("here's the") or stripped.lower().startswith("here is the"):
+            # Skip common preamble lines from Hermes/LLM output
+            if re.match(r"^here['']?s?\s", stripped, re.IGNORECASE) or stripped.lower().startswith("here is"):
+                continue
+            # Skip lines that look like meta-commentary, not recipe content
+            if re.match(r"^(sure|okay|alright|absolutely|of course|no problem|let me|i['']ll|i will|i can|great|perfect)\b", stripped, re.IGNORECASE):
                 continue
 
             # Detect "Source: @creator" or "Source: Creator Name" line
@@ -388,8 +393,8 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, thumbnail_u
             if section == "ingredients":
                 item = stripped.lstrip("-*•● ").strip()
                 if item:
-                    # Skip sub-headers like "Batter:", "Filling:", "Toppings:"
-                    if item.endswith(":") and len(item.split()) <= 3:
+                    # Skip sub-headers like "Batter:", "Filling:", "Toppings:", "Per stick (x6):"
+                    if item.endswith(":"):
                         continue
                     # Extract [section] tag if present
                     section_match = re.search(r'\[(\w+)\]\s*$', item)
@@ -553,6 +558,8 @@ Return a structured recipe with:
 - Numbered step-by-step instructions (combine both sources)
 - Tips section (from transcript)
 
+IMPORTANT: Start your response with the recipe title on the FIRST line. Do NOT write any preamble like "Here's the recipe" or "Sure!". Output the recipe content only. The ingredients section is REQUIRED — always include it, even if you have to infer ingredients from the instructions.
+
 If the caption is empty or doesn't contain recipe info, rely on the transcript instead."""
 
     result = subprocess.run(
@@ -587,6 +594,8 @@ Return a structured recipe with:
   Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]"
 - Numbered step-by-step instructions
 - Tips section
+
+IMPORTANT: Start your response with the recipe title on the FIRST line. Do NOT write any preamble like "Here's the recipe" or "Sure!". Output the recipe content only. The ingredients section is REQUIRED — always include it, even if you have to infer ingredients from the instructions.
 
 If a source is empty or unhelpful, just ignore it and work with what you have."""
 

@@ -417,6 +417,53 @@ body {
     font-weight: 500;
 }
 
+/* ============ NEW Badge ============ */
+
+.new-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: linear-gradient(135deg, #34C759, #30D158);
+    color: white;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    border-radius: 8px;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(52, 199, 89, 0.4);
+    text-transform: uppercase;
+    animation: badgePulse 2s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+    0%, 100% { box-shadow: 0 2px 8px rgba(52, 199, 89, 0.4); }
+    50% { box-shadow: 0 2px 16px rgba(52, 199, 89, 0.6); }
+}
+
+.new-badge-inline {
+    background: linear-gradient(135deg, #34C759, #30D158);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    vertical-align: middle;
+}
+
+.meta-date {
+    margin-left: auto;
+}
+
+.modal-date-added {
+    font-size: 0.8rem;
+    color: var(--text-tertiary);
+    margin-top: -4px;
+    margin-bottom: 16px;
+}
+
 /* ============ Modal ============ */
 
 .modal-overlay {
