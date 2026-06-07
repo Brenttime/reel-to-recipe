@@ -101,6 +101,31 @@ def is_tiktok_url(url: str) -> bool:
 _tikwm_cache = {}
 
 
+def _get_thumbnail_url(url: str) -> str:
+    """Extract thumbnail URL from a reel/video URL.
+
+    TikTok: uses TikWM 'origin_cover' or 'cover' field.
+    Instagram: uses yt-dlp --print thumbnail.
+    Returns empty string on failure (best-effort).
+    """
+    try:
+        if is_tiktok_url(url):
+            data = _tikwm_fetch(url)
+            return data.get("origin_cover") or data.get("cover") or ""
+        else:
+            # Instagram: use yt-dlp to get thumbnail URL
+            result = subprocess.run(
+                ["yt-dlp", "--cookies-from-browser", "firefox",
+                 "--print", "thumbnail", url],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+    except Exception as e:
+        print(f"[Thumbnail] Failed to get thumbnail for {url}: {e}")
+    return ""
+
+
 def _tikwm_fetch(url: str) -> dict:
     """Fetch TikTok data from TikWM, cached per URL."""
     if url in _tikwm_cache:
@@ -272,7 +297,7 @@ def _strip_hermes_chrome(output: str) -> str:
     return "\n".join(content_lines).strip() if content_lines else output
 
 
-def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
+def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, thumbnail_url: str = "") -> None:
     """Parse recipe text and POST to Recipe Glass for persistent storage.
 
     Best-effort: failures are logged but don't break the MCP response.
@@ -493,6 +518,7 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
             "tips": tips,
             "macros": macros,
             "tags": tags,
+            "image_url": thumbnail_url,
         }
 
         resp = httpx.post(
@@ -622,8 +648,9 @@ def convert_reel_to_recipe(url: str) -> str:
     recipe = format_recipe_combined(caption, transcript, ocr_text)
     timings["format"] = time.time() - t0
 
-    # Save to Recipe Glass
-    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
+    # Save to Recipe Glass (with thumbnail)
+    thumb = _get_thumbnail_url(url)
+    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram", thumbnail_url=thumb)
 
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe}\n\n---\n⏱️ {timing_str}"
@@ -694,8 +721,9 @@ def convert_reel_to_recipe_audio(url: str) -> str:
     recipe = format_recipe(caption, transcript)
     timings["format"] = time.time() - t0
 
-    # Save to Recipe Glass
-    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
+    # Save to Recipe Glass (with thumbnail)
+    thumb = _get_thumbnail_url(url)
+    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram", thumbnail_url=thumb)
 
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe}\n\n---\n⏱️ {timing_str}"
@@ -740,8 +768,9 @@ def convert_reel_to_recipe_ocr(url: str) -> str:
     recipe = format_recipe_from_ocr(caption, ocr_text)
     timings["format"] = time.time() - t0
 
-    # Save to Recipe Glass
-    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
+    # Save to Recipe Glass (with thumbnail)
+    thumb = _get_thumbnail_url(url)
+    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram", thumbnail_url=thumb)
 
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe}\n\n---\n⏱️ {timing_str}"
@@ -768,6 +797,57 @@ def ocr_reel(url: str) -> str:
 
 if __name__ == "__main__":
     import sys
+    import threading
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    class ConvertHandler(BaseHTTPRequestHandler):
+        """Simple HTTP endpoint for recipe conversion, separate from MCP protocol."""
+
+        def do_POST(self):
+            if self.path != "/convert":
+                self.send_error(404)
+                return
+
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length)) if length else {}
+            url = body.get("url", "").strip()
+
+            if not url:
+                self._json_response({"error": "URL is required"}, 400)
+                return
+
+            method = body.get("method", "full")
+            try:
+                if method == "audio":
+                    result = convert_reel_to_recipe_audio(url)
+                elif method == "ocr":
+                    result = convert_reel_to_recipe_ocr(url)
+                else:
+                    result = convert_reel_to_recipe(url)
+                self._json_response({"status": "ok", "result": result})
+            except Exception as e:
+                self._json_response({"error": str(e)}, 500)
+
+        def _json_response(self, data, status=200):
+            body = json.dumps(data).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            print(f"[Convert API] {args[0]}")
+
+    def run_convert_api():
+        server = HTTPServer(("0.0.0.0", 8002), ConvertHandler)
+        print("[Convert API] Listening on port 8002")
+        server.serve_forever()
+
+    # Start convert API in background thread
+    api_thread = threading.Thread(target=run_convert_api, daemon=True)
+    api_thread.start()
+
     if "--stdio" in sys.argv:
         mcp.run(transport="stdio")
     else:
