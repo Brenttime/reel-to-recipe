@@ -250,6 +250,31 @@ def api_creators():
     return jsonify([row["creator"] for row in rows])
 
 
+@app.route("/api/categories")
+def api_categories():
+    """Get food categories (from tags) with counts for DoorDash-style filter chips."""
+    db = get_db()
+    rows = db.execute("SELECT tags FROM recipes WHERE tags != '' AND tags != '[]'").fetchall()
+    counts = {}
+    for row in rows:
+        tags = row["tags"]
+        if not tags:
+            continue
+        # tags is stored as JSON array or comma-separated string
+        try:
+            import json as _json
+            tag_list = _json.loads(tags)
+        except Exception:
+            tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+        for t in tag_list:
+            t = t.strip()
+            if t:
+                counts[t] = counts.get(t, 0) + 1
+    # Sort by count descending, then alphabetically
+    sorted_cats = sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+    return jsonify([{"name": name, "count": count} for name, count in sorted_cats])
+
+
 @app.route("/api/rebuild-index", methods=["POST"])
 def api_rebuild_index():
     """Rebuild FTS5 index from scratch. Use if search stops working."""

@@ -221,13 +221,21 @@ body {
     height: 18px;
 }
 
-/* Filter Chips */
+/* Filter Chips (DoorDash-style categories) */
 .filter-chips {
     display: flex;
     gap: 8px;
     margin-top: 12px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     padding: 0 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.filter-chips::-webkit-scrollbar {
+    display: none;
 }
 
 .chip {
@@ -235,14 +243,28 @@ body {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--glass-border);
-    border-radius: 20px;
-    padding: 6px 14px;
+    border-radius: 24px;
+    padding: 7px 14px 7px 10px;
     font-size: 0.8rem;
     color: var(--text-secondary);
     cursor: pointer;
     transition: var(--transition);
     font-weight: 500;
     user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.chip-icon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.chip-label {
+    text-transform: capitalize;
 }
 
 .chip:hover {

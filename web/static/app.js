@@ -207,7 +207,7 @@ function parseServingsNumber(servingsStr) {
 // ─── Init ───────────────────────────────────────
 async function init() {
     await loadRecipes();
-    await loadCreators();
+    await loadCategories();
     setupListeners();
     updateCartBadge();
 }
@@ -228,13 +228,61 @@ async function loadRecipes(query = '') {
     renderGrid(allRecipes);
 }
 
-async function loadCreators() {
-    const res = await fetch('/api/creators');
-    const creators = await res.json();
-    renderChips(creators);
+async function loadCategories() {
+    const res = await fetch('/api/categories');
+    const categories = await res.json();
+    renderCategoryChips(categories);
+}
+
+// ─── Category Emoji Map ─────────────────────────
+const CATEGORY_ICONS = {
+    // Proteins
+    'chicken': '🍗', 'beef': '🥩', 'pork': '🥓', 'seafood': '🦐',
+    'fish': '🐟', 'salmon': '🍣', 'shrimp': '🦐', 'duck': '🦆',
+    // Cuisines
+    'japanese': '🇯🇵', 'korean': '🇰🇷', 'chinese': '🇨🇳', 'mexican': '🇲🇽',
+    'italian': '🇮🇹', 'indian': '🇮🇳', 'thai': '🇹🇭', 'vietnamese': '🇻🇳',
+    'french': '🇫🇷', 'american': '🇺🇸', 'mediterranean': '🫒',
+    // Meal types
+    'breakfast': '🍳', 'lunch': '🥪', 'dinner': '🍽️', 'snack': '🍿',
+    'dessert': '🍰', 'appetizer': '🥟', 'brunch': '🧇',
+    // Styles
+    'spicy': '🌶️', 'healthy': '🥗', 'comfort food': '🫕', 'quick': '⚡',
+    'fried': '🍟', 'grilled': '🔥', 'baked': '🍞', 'soup': '🍲',
+    'salad': '🥗', 'sandwich': '🥪', 'pasta': '🍝', 'rice': '🍚',
+    'noodles': '🍜', 'curry': '🍛', 'stir fry': '🥘', 'bbq': '🍖',
+    // Dietary
+    'vegan': '🌱', 'vegetarian': '🥬', 'keto': '🥑', 'gluten-free': '🌾',
+    'high protein': '💪', 'low carb': '📉',
+    // Types
+    'copycat': '🏪', 'fast food': '🍔', 'street food': '🛒',
+    'fried chicken': '🍗', 'tacos': '🌮', 'pizza': '🍕', 'burger': '🍔',
+    'wings': '🍗', 'ramen': '🍜', 'sushi': '🍣',
+};
+
+function getCategoryIcon(name) {
+    const key = name.toLowerCase();
+    if (CATEGORY_ICONS[key]) return CATEGORY_ICONS[key];
+    // Fuzzy match
+    for (const [k, v] of Object.entries(CATEGORY_ICONS)) {
+        if (key.includes(k) || k.includes(key)) return v;
+    }
+    return '🍴';
 }
 
 // ─── Rendering ──────────────────────────────────
+function renderCategoryChips(categories) {
+    if (categories.length === 0) {
+        filterChips.innerHTML = '';
+        return;
+    }
+    filterChips.innerHTML = categories.map(c => `
+        <button class="chip" data-category="${escapeAttr(c.name)}">
+            <span class="chip-icon">${getCategoryIcon(c.name)}</span>
+            <span class="chip-label">${escapeHtml(c.name)}</span>
+        </button>
+    `).join('');
+}
 function renderGrid(recipes) {
     if (recipes.length === 0) {
         recipeGrid.innerHTML = '';
@@ -289,13 +337,6 @@ function renderGrid(recipes) {
             </div>
             </div>
         </article>
-    `).join('');
-}
-
-function renderChips(creators) {
-    if (creators.length === 0) return;
-    filterChips.innerHTML = creators.map(c => `
-        <button class="chip" data-creator="${escapeAttr(c)}">${escapeHtml(c)}</button>
     `).join('');
 }
 
@@ -938,7 +979,7 @@ async function deleteRecipe(recipe) {
         localStorage.removeItem(`reel-cookbook-scaled-${recipe.id}`);
         closeModal();
         await loadRecipes(searchInput.value);
-        await loadCreators();
+        await loadCategories();
     } else {
         alert('Failed to delete recipe.');
     }
@@ -991,7 +1032,7 @@ async function saveRecipe(id) {
         const recipe = await updated.json();
         renderModal(recipe);
         await loadRecipes(searchInput.value);
-        await loadCreators();
+        await loadCategories();
     } else {
         alert('Failed to save changes.');
     }
@@ -1071,7 +1112,7 @@ async function convertReel() {
             status.className = 'spotlight-status success';
             input.value = '';
             await loadRecipes(searchInput.value);
-            await loadCreators();
+            await loadCategories();
             // Auto-close after a beat
             setTimeout(() => closeSpotlight(), 1200);
         } else {
@@ -1118,7 +1159,7 @@ function setupListeners() {
         if (e.key === 'Enter') convertReel();
     });
 
-    // Filter chips
+    // Filter chips (categories)
     filterChips.addEventListener('click', (e) => {
         const chip = e.target.closest('.chip');
         if (!chip) return;
@@ -1131,10 +1172,10 @@ function setupListeners() {
             loadRecipes();
         } else {
             chip.classList.add('active');
-            const creator = chip.dataset.creator;
-            searchInput.value = creator;
+            const category = chip.dataset.category;
+            searchInput.value = category;
             clearBtn.style.display = 'flex';
-            loadRecipes(creator);
+            loadRecipes(category);
         }
     });
 
