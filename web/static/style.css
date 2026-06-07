@@ -1812,7 +1812,7 @@ body {
 /* ─── Reviews & Ratings ──────────────────────── */
 .reviews-section {
     margin-top: 24px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
     padding-top: 20px;
 }
 
@@ -1823,11 +1823,13 @@ body {
     cursor: pointer;
     padding: 12px 16px;
     border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     transition: background 0.15s ease;
 }
 
 .reviews-header:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.1);
 }
 
 .reviews-score {
@@ -1838,8 +1840,8 @@ body {
 
 .reviews-avg {
     font-size: 1.5rem;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.95);
+    font-weight: 700;
+    color: #ffffff;
     min-width: 28px;
 }
 
@@ -1850,13 +1852,14 @@ body {
 
 .reviews-count {
     font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.45);
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 500;
 }
 
 .reviews-chevron {
     width: 20px;
     height: 20px;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.6);
     transition: transform 0.3s ease;
 }
 
@@ -1866,28 +1869,30 @@ body {
 
 .reviews-loading {
     font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.6);
     padding: 12px 16px;
 }
 
 /* Stars */
 .review-star {
-    color: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.25);
     transition: color 0.15s ease, transform 0.1s ease;
     line-height: 1;
 }
 
 .review-star.sm { font-size: 14px; }
 .review-star.md { font-size: 18px; }
-.review-star.lg { font-size: 28px; }
+.review-star.lg { font-size: 32px; }
 
 .review-star.filled {
     color: #FFD60A;
+    text-shadow: 0 0 6px rgba(255, 214, 10, 0.4);
 }
 
 .review-star.hovered {
     color: #FFD60A;
     transform: scale(1.15);
+    text-shadow: 0 0 8px rgba(255, 214, 10, 0.5);
 }
 
 .review-star.interactive {
@@ -1918,17 +1923,17 @@ body {
 
 /* Review form */
 .review-form-container {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 14px;
     padding: 16px;
     margin-bottom: 16px;
 }
 
 .review-form-title {
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
     margin: 0 0 12px 0;
 }
 
@@ -1940,12 +1945,12 @@ body {
 
 .review-comment-input {
     width: 100%;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 10px;
     padding: 10px 12px;
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 0.88rem;
+    color: #ffffff;
+    font-size: 0.9rem;
     font-family: inherit;
     resize: none;
     outline: none;
@@ -1953,11 +1958,11 @@ body {
 }
 
 .review-comment-input:focus {
-    border-color: rgba(255, 255, 255, 0.25);
+    border-color: rgba(0, 122, 255, 0.6);
 }
 
 .review-comment-input::placeholder {
-    color: rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.45);
 }
 
 .review-form-actions {
@@ -1967,13 +1972,13 @@ body {
 }
 
 .review-submit-btn {
-    background: rgba(0, 122, 255, 0.8);
+    background: rgba(0, 122, 255, 0.9);
     color: white;
     border: none;
     border-radius: 8px;
     padding: 8px 18px;
-    font-size: 0.85rem;
-    font-weight: 500;
+    font-size: 0.88rem;
+    font-weight: 600;
     cursor: pointer;
     transition: background 0.15s ease, transform 0.1s ease;
 }
@@ -1992,19 +1997,19 @@ body {
 }
 
 .review-delete-btn {
-    background: rgba(255, 59, 48, 0.15);
+    background: rgba(255, 59, 48, 0.2);
     color: #ff6b6b;
-    border: 1px solid rgba(255, 59, 48, 0.2);
+    border: 1px solid rgba(255, 59, 48, 0.3);
     border-radius: 8px;
     padding: 8px 14px;
-    font-size: 0.85rem;
-    font-weight: 500;
+    font-size: 0.88rem;
+    font-weight: 600;
     cursor: pointer;
     transition: background 0.15s ease;
 }
 
 .review-delete-btn:hover {
-    background: rgba(255, 59, 48, 0.25);
+    background: rgba(255, 59, 48, 0.35);
 }
 
 /* Review items */
@@ -2015,8 +2020,8 @@ body {
 }
 
 .reviews-empty {
-    font-size: 0.88rem;
-    color: rgba(255, 255, 255, 0.35);
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.5);
     text-align: center;
     padding: 12px;
 }
@@ -2024,13 +2029,13 @@ body {
 .review-item {
     padding: 12px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .review-item.own-review {
-    border-color: rgba(0, 122, 255, 0.2);
-    background: rgba(0, 122, 255, 0.04);
+    border-color: rgba(0, 122, 255, 0.35);
+    background: rgba(0, 122, 255, 0.08);
 }
 
 .review-item-header {
@@ -2054,14 +2059,14 @@ body {
 }
 
 .review-username {
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #ffffff;
 }
 
 .review-date {
     font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.35);
+    color: rgba(255, 255, 255, 0.5);
 }
 
 .review-item-stars {
@@ -2071,7 +2076,7 @@ body {
 
 .review-comment {
     margin: 8px 0 0 38px;
-    font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.88rem;
+    color: rgba(255, 255, 255, 0.85);
     line-height: 1.4;
 }
