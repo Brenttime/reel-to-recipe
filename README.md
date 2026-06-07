@@ -157,21 +157,26 @@ The MCP server exposes:
 
 > **Note:** yt-dlp does **not** support Instagram password login (`--netrc`/`--username` are rejected). You need a browser session cookie.
 
-Grab your `sessionid` cookie from a browser logged into Instagram (the session lasts ~1 year):
-
-1. Open **instagram.com** in Safari/Chrome, logged into your account
-2. Open DevTools → Application → Cookies → `.instagram.com` → copy the `sessionid` value
-3. Create `cookies.txt` in the project root:
+Run the included helper script:
 
 ```bash
-cat > cookies.txt << 'EOF'
-# Netscape HTTP Cookie File
-.instagram.com	TRUE	/	TRUE	1900000000	sessionid	YOUR_SESSIONID_VALUE
-EOF
-chmod 600 cookies.txt
+./export-ig-cookie.sh
 ```
 
-The MCP server detects `cookies.txt` at runtime and passes `--cookies` to yt-dlp. No restart required after creating the file. The cookie expires after ~1 year — truly set-and-forget.
+It will prompt you for your Instagram `sessionid`. To find it:
+
+1. Open **instagram.com** in your browser, logged into your account
+2. Open DevTools (`F12`) → **Application** → **Cookies** → `.instagram.com`
+3. Copy the `sessionid` value
+4. Paste it when the script asks
+
+Or skip the prompt and pass it directly:
+
+```bash
+./export-ig-cookie.sh "YOUR_SESSIONID_VALUE"
+```
+
+The script writes a `cookies.txt` that yt-dlp picks up automatically — no server restart needed. The session lasts **~1 year** (set-and-forget).
 
 ### 2. Reel Cookbook (Docker)
 
@@ -247,6 +252,7 @@ curl -X POST http://localhost:8002/convert \
 ```
 reel-to-recipe/
 ├── mcp_server.py               # MCP server + HTTP API + auto-tagger + conversion pipelines
+├── export-ig-cookie.sh         # Helper script to set up Instagram session cookie
 ├── reel-to-recipe.service      # systemd service file
 ├── docker-compose.yml          # Cookbook container orchestration
 ├── pyproject.toml              # Python dependencies (uv)
