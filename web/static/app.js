@@ -160,6 +160,16 @@ function scaleIngredient(ingredient, ratio) {
     return `${formatNumber(scaled)} ${rest}`;
 }
 
+function recipeIsScalable(recipe) {
+    // Only show scaler if at least 30% of ingredients have numeric quantities
+    if (!recipe.ingredients || recipe.ingredients.length === 0) return false;
+    const withQuantity = recipe.ingredients.filter(ing => {
+        const text = ingText(ing);
+        return parseIngredientQuantity(text).quantity !== null;
+    }).length;
+    return withQuantity / recipe.ingredients.length >= 0.3;
+}
+
 function parseServingsNumber(servingsStr) {
     if (!servingsStr) return null;
     // Try to get first number from string like "4", "2-4", "8 tacos", "4 servings"
@@ -287,7 +297,7 @@ function renderModal(recipe) {
                 ${recipe.servings ? `
                     <div class="modal-meta-item">
                         <strong>Servings:</strong>
-                        ${parseServingsNumber(recipe.servings) ? `
+                        ${parseServingsNumber(recipe.servings) && recipeIsScalable(recipe) ? `
                             <span class="scaler-widget">
                                 <button class="scaler-btn" id="scalerMinus">−</button>
                                 <span class="scaler-value" id="scalerValue">${parseServingsNumber(recipe.servings)}</span>
