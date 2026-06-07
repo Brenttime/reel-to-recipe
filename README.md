@@ -155,17 +155,23 @@ The MCP server exposes:
 
 > ⚠️ **Age-restricted content** — Some Instagram Reels (cocktails, alcohol-related content, etc.) are gated behind an age check that requires a logged-in session. Without authentication, yt-dlp will fail on these reels. TikTok videos are unaffected (downloaded via TikWM API, which bypasses age gates).
 
-Add your Instagram credentials to `~/.netrc` — yt-dlp reads this automatically and the session persists until you change your password (no periodic re-export needed):
+> **Note:** yt-dlp does **not** support Instagram password login (`--netrc`/`--username` are rejected). You need a browser session cookie.
+
+Grab your `sessionid` cookie from a browser logged into Instagram (the session lasts ~1 year):
+
+1. Open **instagram.com** in Safari/Chrome, logged into your account
+2. Open DevTools → Application → Cookies → `.instagram.com` → copy the `sessionid` value
+3. Create `cookies.txt` in the project root:
 
 ```bash
-# Create ~/.netrc (one-time setup)
-echo "machine instagram login YOUR_USERNAME password YOUR_PASSWORD" > ~/.netrc
-chmod 600 ~/.netrc
+cat > cookies.txt << 'EOF'
+# Netscape HTTP Cookie File
+.instagram.com	TRUE	/	TRUE	1900000000	sessionid	YOUR_SESSIONID_VALUE
+EOF
+chmod 600 cookies.txt
 ```
 
-The MCP server detects `~/.netrc` at runtime and passes `--netrc` to yt-dlp. No restart required after creating the file.
-
-**Alternative:** Place a Netscape-format `cookies.txt` in the project root. The server checks for this file as well (`--cookies cookies.txt`). However, cookie files expire and need periodic re-export — `.netrc` is preferred.
+The MCP server detects `cookies.txt` at runtime and passes `--cookies` to yt-dlp. No restart required after creating the file. The cookie expires after ~1 year — truly set-and-forget.
 
 ### 2. Reel Cookbook (Docker)
 
