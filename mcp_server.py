@@ -385,7 +385,11 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, thumbnail_u
             if "tip" in low and (stripped.startswith("#") or stripped.startswith("**") or stripped.endswith(":") or low.strip() in ("tips", "tip") or stripped.isupper()):
                 section = "tips"
                 continue
-            if ("nutrition" in low or "macro" in low or "calori" in low) and (stripped.startswith("#") or stripped.startswith("**") or stripped.startswith("-") or low.strip() in ("nutrition", "macros", "nutrition info") or stripped.isupper()):
+            if (("nutrition" in low or "macro" in low or "calori" in low) and
+                    len(stripped.split()) <= 6 and
+                    (stripped.startswith("#") or stripped.startswith("**") or
+                     low.strip() in ("nutrition", "macros", "nutrition info", "nutrition facts") or
+                     stripped.split()[0].isupper())):
                 section = "macros"
                 continue
 
