@@ -986,6 +986,8 @@ body {
 .shopping-panel {
     max-width: 560px;
     width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
 }
 
 .shopping-header {
@@ -998,6 +1000,8 @@ body {
 .shopping-header h2 {
     font-size: 1.4rem;
     font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
 }
 
 .shopping-actions {
@@ -1006,10 +1010,11 @@ body {
 }
 
 .shopping-actions button {
-    padding: 6px 12px;
-    border-radius: 8px;
-    border: 1px solid rgba(0,0,0,0.1);
-    background: rgba(0,0,0,0.03);
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
     font-size: 0.75rem;
     font-weight: 500;
     cursor: pointer;
@@ -1018,8 +1023,9 @@ body {
 }
 
 .shopping-actions button:hover {
-    background: rgba(0,0,0,0.08);
-    color: var(--text-primary);
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: rgba(0, 122, 255, 0.3);
 }
 
 .shopping-recipes {
@@ -1032,13 +1038,13 @@ body {
 .shopping-recipe-chip {
     background: var(--accent-soft);
     color: var(--accent);
-    padding: 4px 10px;
-    border-radius: 12px;
+    padding: 5px 10px;
+    border-radius: 20px;
     font-size: 0.75rem;
     font-weight: 500;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
 }
 
 .shopping-recipe-chip button {
@@ -1046,13 +1052,22 @@ body {
     border: none;
     cursor: pointer;
     color: var(--accent);
-    font-size: 0.9rem;
+    font-size: 1rem;
     line-height: 1;
     opacity: 0.6;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: var(--transition);
 }
 
 .shopping-recipe-chip button:hover {
     opacity: 1;
+    background: rgba(0, 122, 255, 0.15);
 }
 
 .shopping-list {
@@ -1065,9 +1080,9 @@ body {
 .shopping-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     padding: 10px 0;
-    border-bottom: 1px solid rgba(0,0,0,0.04);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
     transition: var(--transition);
 }
 
@@ -1080,11 +1095,12 @@ body {
 }
 
 .shopping-item input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     accent-color: var(--accent);
     cursor: pointer;
     flex-shrink: 0;
+    border-radius: 6px;
 }
 
 .shopping-item-text {
@@ -1094,13 +1110,19 @@ body {
 
 .shopping-empty {
     text-align: center;
-    padding: 40px 20px;
+    padding: 48px 20px;
     color: var(--text-tertiary);
 }
 
 .shopping-empty p {
-    font-size: 0.95rem;
+    font-size: 1rem;
+    font-weight: 500;
     margin-bottom: 4px;
+    color: var(--text-secondary);
+}
+
+.shopping-empty span {
+    font-size: 0.85rem;
 }
 
 /* ============ Serving Scaler ============ */
@@ -1148,7 +1170,7 @@ body {
 .cook-mode {
     position: fixed;
     inset: 0;
-    background: #1a1a1a;
+    background: linear-gradient(180deg, #0a0a0f 0%, #1a1a2e 50%, #16213e 100%);
     z-index: 2000;
     display: flex;
     flex-direction: column;
@@ -1177,30 +1199,33 @@ body {
     align-items: center;
     justify-content: space-between;
     padding-bottom: 16px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
 .cook-title {
     font-size: 1rem;
     font-weight: 500;
-    color: rgba(255,255,255,0.7);
+    color: rgba(255,255,255,0.6);
+    letter-spacing: -0.2px;
 }
 
 .cook-exit {
-    background: rgba(255,255,255,0.1);
-    border: none;
-    border-radius: 8px;
-    padding: 8px 16px;
-    color: rgba(255,255,255,0.8);
-    font-size: 0.85rem;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 20px;
+    padding: 8px 18px;
+    color: rgba(255,255,255,0.7);
+    font-size: 0.8rem;
     font-weight: 500;
     cursor: pointer;
     transition: var(--transition);
+    font-family: inherit;
 }
 
 .cook-exit:hover {
-    background: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.15);
     color: white;
+    border-color: rgba(255,255,255,0.25);
 }
 
 .cook-ingredients-toggle {
@@ -1209,25 +1234,31 @@ body {
 
 .cook-ingredients-toggle summary {
     font-size: 0.8rem;
-    color: rgba(255,255,255,0.5);
+    color: rgba(255,255,255,0.4);
     cursor: pointer;
     padding: 8px 0;
     user-select: none;
+    font-weight: 500;
+}
+
+.cook-ingredients-toggle summary:hover {
+    color: rgba(255,255,255,0.6);
 }
 
 .cook-ingredients-list {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    padding: 8px 0;
+    padding: 10px 0;
 }
 
 .cook-ingredients-list span {
-    background: rgba(255,255,255,0.08);
-    padding: 4px 10px;
-    border-radius: 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 5px 12px;
+    border-radius: 20px;
     font-size: 0.75rem;
-    color: rgba(255,255,255,0.6);
+    color: rgba(255,255,255,0.55);
 }
 
 .cook-step-area {
@@ -1240,75 +1271,82 @@ body {
 }
 
 .cook-step-counter {
-    font-size: 0.85rem;
-    color: rgba(255,255,255,0.4);
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.35);
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     font-weight: 600;
-    margin-bottom: 24px;
+    margin-bottom: 28px;
 }
 
 .cook-step-text {
     font-size: 1.8rem;
     font-weight: 400;
-    color: white;
+    color: rgba(255,255,255,0.95);
     text-align: center;
-    line-height: 1.4;
+    line-height: 1.5;
     max-width: 600px;
+    letter-spacing: -0.3px;
 }
 
 .cook-nav {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 20px;
+    gap: 16px;
     padding-top: 24px;
-    border-top: 1px solid rgba(255,255,255,0.1);
+    border-top: 1px solid rgba(255,255,255,0.08);
 }
 
 .cook-nav-btn {
-    background: rgba(255,255,255,0.1);
-    border: none;
-    border-radius: 12px;
-    padding: 14px 28px;
-    color: white;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: var(--radius-md);
+    padding: 14px 32px;
+    color: rgba(255,255,255,0.85);
     font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
-    min-width: 100px;
+    min-width: 120px;
+    font-family: inherit;
 }
 
 .cook-nav-btn:hover {
-    background: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.15);
+    border-color: rgba(255,255,255,0.25);
 }
 
 .cook-nav-btn:disabled {
-    opacity: 0.3;
+    opacity: 0.25;
     cursor: not-allowed;
 }
 
 .cook-nav-btn.primary {
     background: var(--accent);
+    border-color: var(--accent);
+    color: white;
 }
 
 .cook-nav-btn.primary:hover {
     background: #0056CC;
+    box-shadow: 0 4px 16px rgba(0, 122, 255, 0.4);
 }
 
 .cook-done {
     text-align: center;
-    color: rgba(255,255,255,0.9);
+    margin-top: 24px;
 }
 
 .cook-done p {
-    font-size: 2rem;
+    font-size: 2.5rem;
     margin-bottom: 8px;
 }
 
 .cook-done span {
     font-size: 1rem;
     color: rgba(255,255,255,0.5);
+    font-weight: 400;
 }
 
 /* ============ Modal Add-to-list / Cook buttons ============ */
@@ -1323,21 +1361,24 @@ body {
 
 .btn-add-list {
     flex: 1;
-    padding: 12px;
-    border-radius: var(--radius-sm);
+    padding: 14px 20px;
+    border-radius: var(--radius-md);
     border: 1px solid var(--glass-border);
     background: var(--surface);
+    backdrop-filter: blur(12px);
     font-size: 0.85rem;
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
     color: var(--text-secondary);
+    font-family: inherit;
 }
 
 .btn-add-list:hover {
     background: var(--accent-soft);
     color: var(--accent);
     border-color: rgba(0,122,255,0.3);
+    transform: translateY(-1px);
 }
 
 .btn-add-list.in-cart {
@@ -1348,8 +1389,8 @@ body {
 
 .btn-cook {
     flex: 1;
-    padding: 12px;
-    border-radius: var(--radius-sm);
+    padding: 14px 20px;
+    border-radius: var(--radius-md);
     border: none;
     background: var(--accent);
     color: white;
@@ -1357,11 +1398,13 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
+    font-family: inherit;
 }
 
 .btn-cook:hover {
     background: #0056CC;
     transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
 }
 
 @media (max-width: 768px) {
