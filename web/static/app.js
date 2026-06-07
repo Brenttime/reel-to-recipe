@@ -1393,12 +1393,12 @@ async function convertReel() {
         return;
     }
 
-    // Show loading state — spinner replaces esc hint
+    // Show loading state
     clearTimeout(window._spotlightNudgeTimer);
     hint.style.display = 'none';
     spinner.style.display = 'inline-block';
     input.disabled = true;
-    status.textContent = 'Downloading & transcribing…';
+    status.textContent = 'Queueing conversion…';
     status.className = 'spotlight-status';
     status.style.display = 'block';
 
@@ -1414,26 +1414,15 @@ async function convertReel() {
         if (resp.status === 409) {
             status.textContent = `Already in your cookbook`;
             status.className = 'spotlight-status error';
-        } else if (!resp.ok) {
+        } else if (!resp.ok && resp.status !== 202) {
             status.textContent = data.error || 'Conversion failed';
             status.className = 'spotlight-status error';
-        } else if (data.status === 'ok') {
-            status.textContent = `Added "${data.recipe.title}"`;
-            status.className = 'spotlight-status success';
-            input.value = '';
-            await loadRecipes(searchInput.value);
-            await loadCategories();
-            // After 10s, show a gentle nudge that they can leave or keep going
-            clearTimeout(window._spotlightNudgeTimer);
-            window._spotlightNudgeTimer = setTimeout(() => {
-                if (spotlightOverlay.classList.contains('active')) {
-                    status.textContent = 'You can close this or paste another reel ✨';
-                    status.className = 'spotlight-status spotlight-nudge';
-                }
-            }, 10000);
-        } else {
-            status.textContent = data.message || 'Check results';
+        } else if (data.status === 'queued') {
+            status.textContent = 'Converting… you can close this and keep browsing';
             status.className = 'spotlight-status';
+            input.value = '';
+            // Start tracking this job
+            trackConversionJob(data.job_id);
         }
     } catch (err) {
         status.textContent = 'Network error — is the server running?';
@@ -1443,6 +1432,97 @@ async function convertReel() {
         spinner.style.display = 'none';
         hint.style.display = '';
     }
+}
+
+// ─── Conversion Queue Tracking ────────────────────
+const activeJobs = new Set();
+
+function trackConversionJob(jobId) {
+    activeJobs.add(jobId);
+    updateQueueBar();
+    pollJob(jobId);
+}
+
+async function pollJob(jobId) {
+    const poll = async () => {
+        try {
+            const res = await fetch(`/api/convert/${jobId}`);
+            const data = await res.json();
+
+            if (data.status === 'done') {
+                activeJobs.delete(jobId);
+                updateQueueBar();
+                // Auto-add recipe to gallery
+                if (data.recipe) {
+                    showRecipeAdded(data.recipe);
+                    await loadRecipes(searchInput.value);
+                    await loadCategories();
+                }
+                return; // stop polling
+            } else if (data.status === 'error') {
+                activeJobs.delete(jobId);
+                updateQueueBar();
+                showQueueError(data.error || 'Conversion failed');
+                return; // stop polling
+            }
+
+            // Still processing — poll again in 2s
+            setTimeout(poll, 2000);
+        } catch (e) {
+            // Network blip — retry
+            setTimeout(poll, 3000);
+        }
+    };
+    poll();
+}
+
+function updateQueueBar() {
+    const bar = document.getElementById('convertQueueBar');
+    const text = document.getElementById('queueBarText');
+    const count = activeJobs.size;
+
+    if (count === 0) {
+        bar.style.display = 'none';
+    } else {
+        bar.style.display = 'flex';
+        text.textContent = count === 1 ? 'Converting 1 recipe…' : `Converting ${count} recipes…`;
+    }
+}
+
+function showRecipeAdded(recipe) {
+    const bar = document.getElementById('convertQueueBar');
+    const text = document.getElementById('queueBarText');
+
+    bar.style.display = 'flex';
+    bar.classList.add('queue-bar-success');
+    text.textContent = `✓ Added "${recipe.title}"`;
+
+    setTimeout(() => {
+        bar.classList.remove('queue-bar-success');
+        if (activeJobs.size === 0) {
+            bar.style.display = 'none';
+        } else {
+            updateQueueBar();
+        }
+    }, 4000);
+}
+
+function showQueueError(error) {
+    const bar = document.getElementById('convertQueueBar');
+    const text = document.getElementById('queueBarText');
+
+    bar.style.display = 'flex';
+    bar.classList.add('queue-bar-error');
+    text.textContent = `✗ ${error}`;
+
+    setTimeout(() => {
+        bar.classList.remove('queue-bar-error');
+        if (activeJobs.size === 0) {
+            bar.style.display = 'none';
+        } else {
+            updateQueueBar();
+        }
+    }, 5000);
 }
 
 function setupListeners() {

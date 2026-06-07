@@ -6,6 +6,9 @@ Displays recipes converted by Reel-to-Recipe MCP service
 import os
 import sqlite3
 import json
+import uuid
+import threading
+import time
 import requests
 from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for
 from auth import auth_bp, init_auth_db
@@ -23,6 +26,75 @@ app.register_blueprint(auth_bp)
 
 DB_PATH = os.environ.get("DB_PATH", "/data/recipes.db")
 MCP_URL = os.environ.get("MCP_URL", "http://host.docker.internal:8002/convert")
+
+# ─── Conversion Queue ─────────────────────────────────────
+# In-memory job queue processed by a background thread
+convert_jobs = {}  # job_id -> {status, url, added_by, recipe, error, created_at}
+convert_lock = threading.Lock()
+
+
+def _conversion_worker(job_id, url, method, added_by):
+    """Background worker: calls MCP, saves recipe, updates job status."""
+    try:
+        with convert_lock:
+            convert_jobs[job_id]["status"] = "processing"
+
+        resp = requests.post(MCP_URL, json={"url": url, "method": method}, timeout=300)
+        if resp.status_code != 200:
+            result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            with convert_lock:
+                convert_jobs[job_id]["status"] = "error"
+                convert_jobs[job_id]["error"] = result.get("error", f"Server returned {resp.status_code}")
+            return
+
+        result = resp.json()
+        if "error" in result:
+            with convert_lock:
+                convert_jobs[job_id]["status"] = "error"
+                convert_jobs[job_id]["error"] = result["error"]
+            return
+
+        # MCP auto-saves to /api/recipes — fetch from DB
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        new_recipe = conn.execute(
+            "SELECT * FROM recipes WHERE source_url = ? ORDER BY id DESC LIMIT 1", (url,)
+        ).fetchone()
+
+        if new_recipe:
+            # Update added_by if we know who queued it
+            if added_by:
+                conn.execute("UPDATE recipes SET added_by = ? WHERE id = ?", (added_by, new_recipe["id"]))
+                conn.commit()
+                new_recipe = conn.execute("SELECT * FROM recipes WHERE id = ?", (new_recipe["id"],)).fetchone()
+
+            recipe = dict(new_recipe)
+            recipe["ingredients"] = json.loads(recipe["ingredients"])
+            recipe["instructions"] = json.loads(recipe["instructions"])
+            recipe["tags"] = json.loads(recipe["tags"])
+
+            with convert_lock:
+                convert_jobs[job_id]["status"] = "done"
+                convert_jobs[job_id]["recipe"] = recipe
+        else:
+            with convert_lock:
+                convert_jobs[job_id]["status"] = "error"
+                convert_jobs[job_id]["error"] = "Conversion succeeded but recipe was not saved"
+
+        conn.close()
+
+    except requests.exceptions.ConnectionError:
+        with convert_lock:
+            convert_jobs[job_id]["status"] = "error"
+            convert_jobs[job_id]["error"] = "Cannot reach conversion server. Is the MCP service running?"
+    except requests.exceptions.Timeout:
+        with convert_lock:
+            convert_jobs[job_id]["status"] = "error"
+            convert_jobs[job_id]["error"] = "Conversion timed out (5 min)"
+    except Exception as e:
+        with convert_lock:
+            convert_jobs[job_id]["status"] = "error"
+            convert_jobs[job_id]["error"] = str(e)
 
 # --- Gate the entire app behind Discord login ---
 # Exceptions: auth flow itself, static files, and the MCP save endpoint
@@ -547,13 +619,9 @@ def _ensure_fts_integrity():
 
 @app.route("/api/convert", methods=["POST"])
 def api_convert():
-    """Convert a reel URL to a recipe via the MCP server.
+    """Queue a reel URL for conversion. Returns a job ID immediately.
 
-    Sends a JSON-RPC 2.0 request to the MCP server's convert_reel_to_recipe tool.
-    The MCP server handles: download, transcription, OCR, formatting, and auto-saves
-    the result back to our /api/recipes endpoint.
-
-    Returns the new recipe data once conversion and save complete.
+    The conversion runs in a background thread. Poll /api/convert/<job_id> for status.
     """
     data = request.get_json()
     url = data.get("url", "").strip()
@@ -575,41 +643,68 @@ def api_convert():
             "existing_id": existing["id"]
         }), 409
 
-    # Choose the right method
+    # Determine who is queueing this
+    added_by = ""
+    if session.get("user_id"):
+        user_row = db.execute(
+            "SELECT display_name, username FROM users WHERE id = ?",
+            (session["user_id"],)
+        ).fetchone()
+        if user_row:
+            added_by = user_row["display_name"] or user_row["username"] or ""
+
+    # Create job and start background worker
+    job_id = str(uuid.uuid4())[:8]
     method = data.get("method", "full")
 
-    # Call MCP convert API (plain HTTP, not MCP protocol)
-    try:
-        resp = requests.post(MCP_URL, json={"url": url, "method": method}, timeout=300)
-        if resp.status_code != 200:
-            result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-            return jsonify({"error": result.get("error", f"Conversion server returned {resp.status_code}")}), 502
-    except requests.exceptions.ConnectionError:
-        return jsonify({"error": "Cannot reach conversion server. Is the MCP service running?"}), 503
-    except requests.exceptions.Timeout:
-        return jsonify({"error": "Conversion timed out (5 min). Try audio-only mode for faster results."}), 504
+    with convert_lock:
+        convert_jobs[job_id] = {
+            "status": "queued",
+            "url": url,
+            "added_by": added_by,
+            "recipe": None,
+            "error": None,
+            "created_at": time.time(),
+        }
 
-    result = resp.json()
-    if "error" in result:
-        return jsonify({"error": result["error"]}), 500
+    thread = threading.Thread(target=_conversion_worker, args=(job_id, url, method, added_by), daemon=True)
+    thread.start()
 
-    # MCP auto-saves to our /api/recipes — fetch the newly created recipe
-    new_recipe = db.execute(
-        "SELECT * FROM recipes WHERE source_url = ? ORDER BY id DESC LIMIT 1", (url,)
-    ).fetchone()
+    return jsonify({"status": "queued", "job_id": job_id}), 202
 
-    if new_recipe:
-        recipe = dict(new_recipe)
-        recipe["ingredients"] = json.loads(recipe["ingredients"])
-        recipe["instructions"] = json.loads(recipe["instructions"])
-        recipe["tags"] = json.loads(recipe["tags"])
-        return jsonify({"status": "ok", "recipe": recipe}), 201
-    else:
-        # MCP returned success but recipe wasn't saved (parsing issue?)
-        return jsonify({
-            "status": "partial",
-            "message": "Conversion succeeded but recipe could not be saved. Check MCP logs.",
-        }), 200
+
+@app.route("/api/convert/<job_id>")
+def api_convert_status(job_id):
+    """Poll conversion job status."""
+    with convert_lock:
+        job = convert_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+
+    response = {"status": job["status"], "url": job["url"]}
+    if job["status"] == "done":
+        response["recipe"] = job["recipe"]
+    elif job["status"] == "error":
+        response["error"] = job["error"]
+
+    return jsonify(response)
+
+
+@app.route("/api/convert/queue")
+def api_convert_queue():
+    """Get all active conversion jobs (queued or processing)."""
+    with convert_lock:
+        active = []
+        for jid, job in convert_jobs.items():
+            if job["status"] in ("queued", "processing"):
+                active.append({
+                    "job_id": jid,
+                    "status": job["status"],
+                    "url": job["url"],
+                    "added_by": job["added_by"],
+                    "elapsed": round(time.time() - job["created_at"]),
+                })
+    return jsonify(active)
 
 
 # Initialize database on startup
