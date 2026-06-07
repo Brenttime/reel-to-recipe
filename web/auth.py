@@ -3,6 +3,7 @@ import os
 import secrets
 import requests
 from functools import wraps
+from urllib.parse import urlencode
 from flask import (
     Blueprint, redirect, request, session, jsonify, url_for, g
 )
@@ -94,7 +95,7 @@ def login():
         'scope': SCOPES,
         'state': state,
     }
-    auth_url = f"{AUTHORIZE_URL}?{'&'.join(f'{k}={v}' for k, v in params.items())}"
+    auth_url = f"{AUTHORIZE_URL}?{urlencode(params)}"
     return redirect(auth_url)
 
 
@@ -109,8 +110,11 @@ def callback():
     state = request.args.get('state')
 
     # Verify state
-    if state != session.pop('oauth_state', None):
-        return jsonify({'error': 'Invalid state parameter'}), 403
+    stored_state = session.pop('oauth_state', None)
+    if state != stored_state:
+        # State mismatch — session cookie likely lost in redirect.
+        # Restart the flow instead of showing a raw error.
+        return redirect(url_for('auth.login'))
 
     if not code:
         return jsonify({'error': 'No authorization code'}), 400
