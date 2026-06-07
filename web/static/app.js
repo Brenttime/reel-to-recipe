@@ -42,6 +42,7 @@ const spotlightOverlay = document.getElementById('spotlightOverlay');
 
 let allRecipes = [];
 let currentRecipe = null;
+let isEditMode = false;
 let debounceTimer = null;
 let currentMultiplier = 1;
 let originalServings = 1;
@@ -753,9 +754,10 @@ function renderEditModal(recipe) {
         </form>
     `;
 
-    document.getElementById('cancelEditBtn').addEventListener('click', () => renderModal(recipe));
+    document.getElementById('cancelEditBtn').addEventListener('click', () => confirmDiscardEdit(recipe));
     document.getElementById('editForm').addEventListener('submit', (e) => {
         e.preventDefault();
+        isEditMode = false;
         saveRecipe(recipe.id);
     });
 
@@ -1263,6 +1265,7 @@ async function deleteRecipe(recipe) {
 }
 
 function openEditMode(recipe) {
+    isEditMode = true;
     renderEditModal(recipe);
 }
 
@@ -1682,13 +1685,80 @@ function openModal() {
 }
 
 function closeModal() {
+    if (isEditMode) {
+        showEditDiscardDialog();
+        return;
+    }
+    doCloseModal();
+}
+
+function doCloseModal() {
+    isEditMode = false;
     modalOverlay.classList.remove('active');
     document.body.style.overflow = '';
     currentRecipe = null;
+    // Remove discard dialog if present
+    const dialog = document.getElementById('discardEditDialog');
+    if (dialog) dialog.remove();
     // Restore gallery URL
     if (location.pathname.startsWith('/recipe/')) {
         history.pushState({}, '', '/');
     }
+}
+
+function confirmDiscardEdit(recipe) {
+    showEditDiscardDialog(() => {
+        isEditMode = false;
+        renderModal(recipe);
+    });
+}
+
+function showEditDiscardDialog(onDiscard) {
+    // Remove existing dialog if present
+    let existing = document.getElementById('discardEditDialog');
+    if (existing) existing.remove();
+
+    const dialog = document.createElement('div');
+    dialog.id = 'discardEditDialog';
+    dialog.className = 'discard-dialog-overlay';
+    dialog.innerHTML = `
+        <div class="discard-dialog">
+            <h3 class="discard-dialog-title">Unsaved Changes</h3>
+            <p class="discard-dialog-message">You have unsaved changes. Would you like to save or discard them?</p>
+            <div class="discard-dialog-actions">
+                <button class="discard-dialog-btn discard-btn" id="discardChangesBtn">Discard</button>
+                <button class="discard-dialog-btn save-btn" id="saveChangesBtn">Save Changes</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(dialog);
+
+    // Animate in
+    requestAnimationFrame(() => dialog.classList.add('active'));
+
+    document.getElementById('discardChangesBtn').addEventListener('click', () => {
+        dialog.remove();
+        if (onDiscard) {
+            onDiscard();
+        } else {
+            doCloseModal();
+        }
+    });
+
+    document.getElementById('saveChangesBtn').addEventListener('click', () => {
+        dialog.remove();
+        // Trigger the form submit
+        const form = document.getElementById('editForm');
+        if (form) {
+            isEditMode = false;
+            form.dispatchEvent(new Event('submit', { cancelable: true }));
+        }
+    });
+
+    // Close dialog on overlay click
+    dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) dialog.remove();
+    });
 }
 
 function openShoppingPanel() {

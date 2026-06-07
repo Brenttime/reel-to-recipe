@@ -2692,3 +2692,126 @@ html.theme-transitioning *::before,
 html.theme-transitioning *::after {
     transition: background 0.4s ease, background-color 0.4s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
 }
+
+/* ─── Discard Edit Dialog ─── */
+.discard-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20000;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    padding: 24px;
+}
+
+.discard-dialog-overlay.active {
+    opacity: 1;
+}
+
+.discard-dialog {
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 320px;
+    width: 100%;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+    text-align: center;
+    transform: scale(0.92);
+    transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.discard-dialog-overlay.active .discard-dialog {
+    transform: scale(1);
+}
+
+.discard-dialog-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.85);
+    margin: 0 0 8px 0;
+}
+
+.discard-dialog-message {
+    font-size: 0.88rem;
+    color: rgba(0, 0, 0, 0.55);
+    margin: 0 0 20px 0;
+    line-height: 1.4;
+}
+
+.discard-dialog-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.discard-dialog-btn {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.discard-dialog-btn:active {
+    transform: scale(0.96);
+}
+
+.discard-dialog-btn.discard-btn {
+    background: rgba(255, 59, 48, 0.1);
+    color: #d32f2f;
+}
+
+.discard-dialog-btn.discard-btn:hover {
+    background: rgba(255, 59, 48, 0.18);
+}
+
+.discard-dialog-btn.save-btn {
+    background: #007AFF;
+    color: white;
+}
+
+.discard-dialog-btn.save-btn:hover {
+    background: #0066d6;
+}
+
+/* Dark mode */
+[data-theme="dark"] .discard-dialog {
+    background: rgba(44, 44, 46, 0.92);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .discard-dialog-title {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+[data-theme="dark"] .discard-dialog-message {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+[data-theme="dark"] .discard-dialog-btn.discard-btn {
+    background: rgba(255, 69, 58, 0.15);
+    color: #FF453A;
+}
+
+[data-theme="dark"] .discard-dialog-btn.discard-btn:hover {
+    background: rgba(255, 69, 58, 0.25);
+}
+
+[data-theme="dark"] .discard-dialog-btn.save-btn {
+    background: #0A84FF;
+}
+
+[data-theme="dark"] .discard-dialog-btn.save-btn:hover {
+    background: #0070e0;
+}
