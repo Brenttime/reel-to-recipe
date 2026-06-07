@@ -296,6 +296,21 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
             stripped = line.strip()
             if not stripped or stripped.startswith("---") or stripped.startswith("⏱️"):
                 continue
+            # Skip separator lines (━━━, ═══, ───, etc.)
+            if all(c in "━═─—" for c in stripped) and len(stripped) > 3:
+                continue
+            # Skip common preamble lines from Hermes output
+            if stripped.lower().startswith("here's the") or stripped.lower().startswith("here is the"):
+                continue
+
+            # Detect "Source: @creator" line
+            source_match = re.match(r"^[Ss]ource:\s*(@?\w+)", stripped)
+            if source_match:
+                if not creator:
+                    creator = source_match.group(1)
+                    if not creator.startswith("@"):
+                        creator = f"@{creator}"
+                continue
 
             # Detect title (first non-empty line, or after # header)
             if not title and stripped and not stripped.startswith("-") and not stripped.startswith("*"):
@@ -324,18 +339,18 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
                 servings = stripped.split(":", 1)[1].strip()
                 continue
 
-            # Detect sections
-            if "ingredient" in low and (stripped.startswith("#") or stripped.startswith("**") or stripped.endswith(":") or low.strip() == "ingredients"):
+            # Detect sections (handles: ## Header, **Header**, Header:, HEADER, bare "ingredients")
+            if "ingredient" in low and (stripped.startswith("#") or stripped.startswith("**") or stripped.endswith(":") or low.strip() == "ingredients" or stripped.isupper()):
                 section = "ingredients"
                 continue
             if "instruction" in low or "direction" in low or "steps" in low or "method" in low:
-                if stripped.startswith("#") or stripped.startswith("**") or stripped.endswith(":") or low.strip() in ("instructions", "directions", "steps", "method"):
+                if stripped.startswith("#") or stripped.startswith("**") or stripped.endswith(":") or low.strip() in ("instructions", "directions", "steps", "method") or stripped.isupper():
                     section = "instructions"
                     continue
-            if "tip" in low and (stripped.startswith("#") or stripped.startswith("**") or stripped.endswith(":") or low.strip() in ("tips", "tip")):
+            if "tip" in low and (stripped.startswith("#") or stripped.startswith("**") or stripped.endswith(":") or low.strip() in ("tips", "tip") or stripped.isupper()):
                 section = "tips"
                 continue
-            if ("nutrition" in low or "macro" in low or "calori" in low) and (stripped.startswith("#") or stripped.startswith("**") or stripped.startswith("-") or low.strip() in ("nutrition", "macros", "nutrition info")):
+            if ("nutrition" in low or "macro" in low or "calori" in low) and (stripped.startswith("#") or stripped.startswith("**") or stripped.startswith("-") or low.strip() in ("nutrition", "macros", "nutrition info") or stripped.isupper()):
                 section = "macros"
                 continue
 
@@ -345,16 +360,25 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
                 if item:
                     ingredients.append(item)
             elif section == "instructions":
-                item = re.sub(r"^\d+[\.\)]\s*", "", stripped).strip()
-                if item:
-                    instructions.append(item)
+                # Check if this line starts a new step (numbered)
+                step_match = re.match(r"^\d+[\.\)]\s*", stripped)
+                if step_match:
+                    item = stripped[step_match.end():].strip()
+                    if item:
+                        instructions.append(item)
+                elif instructions:
+                    # Continuation of previous step (wrapped line)
+                    instructions[-1] += " " + stripped
+                else:
+                    # First instruction without a number
+                    instructions.append(stripped)
             elif section == "tips":
                 item = stripped.lstrip("-*•● ").strip()
                 if item:
                     tips += (" " if tips else "") + item
             elif section == "macros":
                 item = stripped.lstrip("-*•● ").strip()
-                if item:
+                if item and "not provided" not in item.lower():
                     macros += (" | " if macros else "") + item
             elif section is None:
                 # Auto-detect section from content patterns
