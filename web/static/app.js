@@ -1487,11 +1487,20 @@ async function loadReviews(recipeId) {
     if (!section) return;
 
     try {
-        const res = await fetch(`/api/recipes/${recipeId}/reviews`, { credentials: 'same-origin' });
+        const res = await fetch(`/api/recipes/${recipeId}/reviews`, {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!res.ok) {
+            console.warn('Reviews fetch failed:', res.status);
+            section.innerHTML = '';
+            return;
+        }
         const data = await res.json();
         const user = await fetchCurrentUser();
         renderReviewsSection(section, data, recipeId, user);
     } catch (e) {
+        console.error('Reviews error:', e);
         section.innerHTML = '';
     }
 }
