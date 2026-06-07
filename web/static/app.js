@@ -19,6 +19,9 @@ const cookModeEl = document.getElementById('cookMode');
 const cookModeContent = document.getElementById('cookModeContent');
 const cartToggle = document.getElementById('cartToggle');
 const cartBadge = document.getElementById('cartBadge');
+const addReelBtn = document.getElementById('addReelBtn');
+const finderPopover = document.getElementById('finderPopover');
+const popoverOverlay = document.getElementById('popoverOverlay');
 
 let allRecipes = [];
 let currentRecipe = null;
@@ -963,6 +966,47 @@ async function saveRecipe(id) {
     }
 }
 
+// ─── Popover (Finder-style add reel) ─────────────
+function positionPopover() {
+    const btnRect = addReelBtn.getBoundingClientRect();
+    const popW = 340;
+    // Position below the button, right-aligned to the button's right edge
+    const top = btnRect.bottom + 8;
+    let right = window.innerWidth - btnRect.right;
+    // Keep it on screen
+    if (right < 12) right = 12;
+    finderPopover.style.top = top + 'px';
+    finderPopover.style.right = right + 'px';
+    finderPopover.style.transformOrigin = `top right`;
+    // Position the arrow to point at the + button center
+    const arrowRight = (btnRect.width / 2) - 6 + right - (window.innerWidth - btnRect.right);
+    const arrow = finderPopover.querySelector('.popover-arrow');
+    if (arrow) {
+        arrow.style.right = Math.max(12, btnRect.width / 2 - 6) + 'px';
+    }
+}
+
+function openPopover() {
+    positionPopover();
+    finderPopover.classList.add('active');
+    popoverOverlay.classList.add('active');
+    // Focus the input after the animation
+    setTimeout(() => document.getElementById('convertInput').focus(), 80);
+}
+
+function closePopover() {
+    finderPopover.classList.remove('active');
+    popoverOverlay.classList.remove('active');
+}
+
+function togglePopover() {
+    if (finderPopover.classList.contains('active')) {
+        closePopover();
+    } else {
+        openPopover();
+    }
+}
+
 // ─── Event Handlers ─────────────────────────────
 // ─── Convert URL ─────────────────────────────────
 async function convertReel() {
@@ -978,17 +1022,17 @@ async function convertReel() {
     // Validate URL
     if (!url.includes('instagram.com') && !url.includes('tiktok.com')) {
         status.textContent = 'Please paste an Instagram or TikTok URL';
-        status.className = 'convert-status error';
+        status.className = 'popover-status error';
         status.style.display = 'block';
         return;
     }
 
     // Show loading state
     btn.disabled = true;
-    btnText.textContent = 'Converting...';
+    btnText.textContent = 'Converting…';
     spinner.style.display = 'inline-block';
-    status.textContent = 'Downloading, transcribing, and formatting recipe — this may take a minute...';
-    status.className = 'convert-status';
+    status.textContent = 'Downloading & transcribing — this takes a minute…';
+    status.className = 'popover-status';
     status.style.display = 'block';
 
     try {
@@ -1002,26 +1046,29 @@ async function convertReel() {
 
         if (resp.status === 409) {
             status.textContent = `Already in your cookbook: "${data.error.replace('Already converted: ', '')}"`;
-            status.className = 'convert-status error';
+            status.className = 'popover-status error';
         } else if (!resp.ok) {
             status.textContent = data.error || 'Conversion failed';
-            status.className = 'convert-status error';
+            status.className = 'popover-status error';
         } else if (data.status === 'ok') {
             status.textContent = `✓ Added "${data.recipe.title}" to your cookbook!`;
-            status.className = 'convert-status success';
+            status.className = 'popover-status success';
             input.value = '';
             // Reload recipes and creators
             await loadRecipes(searchInput.value);
             await loadCreators();
-            // Auto-clear success after 5s
-            setTimeout(() => { status.style.display = 'none'; }, 5000);
+            // Auto-close popover after a beat
+            setTimeout(() => {
+                closePopover();
+                status.style.display = 'none';
+            }, 2000);
         } else {
             status.textContent = data.message || 'Partial success — check results';
-            status.className = 'convert-status';
+            status.className = 'popover-status';
         }
     } catch (err) {
         status.textContent = 'Network error — is the server running?';
-        status.className = 'convert-status error';
+        status.className = 'popover-status error';
     } finally {
         btn.disabled = false;
         btnText.textContent = 'Convert';
@@ -1046,7 +1093,12 @@ function setupListeners() {
         document.querySelectorAll('.chip.active').forEach(c => c.classList.remove('active'));
     });
 
-    // Convert URL
+    // Convert URL (popover)
+    addReelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        togglePopover();
+    });
+    popoverOverlay.addEventListener('click', closePopover);
     document.getElementById('convertBtn').addEventListener('click', convertReel);
     document.getElementById('convertInput').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') convertReel();
@@ -1120,7 +1172,9 @@ function setupListeners() {
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (cookModeEl.classList.contains('active')) {
+            if (finderPopover.classList.contains('active')) {
+                closePopover();
+            } else if (cookModeEl.classList.contains('active')) {
                 closeCookMode();
             } else if (shoppingOverlay.classList.contains('active')) {
                 closeShoppingPanel();

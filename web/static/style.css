@@ -257,118 +257,6 @@ body {
     border-color: var(--accent);
 }
 
-/* ============ Convert URL ============ */
-
-.convert-container {
-    margin-bottom: 24px;
-}
-
-.glass-convert {
-    background: var(--surface);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-lg);
-    padding: 4px;
-    box-shadow: var(--glass-shadow), var(--glass-inner-glow);
-    transition: var(--transition);
-    overflow: hidden;
-}
-
-.glass-convert:focus-within {
-    border-color: var(--accent);
-    box-shadow: var(--glass-shadow), 0 0 0 4px var(--accent-soft);
-}
-
-.convert-input-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 16px;
-}
-
-.convert-icon {
-    width: 18px;
-    height: 18px;
-    color: var(--text-tertiary);
-    flex-shrink: 0;
-}
-
-.convert-input-row input {
-    flex: 1;
-    border: none;
-    background: transparent;
-    font-size: 0.9rem;
-    color: var(--text-primary);
-    padding: 10px 0;
-    outline: none;
-    font-family: inherit;
-}
-
-.convert-input-row input::placeholder {
-    color: var(--text-tertiary);
-}
-
-.convert-btn {
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: var(--radius-sm);
-    padding: 8px 20px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-    transition: var(--transition);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-}
-
-.convert-btn:hover {
-    filter: brightness(1.1);
-    transform: translateY(-1px);
-}
-
-.convert-btn:active {
-    transform: translateY(0);
-}
-
-.convert-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-}
-
-.convert-spinner {
-    width: 14px;
-    height: 14px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.convert-status {
-    padding: 10px 16px;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    border-top: 1px solid rgba(0,0,0,0.04);
-}
-
-.convert-status.error {
-    color: #FF3B30;
-}
-
-.convert-status.success {
-    color: #34C759;
-}
-
 /* ============ Recipe Grid ============ */
 
 .recipe-grid {
@@ -1020,16 +908,18 @@ body {
 .recipe-card:nth-child(8) { animation-delay: 0.4s; }
 .recipe-card:nth-child(9) { animation-delay: 0.45s; }
 
-/* ============ Cart Toggle (Header) ============ */
+/* ============ Header Action Buttons ============ */
 
-.glass-header {
-    position: relative;
-}
-
-.cart-toggle {
+.header-actions {
     position: absolute;
     top: 24px;
     right: 24px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+
+.header-action-btn {
     background: rgba(0,0,0,0.06);
     border: none;
     border-radius: 50%;
@@ -1041,14 +931,15 @@ body {
     cursor: pointer;
     color: var(--text-secondary);
     transition: var(--transition);
+    position: relative;
 }
 
-.cart-toggle:hover {
+.header-action-btn:hover {
     background: var(--accent-soft);
     color: var(--accent);
 }
 
-.cart-toggle svg {
+.header-action-btn svg {
     width: 20px;
     height: 20px;
 }
@@ -1068,6 +959,174 @@ body {
     align-items: center;
     justify-content: center;
     pointer-events: none;
+}
+
+/* ============ Finder-style Popover ============ */
+
+.popover-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    display: none;
+}
+
+.popover-overlay.active {
+    display: block;
+}
+
+.finder-popover {
+    position: fixed;
+    width: 340px;
+    background: rgba(246, 246, 246, 0.92);
+    backdrop-filter: blur(40px) saturate(200%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 12px;
+    box-shadow:
+        0 0 0 0.5px rgba(0, 0, 0, 0.06),
+        0 8px 40px rgba(0, 0, 0, 0.18),
+        0 2px 8px rgba(0, 0, 0, 0.08);
+    z-index: 100;
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    overflow: hidden;
+}
+
+.finder-popover.active {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    pointer-events: all;
+}
+
+.popover-arrow {
+    position: absolute;
+    top: -6px;
+    right: 18px;
+    width: 12px;
+    height: 12px;
+    background: rgba(246, 246, 246, 0.92);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-bottom: none;
+    border-right: none;
+    transform: rotate(45deg);
+    z-index: 1;
+}
+
+.popover-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.popover-title {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.1px;
+}
+
+.popover-subtitle {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    margin-top: 1px;
+}
+
+.popover-body {
+    padding: 12px 16px 14px;
+    display: flex;
+    gap: 8px;
+}
+
+.popover-input-wrap {
+    flex: 1;
+    position: relative;
+}
+
+.popover-input-wrap input {
+    width: 100%;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.8);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.popover-input-wrap input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+}
+
+.popover-input-wrap input::placeholder {
+    color: var(--text-tertiary);
+    font-size: 0.75rem;
+}
+
+.popover-convert-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.popover-convert-btn:hover {
+    background: #0056CC;
+}
+
+.popover-convert-btn:active {
+    transform: scale(0.97);
+}
+
+.popover-convert-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.convert-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.popover-status {
+    padding: 8px 16px 12px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    border-top: 1px solid rgba(0, 0, 0, 0.04);
+    line-height: 1.4;
+}
+
+.popover-status.error {
+    color: #FF3B30;
+}
+
+.popover-status.success {
+    color: #34C759;
 }
 
 /* ============ Card Add-to-Cart Button ============ */
@@ -1573,9 +1632,14 @@ body {
         font-size: 1.3rem;
     }
 
-    .cart-toggle {
+    .header-actions {
         top: 16px;
         right: 16px;
+    }
+
+    .finder-popover {
+        width: calc(100vw - 48px);
+        max-width: 340px;
     }
 
     .cook-nav-btn {

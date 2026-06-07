@@ -20,11 +20,36 @@
                 </div>
                 <p class="subtitle">Your converted recipes, beautifully organized</p>
             </div>
-            <button class="cart-toggle" id="cartToggle" title="Shopping List">
-                <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/></svg>
-                <span class="cart-badge" id="cartBadge" style="display:none;">0</span>
-            </button>
+            <div class="header-actions">
+                <button class="header-action-btn" id="addReelBtn" title="Add a reel">
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+                </button>
+                <button class="header-action-btn" id="cartToggle" title="Shopping List">
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/></svg>
+                    <span class="cart-badge" id="cartBadge" style="display:none;">0</span>
+                </button>
+            </div>
         </header>
+
+        <!-- Finder-style popover (outside header to avoid backdrop-filter stacking context) -->
+        <div class="popover-overlay" id="popoverOverlay"></div>
+        <div class="finder-popover" id="finderPopover">
+            <div class="popover-arrow"></div>
+            <div class="popover-header">
+                <span class="popover-title">Add Reel</span>
+                <span class="popover-subtitle">Paste a link to convert</span>
+            </div>
+            <div class="popover-body">
+                <div class="popover-input-wrap">
+                    <input type="text" id="convertInput" placeholder="instagram.com/reel/… or tiktok.com/…" autocomplete="off" spellcheck="false">
+                </div>
+                <button class="popover-convert-btn" id="convertBtn">
+                    <span class="convert-btn-text">Convert</span>
+                    <span class="convert-spinner" style="display:none;"></span>
+                </button>
+            </div>
+            <div class="popover-status" id="convertStatus" style="display:none;"></div>
+        </div>
 
         <!-- Search -->
         <div class="search-container">
@@ -40,23 +65,6 @@
                 </button>
             </div>
             <div class="filter-chips" id="filterChips"></div>
-        </div>
-
-        <!-- Convert URL -->
-        <div class="convert-container" id="convertContainer">
-            <div class="glass-convert">
-                <div class="convert-input-row">
-                    <svg class="convert-icon" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd"/>
-                    </svg>
-                    <input type="text" id="convertInput" placeholder="Paste an Instagram or TikTok reel URL to convert..." autocomplete="off">
-                    <button class="convert-btn" id="convertBtn">
-                        <span class="convert-btn-text">Convert</span>
-                        <span class="convert-spinner" style="display:none;"></span>
-                    </button>
-                </div>
-                <div class="convert-status" id="convertStatus" style="display:none;"></div>
-            </div>
         </div>
 
         <!-- Recipe Grid -->
