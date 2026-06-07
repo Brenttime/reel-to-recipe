@@ -749,6 +749,11 @@ body {
     color: var(--accent);
 }
 
+.share-btn:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
 /* ============ Edit Form ============ */
 
 .edit-form {
@@ -1650,27 +1655,6 @@ body {
     font-family: inherit;
 }
 
-.btn-share {
-    padding: 14px 18px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--glass-border);
-    background: var(--surface);
-    backdrop-filter: blur(12px);
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: var(--transition);
-    color: var(--text-secondary);
-    font-family: inherit;
-    flex-shrink: 0;
-}
-
-.btn-share:hover {
-    background: rgba(0, 122, 255, 0.08);
-    color: var(--accent);
-    border-color: rgba(0, 122, 255, 0.3);
-    transform: translateY(-1px);
-}
 
 .btn-cook:hover {
     background: #0056CC;
