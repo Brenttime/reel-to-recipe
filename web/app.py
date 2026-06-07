@@ -6,11 +6,13 @@ Displays recipes converted by Reel-to-Recipe MCP service
 import os
 import sqlite3
 import json
-from flask import Flask, render_template, request, jsonify, g
+import requests
+from flask import Flask, render_template, request, jsonify, g, Response
 
 app = Flask(__name__)
 
 DB_PATH = os.environ.get("DB_PATH", "/data/recipes.db")
+MCP_URL = os.environ.get("MCP_URL", "http://host.docker.internal:8002/convert")
 
 
 def get_db():
@@ -290,6 +292,114 @@ def _ensure_fts_integrity():
                 print(f"[Recipe Glass] FTS recreation failed: {e2}")
     finally:
         conn.close()
+
+
+@app.route("/api/convert", methods=["POST"])
+def api_convert():
+    """Convert a reel URL to a recipe via the MCP server.
+
+    Sends a JSON-RPC 2.0 request to the MCP server's convert_reel_to_recipe tool.
+    The MCP server handles: download, transcription, OCR, formatting, and auto-saves
+    the result back to our /api/recipes endpoint.
+
+    Returns the new recipe data once conversion and save complete.
+    """
+    data = request.get_json()
+    url = data.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    # Validate URL looks like Instagram or TikTok
+    if "instagram.com" not in url and "tiktok.com" not in url:
+        return jsonify({"error": "URL must be an Instagram or TikTok link"}), 400
+
+    # Check for duplicates first
+    db = get_db()
+    existing = db.execute(
+        "SELECT id, title FROM recipes WHERE source_url = ?", (url,)
+    ).fetchone()
+    if existing:
+        return jsonify({
+            "error": f"Already converted: {existing['title']}",
+            "existing_id": existing["id"]
+        }), 409
+
+    # Choose the right method
+    method = data.get("method", "full")
+
+    # Call MCP convert API (plain HTTP, not MCP protocol)
+    try:
+        resp = requests.post(MCP_URL, json={"url": url, "method": method}, timeout=300)
+        if resp.status_code != 200:
+            result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            return jsonify({"error": result.get("error", f"Conversion server returned {resp.status_code}")}), 502
+    except requests.exceptions.ConnectionError:
+        return jsonify({"error": "Cannot reach conversion server. Is the MCP service running?"}), 503
+    except requests.exceptions.Timeout:
+        return jsonify({"error": "Conversion timed out (5 min). Try audio-only mode for faster results."}), 504
+
+    result = resp.json()
+    if "error" in result:
+        return jsonify({"error": result["error"]}), 500
+
+    # MCP auto-saves to our /api/recipes — fetch the newly created recipe
+    new_recipe = db.execute(
+        "SELECT * FROM recipes WHERE source_url = ? ORDER BY id DESC LIMIT 1", (url,)
+    ).fetchone()
+
+    if new_recipe:
+        recipe = dict(new_recipe)
+        recipe["ingredients"] = json.loads(recipe["ingredients"])
+        recipe["instructions"] = json.loads(recipe["instructions"])
+        recipe["tags"] = json.loads(recipe["tags"])
+        return jsonify({"status": "ok", "recipe": recipe}), 201
+    else:
+        # MCP returned success but recipe wasn't saved (parsing issue?)
+        return jsonify({
+            "status": "partial",
+            "message": "Conversion succeeded but recipe could not be saved. Check MCP logs.",
+        }), 200
+
+
+@app.route("/api/thumbnail/<int:recipe_id>")
+def api_thumbnail(recipe_id):
+    """Proxy thumbnail images to avoid CORS/mixed-content issues.
+
+    Fetches the image_url stored for a recipe and streams it back.
+    Caches in /data/thumbnails/ for subsequent requests.
+    """
+    cache_dir = "/data/thumbnails"
+    cache_path = os.path.join(cache_dir, f"{recipe_id}.jpg")
+
+    # Serve from cache if available
+    if os.path.exists(cache_path):
+        with open(cache_path, "rb") as f:
+            return Response(f.read(), mimetype="image/jpeg",
+                          headers={"Cache-Control": "public, max-age=86400"})
+
+    # Fetch image_url from DB
+    db = get_db()
+    row = db.execute("SELECT image_url FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    if not row or not row["image_url"]:
+        return Response(status=404)
+
+    try:
+        resp = requests.get(row["image_url"], timeout=15, stream=True,
+                          headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code != 200:
+            return Response(status=502)
+
+        img_data = resp.content
+        # Cache to disk
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(cache_path, "wb") as f:
+            f.write(img_data)
+
+        content_type = resp.headers.get("Content-Type", "image/jpeg")
+        return Response(img_data, mimetype=content_type,
+                       headers={"Cache-Control": "public, max-age=86400"})
+    except Exception:
+        return Response(status=502)
 
 
 # Initialize database on startup

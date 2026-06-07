@@ -219,14 +219,16 @@ function renderGrid(recipes) {
     emptyState.style.display = 'none';
     const cart = getCart();
     recipeGrid.innerHTML = recipes.map((r, i) => `
-        <article class="recipe-card" data-id="${r.id}" style="animation-delay: ${i * 0.05}s">
-            <div class="card-platform">
-                <span class="dot"></span>
-                ${r.platform || 'recipe'}
-            </div>
-            <button class="card-cart-btn ${cart.includes(r.id) ? 'in-cart' : ''}" data-add-id="${r.id}" title="${cart.includes(r.id) ? 'In shopping list' : 'Add to shopping list'}">
-                ${cart.includes(r.id) ? '✓' : '+'}
-            </button>
+        <article class="recipe-card ${r.image_url ? 'has-thumb' : ''}" data-id="${r.id}" style="animation-delay: ${i * 0.05}s">
+            ${r.image_url ? `<div class="card-thumb"><img src="/api/thumbnail/${r.id}" alt="" loading="lazy"></div>` : ''}
+            <div class="card-body">
+                <div class="card-platform">
+                    <span class="dot"></span>
+                    ${r.platform || 'recipe'}
+                </div>
+                <button class="card-cart-btn ${cart.includes(r.id) ? 'in-cart' : ''}" data-add-id="${r.id}" title="${cart.includes(r.id) ? 'In shopping list' : 'Add to shopping list'}">
+                    ${cart.includes(r.id) ? '✓' : '+'}
+                </button>
             <h3 class="card-title">${escapeHtml(r.title)}</h3>
             ${r.creator ? `<p class="card-creator">by ${escapeHtml(r.creator)}</p>` : ''}
             ${r.tags.length ? `
@@ -251,6 +253,7 @@ function renderGrid(recipes) {
                     <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
                     ${r.ingredients.length} ingredients
                 </span>
+            </div>
             </div>
         </article>
     `).join('');
@@ -961,6 +964,71 @@ async function saveRecipe(id) {
 }
 
 // ─── Event Handlers ─────────────────────────────
+// ─── Convert URL ─────────────────────────────────
+async function convertReel() {
+    const input = document.getElementById('convertInput');
+    const btn = document.getElementById('convertBtn');
+    const btnText = btn.querySelector('.convert-btn-text');
+    const spinner = btn.querySelector('.convert-spinner');
+    const status = document.getElementById('convertStatus');
+    const url = input.value.trim();
+
+    if (!url) return;
+
+    // Validate URL
+    if (!url.includes('instagram.com') && !url.includes('tiktok.com')) {
+        status.textContent = 'Please paste an Instagram or TikTok URL';
+        status.className = 'convert-status error';
+        status.style.display = 'block';
+        return;
+    }
+
+    // Show loading state
+    btn.disabled = true;
+    btnText.textContent = 'Converting...';
+    spinner.style.display = 'inline-block';
+    status.textContent = 'Downloading, transcribing, and formatting recipe — this may take a minute...';
+    status.className = 'convert-status';
+    status.style.display = 'block';
+
+    try {
+        const resp = await fetch('/api/convert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+
+        const data = await resp.json();
+
+        if (resp.status === 409) {
+            status.textContent = `Already in your cookbook: "${data.error.replace('Already converted: ', '')}"`;
+            status.className = 'convert-status error';
+        } else if (!resp.ok) {
+            status.textContent = data.error || 'Conversion failed';
+            status.className = 'convert-status error';
+        } else if (data.status === 'ok') {
+            status.textContent = `✓ Added "${data.recipe.title}" to your cookbook!`;
+            status.className = 'convert-status success';
+            input.value = '';
+            // Reload recipes and creators
+            await loadRecipes(searchInput.value);
+            await loadCreators();
+            // Auto-clear success after 5s
+            setTimeout(() => { status.style.display = 'none'; }, 5000);
+        } else {
+            status.textContent = data.message || 'Partial success — check results';
+            status.className = 'convert-status';
+        }
+    } catch (err) {
+        status.textContent = 'Network error — is the server running?';
+        status.className = 'convert-status error';
+    } finally {
+        btn.disabled = false;
+        btnText.textContent = 'Convert';
+        spinner.style.display = 'none';
+    }
+}
+
 function setupListeners() {
     // Search
     searchInput.addEventListener('input', (e) => {
@@ -976,6 +1044,12 @@ function setupListeners() {
         clearBtn.style.display = 'none';
         loadRecipes();
         document.querySelectorAll('.chip.active').forEach(c => c.classList.remove('active'));
+    });
+
+    // Convert URL
+    document.getElementById('convertBtn').addEventListener('click', convertReel);
+    document.getElementById('convertInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') convertReel();
     });
 
     // Filter chips
