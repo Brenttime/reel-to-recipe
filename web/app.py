@@ -7,9 +7,14 @@ import os
 import sqlite3
 import json
 import requests
-from flask import Flask, render_template, request, jsonify, g, Response
+from flask import Flask, render_template, request, jsonify, g, session
+from auth import auth_bp, init_auth_db
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "onlypans-dev-key-change-in-prod")
+
+# Register auth blueprint
+app.register_blueprint(auth_bp)
 
 DB_PATH = os.environ.get("DB_PATH", "/data/recipes.db")
 MCP_URL = os.environ.get("MCP_URL", "http://host.docker.internal:8002/convert")
@@ -51,6 +56,7 @@ def init_db():
             macros TEXT DEFAULT '',
             tags TEXT DEFAULT '[]',
             image_url TEXT DEFAULT '',
+            user_id INTEGER DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -78,6 +84,8 @@ def init_db():
         END;
     """)
     conn.close()
+    # Initialize auth tables
+    init_auth_db(DB_PATH)
 
 
 @app.route("/")
@@ -180,7 +188,7 @@ def api_update_recipe(recipe_id):
         UPDATE recipes SET
             title = ?, creator = ?, source_url = ?, platform = ?,
             servings = ?, prep_time = ?, cook_time = ?, total_time = ?,
-            ingredients = ?, instructions = ?, tips = ?, macros = ?, tags = ?, image_url = ?
+            ingredients = ?, instructions = ?, tips = ?, macros = ?, tags = ?
         WHERE id = ?
     """, (
         data.get("title", row["title"]),
@@ -196,7 +204,6 @@ def api_update_recipe(recipe_id):
         data.get("tips", row["tips"]),
         data.get("macros", row["macros"]),
         json.dumps(data["tags"]) if "tags" in data else row["tags"],
-        data.get("image_url", row["image_url"]),
         recipe_id,
     ))
     db.commit()
@@ -225,8 +232,8 @@ def api_add_recipe():
     db.execute("""
         INSERT INTO recipes (title, creator, source_url, platform, servings,
                            prep_time, cook_time, total_time, ingredients,
-                           instructions, tips, macros, tags, image_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           instructions, tips, macros, tags)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data.get("title", "Untitled"),
         data.get("creator", ""),
@@ -241,7 +248,6 @@ def api_add_recipe():
         data.get("tips", ""),
         data.get("macros", ""),
         json.dumps(data.get("tags", [])),
-        data.get("image_url", ""),
     ))
     db.commit()
     return jsonify({"status": "ok", "id": db.execute("SELECT last_insert_rowid()").fetchone()[0]}), 201
@@ -391,47 +397,6 @@ def api_convert():
             "status": "partial",
             "message": "Conversion succeeded but recipe could not be saved. Check MCP logs.",
         }), 200
-
-
-@app.route("/api/thumbnail/<int:recipe_id>")
-def api_thumbnail(recipe_id):
-    """Proxy thumbnail images to avoid CORS/mixed-content issues.
-
-    Fetches the image_url stored for a recipe and streams it back.
-    Caches in /data/thumbnails/ for subsequent requests.
-    """
-    cache_dir = "/data/thumbnails"
-    cache_path = os.path.join(cache_dir, f"{recipe_id}.jpg")
-
-    # Serve from cache if available
-    if os.path.exists(cache_path):
-        with open(cache_path, "rb") as f:
-            return Response(f.read(), mimetype="image/jpeg",
-                          headers={"Cache-Control": "public, max-age=86400"})
-
-    # Fetch image_url from DB
-    db = get_db()
-    row = db.execute("SELECT image_url FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
-    if not row or not row["image_url"]:
-        return Response(status=404)
-
-    try:
-        resp = requests.get(row["image_url"], timeout=15, stream=True,
-                          headers={"User-Agent": "Mozilla/5.0"})
-        if resp.status_code != 200:
-            return Response(status=502)
-
-        img_data = resp.content
-        # Cache to disk
-        os.makedirs(cache_dir, exist_ok=True)
-        with open(cache_path, "wb") as f:
-            f.write(img_data)
-
-        content_type = resp.headers.get("Content-Type", "image/jpeg")
-        return Response(img_data, mimetype=content_type,
-                       headers={"Cache-Control": "public, max-age=86400"})
-    except Exception:
-        return Response(status=502)
 
 
 # Initialize database on startup
