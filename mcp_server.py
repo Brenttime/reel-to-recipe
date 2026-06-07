@@ -304,13 +304,17 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
             if stripped.lower().startswith("here's the") or stripped.lower().startswith("here is the"):
                 continue
 
-            # Detect "Source: @creator" line
-            source_match = re.match(r"^[Ss]ource:\s*(@?\w+)", stripped)
+            # Detect "Source: @creator" or "Source: Creator Name" line
+            source_match = re.match(r"^[Ss]ource:\s*(.+)", stripped)
             if source_match:
                 if not creator:
-                    creator = source_match.group(1)
-                    if not creator.startswith("@"):
-                        creator = f"@{creator}"
+                    creator_raw = source_match.group(1).strip()
+                    # Normalize: if not starting with @, add it and remove spaces
+                    if creator_raw.startswith("@"):
+                        creator = creator_raw.split()[0]  # just the @handle
+                    else:
+                        # "El Cooks" -> "@elcooks"
+                        creator = "@" + creator_raw.lower().replace(" ", "")
                 continue
 
             # Detect title (first non-empty line, or after # header)
@@ -359,6 +363,9 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
             if section == "ingredients":
                 item = stripped.lstrip("-*•● ").strip()
                 if item:
+                    # Skip sub-headers like "Batter:", "Filling:", "Toppings:"
+                    if item.endswith(":") and len(item.split()) <= 3:
+                        continue
                     # Extract [section] tag if present
                     section_match = re.search(r'\[(\w+)\]\s*$', item)
                     if section_match:
@@ -409,15 +416,26 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
                     if item:
                         instructions.append(item)
 
-        # Infer creator from URL
+        # Infer creator from URL or recipe text
         if "instagram.com" in url:
             # Try to extract from URL path — /reel/ doesn't have username
-            # Leave empty; caption may have it
+            # Leave empty; will check recipe text below
             pass
         if "tiktok.com" in url:
             match = re.search(r"tiktok\.com/@([^/]+)", url)
             if match:
                 creator = f"@{match.group(1)}"
+
+        # If no creator yet, scan recipe text for @username pattern
+        if not creator:
+            at_match = re.search(r'@(\w{3,30})', recipe_text)
+            if at_match:
+                creator = f"@{at_match.group(1)}"
+
+        # Title case if ALL CAPS (check alpha chars only)
+        alpha_chars = [c for c in title if c.isalpha()]
+        if title and alpha_chars and sum(1 for c in alpha_chars if c.isupper()) > len(alpha_chars) * 0.7:
+            title = title.title()
 
         # Detect platform from URL
         if not platform:
