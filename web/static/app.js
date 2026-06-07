@@ -173,7 +173,6 @@ async function init() {
     await loadCreators();
     setupListeners();
     updateCartBadge();
-    setupHeader();
 }
 
 // ─── Data Loading ───────────────────────────────
@@ -200,7 +199,6 @@ async function loadCreators() {
 
 // ─── Rendering ──────────────────────────────────
 function renderGrid(recipes) {
-    updateRecipeCount(recipes.length);
     if (recipes.length === 0) {
         recipeGrid.innerHTML = '';
         emptyState.style.display = 'block';
@@ -1104,24 +1102,4 @@ function escapeAttr(text) {
 }
 
 // ─── Boot ───────────────────────────────────────
-
-function setupHeader() {
-    const header = document.getElementById('appHeader');
-    if (!header) return;
-    window.addEventListener('scroll', () => {
-        if (window.scrollY > 8) {
-            header.classList.add('scrolled');
-        } else {
-            header.classList.remove('scrolled');
-        }
-    }, { passive: true });
-}
-
-function updateRecipeCount(count) {
-    const el = document.getElementById('recipeCount');
-    if (el) {
-        el.textContent = count === 1 ? '1 recipe' : `${count} recipes`;
-    }
-}
-
 document.addEventListener('DOMContentLoaded', init);
