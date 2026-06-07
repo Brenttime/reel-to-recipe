@@ -172,6 +172,14 @@ async function loadRecipes(query = '') {
     const url = query ? `/api/recipes?q=${encodeURIComponent(query)}` : '/api/recipes';
     const res = await fetch(url);
     allRecipes = await res.json();
+    // Normalize tags: API returns comma-separated string, UI expects array
+    allRecipes.forEach(r => {
+        if (typeof r.tags === 'string') {
+            r.tags = r.tags ? r.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+        } else if (!Array.isArray(r.tags)) {
+            r.tags = [];
+        }
+    });
     renderGrid(allRecipes);
 }
 
