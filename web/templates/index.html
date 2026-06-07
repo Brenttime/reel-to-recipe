@@ -31,24 +31,19 @@
             </div>
         </header>
 
-        <!-- Finder-style popover (outside header to avoid backdrop-filter stacking context) -->
-        <div class="popover-overlay" id="popoverOverlay"></div>
-        <div class="finder-popover" id="finderPopover">
-            <div class="popover-arrow"></div>
-            <div class="popover-header">
-                <span class="popover-title">Add Reel</span>
-                <span class="popover-subtitle">Paste a link to convert</span>
-            </div>
-            <div class="popover-body">
-                <div class="popover-input-wrap">
-                    <input type="text" id="convertInput" placeholder="instagram.com/reel/… or tiktok.com/…" autocomplete="off" spellcheck="false">
+        <!-- Spotlight-style convert overlay -->
+        <div class="spotlight-overlay" id="spotlightOverlay">
+            <div class="spotlight-bar" id="spotlightBar">
+                <svg class="spotlight-icon" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd"/>
+                </svg>
+                <input type="text" id="convertInput" placeholder="Paste an Instagram or TikTok reel URL…" autocomplete="off" spellcheck="false">
+                <div class="spotlight-right">
+                    <span class="convert-spinner" id="convertSpinner" style="display:none;"></span>
+                    <kbd class="spotlight-hint" id="spotlightHint">esc</kbd>
                 </div>
-                <button class="popover-convert-btn" id="convertBtn">
-                    <span class="convert-btn-text">Convert</span>
-                    <span class="convert-spinner" style="display:none;"></span>
-                </button>
             </div>
-            <div class="popover-status" id="convertStatus" style="display:none;"></div>
+            <div class="spotlight-status" id="convertStatus" style="display:none;"></div>
         </div>
 
         <!-- Search -->
