@@ -86,11 +86,17 @@ def index():
 
 @app.route("/api/recipes")
 def api_recipes():
-    """Get all recipes, optionally filtered by search."""
+    """Get all recipes, optionally filtered by search or source_url."""
     db = get_db()
     query = request.args.get("q", "").strip()
+    source_url = request.args.get("source_url", "").strip()
 
-    if query:
+    # Exact match by source_url (used for duplicate detection)
+    if source_url:
+        rows = db.execute(
+            "SELECT * FROM recipes WHERE source_url = ?", (source_url,)
+        ).fetchall()
+    elif query:
         # Try FTS5 first, fall back to LIKE on error
         try:
             # Use prefix matching (term*) for partial matches
@@ -150,6 +156,55 @@ def api_recipe_detail(recipe_id):
     recipe["instructions"] = json.loads(recipe["instructions"])
     recipe["tags"] = json.loads(recipe["tags"])
     return jsonify(recipe)
+
+
+@app.route("/api/recipes/<int:recipe_id>", methods=["PUT"])
+def api_update_recipe(recipe_id):
+    """Update an existing recipe."""
+    db = get_db()
+    row = db.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+
+    data = request.get_json()
+    db.execute("""
+        UPDATE recipes SET
+            title = ?, creator = ?, source_url = ?, platform = ?,
+            servings = ?, prep_time = ?, cook_time = ?, total_time = ?,
+            ingredients = ?, instructions = ?, tips = ?, macros = ?, tags = ?, image_url = ?
+        WHERE id = ?
+    """, (
+        data.get("title", row["title"]),
+        data.get("creator", row["creator"]),
+        data.get("source_url", row["source_url"]),
+        data.get("platform", row["platform"]),
+        data.get("servings", row["servings"]),
+        data.get("prep_time", row["prep_time"]),
+        data.get("cook_time", row["cook_time"]),
+        data.get("total_time", row["total_time"]),
+        json.dumps(data["ingredients"]) if "ingredients" in data else row["ingredients"],
+        json.dumps(data["instructions"]) if "instructions" in data else row["instructions"],
+        data.get("tips", row["tips"]),
+        data.get("macros", row["macros"]),
+        json.dumps(data["tags"]) if "tags" in data else row["tags"],
+        data.get("image_url", row["image_url"]),
+        recipe_id,
+    ))
+    db.commit()
+    return jsonify({"status": "ok", "id": recipe_id})
+
+
+@app.route("/api/recipes/<int:recipe_id>", methods=["DELETE"])
+def api_delete_recipe(recipe_id):
+    """Delete a recipe."""
+    db = get_db()
+    row = db.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+
+    db.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
+    db.commit()
+    return jsonify({"status": "ok", "deleted": recipe_id})
 
 
 @app.route("/api/recipes", methods=["POST"])

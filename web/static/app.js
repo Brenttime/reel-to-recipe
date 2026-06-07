@@ -1,5 +1,5 @@
 /**
- * Recipe Glass — Frontend Logic
+ * Reel Cookbook — Frontend Logic
  */
 
 const searchInput = document.getElementById('searchInput');
@@ -12,6 +12,7 @@ const modalContent = document.getElementById('modalContent');
 const modalClose = document.getElementById('modalClose');
 
 let allRecipes = [];
+let currentRecipe = null;
 let debounceTimer = null;
 
 // ─── Init ───────────────────────────────────────
@@ -87,7 +88,16 @@ function renderChips(creators) {
 }
 
 function renderModal(recipe) {
+    currentRecipe = recipe;
     modalContent.innerHTML = `
+        <div class="modal-actions">
+            <button class="action-btn edit-btn" id="editRecipeBtn" title="Edit recipe">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
+            </button>
+            <button class="action-btn delete-btn" id="deleteRecipeBtn" title="Delete recipe">
+                <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+            </button>
+        </div>
         ${recipe.platform ? `<div class="modal-platform">${escapeHtml(recipe.platform)}</div>` : ''}
         <h2 class="modal-title">${escapeHtml(recipe.title)}</h2>
         <p class="modal-creator">
@@ -117,6 +127,142 @@ function renderModal(recipe) {
         ${recipe.tips ? `<div class="modal-tips">${escapeHtml(recipe.tips)}</div>` : ''}
         ${recipe.macros ? `<div class="modal-macros">📊 ${escapeHtml(recipe.macros)}</div>` : ''}
     `;
+
+    // Bind action buttons
+    document.getElementById('deleteRecipeBtn').addEventListener('click', () => deleteRecipe(recipe));
+    document.getElementById('editRecipeBtn').addEventListener('click', () => openEditMode(recipe));
+}
+
+function renderEditModal(recipe) {
+    modalContent.innerHTML = `
+        <h2 class="modal-title" style="margin-bottom: 20px;">Edit Recipe</h2>
+        <form id="editForm" class="edit-form">
+            <label class="edit-label">Title</label>
+            <input type="text" class="edit-input" id="edit-title" value="${escapeAttr(recipe.title)}">
+
+            <div class="edit-row">
+                <div class="edit-col">
+                    <label class="edit-label">Creator</label>
+                    <input type="text" class="edit-input" id="edit-creator" value="${escapeAttr(recipe.creator)}">
+                </div>
+                <div class="edit-col">
+                    <label class="edit-label">Platform</label>
+                    <input type="text" class="edit-input" id="edit-platform" value="${escapeAttr(recipe.platform)}">
+                </div>
+            </div>
+
+            <div class="edit-row">
+                <div class="edit-col">
+                    <label class="edit-label">Servings</label>
+                    <input type="text" class="edit-input" id="edit-servings" value="${escapeAttr(recipe.servings)}">
+                </div>
+                <div class="edit-col">
+                    <label class="edit-label">Prep Time</label>
+                    <input type="text" class="edit-input" id="edit-prep_time" value="${escapeAttr(recipe.prep_time)}">
+                </div>
+                <div class="edit-col">
+                    <label class="edit-label">Cook Time</label>
+                    <input type="text" class="edit-input" id="edit-cook_time" value="${escapeAttr(recipe.cook_time)}">
+                </div>
+            </div>
+
+            <label class="edit-label">Source URL</label>
+            <input type="text" class="edit-input" id="edit-source_url" value="${escapeAttr(recipe.source_url)}">
+
+            <label class="edit-label">Ingredients <span class="edit-hint">(one per line)</span></label>
+            <textarea class="edit-textarea" id="edit-ingredients" rows="8">${recipe.ingredients.join('\n')}</textarea>
+
+            <label class="edit-label">Instructions <span class="edit-hint">(one step per line)</span></label>
+            <textarea class="edit-textarea" id="edit-instructions" rows="8">${recipe.instructions.join('\n')}</textarea>
+
+            <label class="edit-label">Tips</label>
+            <textarea class="edit-textarea" id="edit-tips" rows="3">${recipe.tips || ''}</textarea>
+
+            <label class="edit-label">Macros</label>
+            <input type="text" class="edit-input" id="edit-macros" value="${escapeAttr(recipe.macros)}">
+
+            <label class="edit-label">Tags <span class="edit-hint">(comma-separated)</span></label>
+            <input type="text" class="edit-input" id="edit-tags" value="${recipe.tags.join(', ')}">
+
+            <div class="edit-buttons">
+                <button type="button" class="btn btn-cancel" id="cancelEditBtn">Cancel</button>
+                <button type="submit" class="btn btn-save">Save Changes</button>
+            </div>
+        </form>
+    `;
+
+    document.getElementById('cancelEditBtn').addEventListener('click', () => renderModal(recipe));
+    document.getElementById('editForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveRecipe(recipe.id);
+    });
+}
+
+// ─── Actions ────────────────────────────────────
+async function deleteRecipe(recipe) {
+    if (!confirm(`Delete "${recipe.title}"? This can't be undone.`)) return;
+
+    const res = await fetch(`/api/recipes/${recipe.id}`, { method: 'DELETE' });
+    if (res.ok) {
+        closeModal();
+        await loadRecipes(searchInput.value);
+        await loadCreators();
+    } else {
+        alert('Failed to delete recipe.');
+    }
+}
+
+function openEditMode(recipe) {
+    renderEditModal(recipe);
+}
+
+async function saveRecipe(id) {
+    const ingredients = document.getElementById('edit-ingredients').value
+        .split('\n').map(s => s.trim()).filter(Boolean);
+    const instructions = document.getElementById('edit-instructions').value
+        .split('\n').map(s => s.trim()).filter(Boolean);
+    const tags = document.getElementById('edit-tags').value
+        .split(',').map(s => s.trim()).filter(Boolean);
+
+    const payload = {
+        title: document.getElementById('edit-title').value.trim(),
+        creator: document.getElementById('edit-creator').value.trim(),
+        platform: document.getElementById('edit-platform').value.trim(),
+        source_url: document.getElementById('edit-source_url').value.trim(),
+        servings: document.getElementById('edit-servings').value.trim(),
+        prep_time: document.getElementById('edit-prep_time').value.trim(),
+        cook_time: document.getElementById('edit-cook_time').value.trim(),
+        total_time: '',
+        ingredients,
+        instructions,
+        tips: document.getElementById('edit-tips').value.trim(),
+        macros: document.getElementById('edit-macros').value.trim(),
+        tags,
+    };
+
+    // Compute total_time
+    if (payload.prep_time && payload.cook_time) {
+        payload.total_time = `${payload.prep_time} + ${payload.cook_time}`;
+    } else {
+        payload.total_time = payload.prep_time || payload.cook_time || '';
+    }
+
+    const res = await fetch(`/api/recipes/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+        // Reload and show updated recipe
+        const updated = await fetch(`/api/recipes/${id}`);
+        const recipe = await updated.json();
+        renderModal(recipe);
+        await loadRecipes(searchInput.value);
+        await loadCreators();
+    } else {
+        alert('Failed to save changes.');
+    }
 }
 
 // ─── Event Handlers ─────────────────────────────
@@ -187,6 +333,7 @@ function openModal() {
 function closeModal() {
     modalOverlay.classList.remove('active');
     document.body.style.overflow = '';
+    currentRecipe = null;
 }
 
 // ─── Util ───────────────────────────────────────
@@ -195,6 +342,11 @@ function escapeHtml(text) {
     const el = document.createElement('span');
     el.textContent = text;
     return el.innerHTML;
+}
+
+function escapeAttr(text) {
+    if (!text) return '';
+    return text.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // ─── Boot ───────────────────────────────────────

@@ -403,6 +403,23 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
         if not title:
             title = "Untitled Recipe"
 
+        # Check for duplicate by source_url
+        if url:
+            existing = None
+            try:
+                existing = httpx.get(
+                    f"{RECIPE_GLASS_URL}/api/recipes",
+                    params={"source_url": url},
+                    timeout=5
+                )
+            except Exception:
+                pass
+            if existing and existing.status_code == 200:
+                data = existing.json()
+                if data:
+                    print(f"[Recipe Glass] Duplicate skipped (already have '{data[0]['title']}' from {url})")
+                    return
+
         # POST to Recipe Glass
         payload = {
             "title": title,
