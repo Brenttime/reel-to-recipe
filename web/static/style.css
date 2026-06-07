@@ -33,6 +33,7 @@ html {
     font-size: 16px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
 }
 
 body {
@@ -108,6 +109,7 @@ body {
     height: 200%;
     background: radial-gradient(ellipse at center, rgba(255,255,255,0.08) 0%, transparent 60%);
     pointer-events: none;
+    clip-path: inset(0);
 }
 
 .header-content {
@@ -1044,12 +1046,15 @@ body {
 
 @media (max-width: 768px) {
     .app-container {
-        padding: 16px;
+        padding: 12px;
+        padding-bottom: 80px;
     }
 
     .glass-header {
-        padding: 28px 20px;
+        padding: 24px 16px;
         border-radius: var(--radius-lg);
+        margin-left: 0;
+        margin-right: 0;
     }
 
     .logo h1 {
@@ -1069,6 +1074,22 @@ body {
 
     .modal-title {
         font-size: 1.4rem;
+    }
+
+    .header-left {
+        top: 12px;
+        left: 12px;
+    }
+
+    .header-actions {
+        top: 12px;
+        right: 12px;
+    }
+
+    .filter-chips {
+        margin-left: -12px;
+        margin-right: -12px;
+        padding: 0 12px;
     }
 }
 
@@ -1812,11 +1833,6 @@ body {
 @media (max-width: 768px) {
     .cook-step-text {
         font-size: 1.3rem;
-    }
-
-    .header-actions {
-        top: 16px;
-        right: 16px;
     }
 
     .cook-nav-btn {
