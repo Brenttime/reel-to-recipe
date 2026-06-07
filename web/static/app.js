@@ -313,6 +313,8 @@ function renderModal(recipe) {
             </div>
         ` : ''}
 
+        ${recipe.macros ? `<div class="modal-macros">📊 ${escapeHtml(recipe.macros)}</div>` : ''}
+
         <h4 class="section-title">Ingredients</h4>
         <ul class="ingredients-list" id="ingredientsList">
             ${recipe.ingredients.map(ing => `<li>${escapeHtml(ingText(ing))}</li>`).join('')}
@@ -324,7 +326,6 @@ function renderModal(recipe) {
         </ol>
 
         ${recipe.tips ? `<div class="modal-tips">${escapeHtml(recipe.tips)}</div>` : ''}
-        ${recipe.macros ? `<div class="modal-macros">📊 ${escapeHtml(recipe.macros)}</div>` : ''}
 
         <div class="modal-action-bar">
             <button class="btn-add-list ${inCart ? 'in-cart' : ''}" id="addToListBtn">
