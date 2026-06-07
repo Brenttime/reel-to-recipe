@@ -13,6 +13,11 @@ from auth import auth_bp, init_auth_db
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "onlypans-dev-key-change-in-prod")
 
+# Session cookie config — must work over plain HTTP with OAuth redirects
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+
 # Register auth blueprint
 app.register_blueprint(auth_bp)
 
@@ -37,8 +42,11 @@ def require_login():
         return None
     # Check if logged in
     if not session.get('user_id'):
-        # API calls get 401, browser requests get redirected
-        if request.is_json or request.headers.get('Accept') == 'application/json':
+        # API calls get 401, browser navigation gets redirected
+        if (request.is_json
+            or request.headers.get('Accept') == 'application/json'
+            or request.path.startswith('/api/')
+            or request.method in ('DELETE', 'PUT', 'PATCH')):
             return jsonify({'error': 'Authentication required', 'login_url': '/auth/login'}), 401
         return redirect(url_for('auth.login'))
 

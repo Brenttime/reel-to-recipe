@@ -1030,15 +1030,29 @@ function releaseWakeLock() {
 async function deleteRecipe(recipe) {
     if (!confirm(`Delete "${recipe.title}"? This can't be undone.`)) return;
 
-    const res = await fetch(`/api/recipes/${recipe.id}`, { method: 'DELETE' });
-    if (res.ok) {
-        // Also remove from cart if present
-        removeFromCart(recipe.id);
-        localStorage.removeItem(`reel-cookbook-scaled-${recipe.id}`);
-        closeModal();
-        await loadRecipes(searchInput.value);
-        await loadCategories();
-    } else {
+    try {
+        const res = await fetch(`/api/recipes/${recipe.id}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        });
+        if (res.ok) {
+            // Also remove from cart if present
+            removeFromCart(recipe.id);
+            localStorage.removeItem(`reel-cookbook-scaled-${recipe.id}`);
+            closeModal();
+            await loadRecipes(searchInput.value);
+            await loadCategories();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            if (data.login_url) {
+                window.location.href = data.login_url;
+            } else {
+                alert('Failed to delete recipe.');
+            }
+        }
+    } catch (err) {
+        console.error('Delete failed:', err);
         alert('Failed to delete recipe.');
     }
 }
