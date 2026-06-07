@@ -239,25 +239,32 @@ const CATEGORY_ICONS = {
     // Proteins
     'chicken': '🍗', 'beef': '🥩', 'pork': '🥓', 'seafood': '🦐',
     'fish': '🐟', 'salmon': '🍣', 'shrimp': '🦐', 'duck': '🦆',
+    'lamb': '🐑', 'turkey': '🦃',
     // Cuisines
     'japanese': '🇯🇵', 'korean': '🇰🇷', 'chinese': '🇨🇳', 'mexican': '🇲🇽',
     'italian': '🇮🇹', 'indian': '🇮🇳', 'thai': '🇹🇭', 'vietnamese': '🇻🇳',
     'french': '🇫🇷', 'american': '🇺🇸', 'mediterranean': '🫒',
+    'cajun': '🫘', 'middle eastern': '🧆',
     // Meal types
     'breakfast': '🍳', 'lunch': '🥪', 'dinner': '🍽️', 'snack': '🍿',
     'dessert': '🍰', 'appetizer': '🥟', 'brunch': '🧇',
-    // Styles
+    // Dish types
+    'sandwich': '🥪', 'burger': '🍔', 'pizza': '🍕', 'tacos': '🌮',
+    'soup': '🍲', 'salad': '🥗', 'bowl': '🥣', 'rice': '🍚',
+    'noodles': '🍜', 'curry': '🍛', 'wings': '🍗', 'dumplings': '🥟',
+    'pasta': '🍝', 'fries': '🍟', 'wrap': '🌯',
+    // Cooking methods
+    'air fryer': '💨', 'grilled': '🔥', 'bbq': '🍖', 'fried': '🍳',
+    'baked': '🍞', 'roasted': '🔥', 'smoked': '💨',
+    'slow cooker': '🫕', 'instant pot': '⏱️', 'rice cooker': '🍚',
+    'one pot': '🫕', 'one pan': '🍳', 'sheet pan': '🫓', 'no cook': '❄️',
+    // Styles & dietary
     'spicy': '🌶️', 'healthy': '🥗', 'comfort food': '🫕', 'quick': '⚡',
-    'fried': '🍟', 'grilled': '🔥', 'baked': '🍞', 'soup': '🍲',
-    'salad': '🥗', 'sandwich': '🥪', 'pasta': '🍝', 'rice': '🍚',
-    'noodles': '🍜', 'curry': '🍛', 'stir fry': '🥘', 'bbq': '🍖',
-    // Dietary
+    'easy': '👌', 'high protein': '💪', 'low carb': '📉',
     'vegan': '🌱', 'vegetarian': '🥬', 'keto': '🥑', 'gluten-free': '🌾',
-    'high protein': '💪', 'low carb': '📉',
-    // Types
+    'dairy-free': '🥛', 'meal prep': '📦', 'budget': '💰',
     'copycat': '🏪', 'fast food': '🍔', 'street food': '🛒',
-    'fried chicken': '🍗', 'tacos': '🌮', 'pizza': '🍕', 'burger': '🍔',
-    'wings': '🍗', 'ramen': '🍜', 'sushi': '🍣',
+    'party food': '🎉', 'game day': '🏈',
 };
 
 function getCategoryIcon(name) {
