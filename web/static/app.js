@@ -1207,35 +1207,120 @@ async function generateShareCard(recipe) {
 
     // ── Export ──
     canvas.toBlob(async (blob) => {
-        const file = new File([blob], `${recipe.title.replace(/[^a-zA-Z0-9]/g, '-')}.png`, { type: 'image/png' });
+        const url = URL.createObjectURL(blob);
+        const fileName = `${recipe.title.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
 
-        // Try native share (mobile)
-        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        // Try native share first (requires HTTPS — works on localhost or mobile apps)
+        if (navigator.share && navigator.canShare) {
             try {
-                await navigator.share({
-                    title: recipe.title,
-                    text: `Check out this recipe: ${recipe.title}`,
-                    files: [file]
-                });
-                return;
+                const file = new File([blob], fileName, { type: 'image/png' });
+                if (navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                        title: recipe.title,
+                        text: `Check out this recipe: ${recipe.title}`,
+                        files: [file]
+                    });
+                    URL.revokeObjectURL(url);
+                    return;
+                }
             } catch (e) {
-                // User cancelled or share failed — fall through to download
+                // User cancelled or not supported — fall through to preview
             }
         }
 
-        // Fallback: download
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = file.name;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        // Flash the button
-        const btn = document.getElementById('shareCardBtn');
-        btn.textContent = '✓ Saved!';
-        setTimeout(() => { btn.textContent = '📤 Share'; }, 1500);
+        // Fallback: show share preview overlay
+        showSharePreview(url, fileName, recipe);
     }, 'image/png');
+}
+
+function showSharePreview(imageUrl, fileName, recipe) {
+    // Remove existing preview if any
+    document.getElementById('sharePreviewOverlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'sharePreviewOverlay';
+    overlay.style.cssText = `
+        position:fixed; inset:0; z-index:5000;
+        background:rgba(0,0,0,0.85);
+        backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        padding:24px; opacity:0; transition:opacity 0.2s ease;
+    `;
+
+    const sourceUrl = recipe.source_url || '';
+    const shareText = `${recipe.title}${recipe.creator ? ' by ' + recipe.creator : ''}${sourceUrl ? '\n' + sourceUrl : ''}`;
+
+    overlay.innerHTML = `
+        <div style="position:relative; max-width:360px; width:100%; display:flex; flex-direction:column; align-items:center; gap:16px;">
+            <img src="${imageUrl}" alt="Share card" style="
+                width:100%; border-radius:16px;
+                box-shadow:0 24px 80px rgba(0,0,0,0.5);
+            ">
+            <p style="color:rgba(255,255,255,0.4); font-size:13px; text-align:center; font-family:-apple-system,sans-serif;">
+                Long-press the image to share · or use the buttons below
+            </p>
+            <div style="display:flex; gap:10px; width:100%;">
+                <button id="shareDownloadBtn" style="
+                    flex:1; padding:14px; border-radius:14px; border:none;
+                    background:rgba(255,255,255,0.1); color:white;
+                    font-size:15px; font-weight:600; cursor:pointer;
+                    font-family:-apple-system,sans-serif;
+                    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+                    border:1px solid rgba(255,255,255,0.1);
+                ">💾 Save Image</button>
+                <button id="shareCopyBtn" style="
+                    flex:1; padding:14px; border-radius:14px; border:none;
+                    background:#007AFF; color:white;
+                    font-size:15px; font-weight:600; cursor:pointer;
+                    font-family:-apple-system,sans-serif;
+                ">📋 Copy Text</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.style.opacity = '1');
+
+    // Close on backdrop click
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            overlay.style.opacity = '0';
+            setTimeout(() => { overlay.remove(); URL.revokeObjectURL(imageUrl); }, 200);
+        }
+    });
+
+    // Escape to close
+    const escHandler = (e) => {
+        if (e.key === 'Escape') {
+            overlay.style.opacity = '0';
+            setTimeout(() => { overlay.remove(); URL.revokeObjectURL(imageUrl); }, 200);
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+
+    // Download button
+    document.getElementById('shareDownloadBtn').addEventListener('click', () => {
+        const a = document.createElement('a');
+        a.href = imageUrl;
+        a.download = fileName;
+        a.click();
+        const btn = document.getElementById('shareDownloadBtn');
+        btn.textContent = '✓ Saved!';
+        setTimeout(() => { btn.textContent = '💾 Save Image'; }, 1500);
+    });
+
+    // Copy text button
+    document.getElementById('shareCopyBtn').addEventListener('click', async () => {
+        const ok = await copyToClipboard(shareText);
+        const btn = document.getElementById('shareCopyBtn');
+        if (ok) {
+            btn.textContent = '✓ Copied!';
+            setTimeout(() => { btn.textContent = '📋 Copy Text'; }, 1500);
+        } else {
+            showCopyFallback(shareText);
+        }
+    });
 }
 
 // Canvas helpers
