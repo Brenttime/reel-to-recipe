@@ -7,7 +7,7 @@ import os
 import sqlite3
 import json
 import requests
-from flask import Flask, render_template, request, jsonify, g, session
+from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for
 from auth import auth_bp, init_auth_db
 
 app = Flask(__name__)
@@ -18,6 +18,29 @@ app.register_blueprint(auth_bp)
 
 DB_PATH = os.environ.get("DB_PATH", "/data/recipes.db")
 MCP_URL = os.environ.get("MCP_URL", "http://host.docker.internal:8002/convert")
+
+# --- Gate the entire app behind Discord login ---
+# Exceptions: auth flow itself, static files, and the MCP save endpoint
+AUTH_EXEMPT_PREFIXES = ('/auth/', '/static/')
+AUTH_EXEMPT_ENDPOINTS = ('api_add_recipe',)  # MCP server pushes recipes without login
+
+
+@app.before_request
+def require_login():
+    """Redirect unauthenticated users to Discord login."""
+    # Skip auth check for exempt paths
+    path = request.path
+    if any(path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES):
+        return None
+    # Skip for exempt endpoints (MCP save)
+    if request.endpoint in AUTH_EXEMPT_ENDPOINTS:
+        return None
+    # Check if logged in
+    if not session.get('user_id'):
+        # API calls get 401, browser requests get redirected
+        if request.is_json or request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': 'Authentication required', 'login_url': '/auth/login'}), 401
+        return redirect(url_for('auth.login'))
 
 
 def get_db():
