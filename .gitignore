@@ -21,3 +21,4 @@ cookies.txt
 
 # Docker data
 cookbook-data/
+.env
