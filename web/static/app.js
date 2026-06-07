@@ -30,6 +30,32 @@ let originalServings = 1;
 const MULTIPLIER_STEPS = [0.5, 1, 2, 3, 4];
 let wakeLockSentinel = null;
 
+// ─── Drink Detection ────────────────────────────
+const DRINK_TAGS = new Set([
+    'cocktail', 'mocktail', 'spirits', 'smoothie', 'shake',
+    'lemonade', 'punch', 'coffee', 'matcha',
+]);
+
+const DRINK_EMOJI = {
+    'cocktail': '🍸', 'mocktail': '🧃', 'spirits': '🥃',
+    'smoothie': '🥤', 'shake': '🥛', 'lemonade': '🍋',
+    'punch': '🍹', 'coffee': '☕', 'matcha': '🍵',
+};
+
+function isDrinkRecipe(recipe) {
+    if (!recipe.tags || !recipe.tags.length) return false;
+    return recipe.tags.some(t => DRINK_TAGS.has(t.toLowerCase()));
+}
+
+function getDrinkEmoji(recipe) {
+    if (!recipe.tags) return '🍹';
+    for (const t of recipe.tags) {
+        const emoji = DRINK_EMOJI[t.toLowerCase()];
+        if (emoji) return emoji;
+    }
+    return '🍹';
+}
+
 // ─── Ingredient Helpers ─────────────────────────
 // Ingredients can be strings (old) or {text, section} objects (new)
 function ingText(ing) {
@@ -330,7 +356,7 @@ function renderGrid(recipes) {
                 <button class="card-cart-btn ${cart.includes(r.id) ? 'in-cart' : ''}" data-add-id="${r.id}" title="${cart.includes(r.id) ? 'In shopping list' : 'Add to shopping list'}">
                     ${cart.includes(r.id) ? '✓' : '+'}
                 </button>
-            <h3 class="card-title">${escapeHtml(r.title)}</h3>
+            <h3 class="card-title">${escapeHtml(r.title)}${isDrinkRecipe(r) ? ` <span class="drink-badge">${getDrinkEmoji(r)}</span>` : ''}</h3>
             ${r.creator ? `<p class="card-creator">by ${escapeHtml(r.creator)}</p>` : ''}
             ${r.tags.length ? `
                 <div class="card-tags">
@@ -439,7 +465,7 @@ function renderModal(recipe) {
                 ${inCart ? '✓ In Shopping List' : '🛒 Add to Shopping List'}
             </button>
             ${recipe.instructions.length > 0 ? `
-                <button class="btn-cook" id="startCookModeBtn">👨‍🍳 Start Cooking</button>
+                <button class="btn-cook" id="startCookModeBtn">${isDrinkRecipe(recipe) ? '🍸 Start Mixing' : '👨‍🍳 Start Cooking'}</button>
             ` : ''}
         </div>
     `;

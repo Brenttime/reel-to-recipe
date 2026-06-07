@@ -475,6 +475,24 @@ body {
     vertical-align: middle;
 }
 
+/* ============ Drink Badge ============ */
+
+.drink-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    background: rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    margin-left: 6px;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+
 .meta-date {
     margin-left: auto;
 }
