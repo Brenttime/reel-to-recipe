@@ -577,8 +577,28 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
         }
 
         # Merge all tag dictionaries and scan (word-boundary matching to avoid substrings)
-        for tag_map in [_protein_tags, _cuisine_tags, _meal_tags, _dish_tags, _method_tags, _attr_tags, _drink_tags]:
+        # Apply non-drink tags first
+        for tag_map in [_protein_tags, _cuisine_tags, _meal_tags, _dish_tags, _method_tags, _attr_tags]:
             for keyword, tag in tag_map.items():
+                if tag not in tags and re.search(r'\b' + re.escape(keyword) + r'\b', all_text):
+                    tags.append(tag)
+
+        # Drink tags require stronger signal — only apply if the TITLE suggests it's a drink,
+        # not just because a spirit name appears in ingredients (e.g. sake in ramen broth,
+        # wine in a sauce, bourbon in a glaze). This prevents food recipes from being
+        # misclassified as cocktails.
+        _drink_title_signals = [
+            'cocktail', 'mocktail', 'martini', 'margarita', 'mojito', 'daiquiri',
+            'negroni', 'sour', 'spritz', 'highball', 'punch', 'sangria', 'mimosa',
+            'smoothie', 'milkshake', 'lemonade', 'latte', 'matcha', 'coffee',
+            'drink', 'beverage', 'soju', 'chu-hai', 'chuhai', 'highball',
+            'shot', 'toddy', 'fizz', 'mule', 'bellini', 'colada',
+        ]
+        title_lower = title.lower()
+        title_is_drink = any(s in title_lower for s in _drink_title_signals)
+
+        if title_is_drink:
+            for keyword, tag in _drink_tags.items():
                 if tag not in tags and re.search(r'\b' + re.escape(keyword) + r'\b', all_text):
                     tags.append(tag)
 
