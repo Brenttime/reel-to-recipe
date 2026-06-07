@@ -119,6 +119,7 @@ body {
     align-items: center;
     justify-content: center;
     gap: 12px;
+    margin-bottom: 4px;
 }
 
 .logo-icon {
@@ -135,23 +136,12 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
 }
 
-.logo-divider {
-    color: var(--text-tertiary, rgba(0,0,0,0.25));
-    font-weight: 300;
-    font-size: 1.4rem;
-    user-select: none;
-}
-
-.logo-tagline {
-    font-size: 1.1rem;
+.subtitle {
+    font-size: 0.95rem;
     font-weight: 300;
     letter-spacing: 0.01em;
     color: var(--text-secondary);
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
-}
-
-.subtitle {
-    display: none;
 }
 
 /* ============ Search ============ */
