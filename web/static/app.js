@@ -564,11 +564,15 @@ async function renderShoppingPanel() {
         recipes.forEach(r => {
             const scaledKey = `reel-cookbook-scaled-${r.id}`;
             const scaledData = localStorage.getItem(scaledKey);
-            let ingredients = r.ingredients ? r.ingredients.split('\n').filter(Boolean) : [];
+            let ingredients = [];
             if (scaledData) {
                 try { ingredients = JSON.parse(scaledData); } catch(e) {}
+            } else if (Array.isArray(r.ingredients)) {
+                ingredients = r.ingredients;
+            } else if (typeof r.ingredients === 'string') {
+                ingredients = r.ingredients.split('\n').filter(Boolean);
             }
-            ingredients.forEach(ing => allIngredients.push({ text: ing.trim(), recipeId: r.id }));
+            ingredients.forEach(ing => allIngredients.push({ text: (typeof ing === 'string' ? ing : String(ing)).trim(), recipeId: r.id }));
         });
         const merged = mergeIngredients(allIngredients);
 
