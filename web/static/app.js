@@ -594,24 +594,90 @@ async function renderShoppingPanel() {
         }
         text += `\n— from Reel Cookbook`;
 
-        navigator.clipboard.writeText(text).then(() => {
+        // Copy to clipboard — must handle HTTP (no secure context)
+        copyToClipboard(text).then(success => {
             const btn = document.getElementById('copyListBtn');
-            const orig = btn.textContent;
-            btn.textContent = '✓ Copied!';
-            setTimeout(() => { btn.textContent = orig; }, 1500);
-        }).catch(() => {
-            // Fallback for non-HTTPS
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-            const btn = document.getElementById('copyListBtn');
-            btn.textContent = '✓ Copied!';
-            setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
+            if (success) {
+                btn.textContent = '✓ Copied!';
+                setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
+            } else {
+                // Last resort: show a modal with selectable text
+                showCopyFallback(text);
+            }
         });
     });
+}
+
+// Robust clipboard copy that works on HTTP
+async function copyToClipboard(text) {
+    // Method 1: Clipboard API (HTTPS only, or localhost)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch(e) { /* falls through */ }
+    }
+
+    // Method 2: execCommand with textarea (works on most browsers over HTTP)
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '-9999px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) return true;
+    } catch(e) { /* falls through */ }
+
+    // Method 3: ClipboardItem with Blob (some browsers prefer this)
+    if (window.ClipboardItem) {
+        try {
+            const blob = new Blob([text], { type: 'text/plain' });
+            await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+            return true;
+        } catch(e) { /* falls through */ }
+    }
+
+    return false;
+}
+
+// Fallback: show text in a selectable modal so user can Cmd+C
+function showCopyFallback(text) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);';
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:rgba(30,30,40,0.95);border-radius:16px;padding:24px;max-width:400px;width:90%;max-height:70vh;display:flex;flex-direction:column;gap:12px;border:1px solid rgba(255,255,255,0.15);';
+    modal.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#fff;font-weight:600;font-size:16px;">Select All & Copy</span>
+            <button id="copyFallbackClose" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button>
+        </div>
+        <textarea id="copyFallbackText" readonly style="width:100%;height:250px;background:rgba(0,0,0,0.4);color:#e0e0e0;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:12px;font-size:14px;font-family:-apple-system,system-ui,sans-serif;resize:none;line-height:1.5;">${text.replace(/</g,'&lt;')}</textarea>
+        <button id="copyFallbackSelect" style="background:linear-gradient(135deg,#007aff,#5856d6);color:#fff;border:none;border-radius:10px;padding:12px;font-size:15px;font-weight:500;cursor:pointer;">Select All (then ⌘C)</button>
+    `;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    document.getElementById('copyFallbackClose').onclick = () => overlay.remove();
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    document.getElementById('copyFallbackSelect').onclick = () => {
+        const ta = document.getElementById('copyFallbackText');
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, ta.value.length);
+    };
+    // Auto-select on open
+    setTimeout(() => {
+        const ta = document.getElementById('copyFallbackText');
+        ta.focus();
+        ta.select();
+    }, 100);
 }
 
 function mergeIngredients(allIngredients) {
