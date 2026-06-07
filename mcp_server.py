@@ -235,7 +235,8 @@ def format_recipe_from_ocr(caption: str, ocr_text: str) -> str:
 Produce a structured recipe with:
 - Recipe title
 - Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere)
-- Ingredients list with quantities
+- Ingredients list with quantities — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [other]
+  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]"
 - Numbered step-by-step instructions
 - Tips section
 
@@ -358,7 +359,15 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
             if section == "ingredients":
                 item = stripped.lstrip("-*•● ").strip()
                 if item:
-                    ingredients.append(item)
+                    # Extract [section] tag if present
+                    section_match = re.search(r'\[(\w+)\]\s*$', item)
+                    if section_match:
+                        ing_section = section_match.group(1).lower()
+                        item_text = item[:section_match.start()].strip()
+                    else:
+                        ing_section = "other"
+                        item_text = item
+                    ingredients.append({"text": item_text, "section": ing_section})
             elif section == "instructions":
                 # Check if this line starts a new step (numbered)
                 step_match = re.match(r"^\d+[\.\)]\s*", stripped)
@@ -386,7 +395,14 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
                     section = "ingredients"
                     item = stripped.lstrip("-*•● ").strip()
                     if item:
-                        ingredients.append(item)
+                        section_match = re.search(r'\[(\w+)\]\s*$', item)
+                        if section_match:
+                            ing_section = section_match.group(1).lower()
+                            item_text = item[:section_match.start()].strip()
+                        else:
+                            ing_section = "other"
+                            item_text = item
+                        ingredients.append({"text": item_text, "section": ing_section})
                 elif re.match(r"^\d+[\.\)]", stripped):
                     section = "instructions"
                     item = re.sub(r"^\d+[\.\)]\s*", "", stripped).strip()
@@ -411,7 +427,7 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
                 platform = "Instagram"
 
         # Auto-tag based on content
-        all_text = (title + " " + " ".join(ingredients)).lower()
+        all_text = (title + " " + " ".join(i["text"] if isinstance(i, dict) else i for i in ingredients)).lower()
         tag_keywords = {
             "chicken": "chicken", "beef": "beef", "shrimp": "seafood",
             "fish": "seafood", "salmon": "seafood", "pasta": "pasta",
@@ -488,7 +504,8 @@ def format_recipe(caption: str, transcript: str) -> str:
 Return a structured recipe with:
 - Recipe title
 - Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere)
-- Ingredients list with exact quantities (from caption)
+- Ingredients list with exact quantities (from caption) — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [other]
+  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]"
 - Numbered step-by-step instructions (combine both sources)
 - Tips section (from transcript)
 
@@ -522,7 +539,8 @@ Use all three to build the most complete recipe possible.
 Return a structured recipe with:
 - Recipe title
 - Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere in any source)
-- Ingredients list with exact quantities
+- Ingredients list with exact quantities — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [other]
+  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]"
 - Numbered step-by-step instructions
 - Tips section
 

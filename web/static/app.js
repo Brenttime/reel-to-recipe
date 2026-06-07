@@ -27,6 +27,14 @@ let currentScale = 1;
 let originalServings = 1;
 let wakeLockSentinel = null;
 
+// ─── Ingredient Helpers ─────────────────────────
+// Ingredients can be strings (old) or {text, section} objects (new)
+function ingText(ing) {
+    if (typeof ing === 'string') return ing;
+    if (ing && typeof ing === 'object') return ing.text || String(ing);
+    return String(ing);
+}
+
 // ─── Shopping List State ─────────────────────────
 const CART_KEY = 'reel-cookbook-cart';
 const CHECKED_KEY = 'reel-cookbook-checked';
@@ -296,7 +304,7 @@ function renderModal(recipe) {
 
         <h4 class="section-title">Ingredients</h4>
         <ul class="ingredients-list" id="ingredientsList">
-            ${recipe.ingredients.map(ing => `<li>${escapeHtml(ing)}</li>`).join('')}
+            ${recipe.ingredients.map(ing => `<li>${escapeHtml(ingText(ing))}</li>`).join('')}
         </ul>
 
         <h4 class="section-title">Instructions</h4>
@@ -358,7 +366,7 @@ function addToCartWithScaledIngredients(recipe) {
     if (currentScale !== 1) {
         const scaledKey = `reel-cookbook-scaled-${recipe.id}`;
         const ratio = currentScale / originalServings;
-        const scaledIngredients = recipe.ingredients.map(ing => scaleIngredient(ing, ratio));
+        const scaledIngredients = recipe.ingredients.map(ing => scaleIngredient(ingText(ing), ratio));
         localStorage.setItem(scaledKey, JSON.stringify(scaledIngredients));
     } else {
         // Remove any old scaled data
@@ -379,7 +387,8 @@ function updateScale(delta) {
     const ingredientsList = document.getElementById('ingredientsList');
     if (ingredientsList && currentRecipe) {
         ingredientsList.innerHTML = currentRecipe.ingredients.map(ing => {
-            const scaled = ratio === 1 ? ing : scaleIngredient(ing, ratio);
+            const text = ingText(ing);
+            const scaled = ratio === 1 ? text : scaleIngredient(text, ratio);
             return `<li>${escapeHtml(scaled)}</li>`;
         }).join('');
     }
@@ -422,7 +431,7 @@ function renderEditModal(recipe) {
             <input type="text" class="edit-input" id="edit-source_url" value="${escapeAttr(recipe.source_url)}">
 
             <label class="edit-label">Ingredients <span class="edit-hint">(one per line)</span></label>
-            <textarea class="edit-textarea" id="edit-ingredients" rows="8">${recipe.ingredients.join('\n')}</textarea>
+            <textarea class="edit-textarea" id="edit-ingredients" rows="8">${recipe.ingredients.map(ing => ingText(ing)).join('\n')}</textarea>
 
             <label class="edit-label">Instructions <span class="edit-hint">(one step per line)</span></label>
             <textarea class="edit-textarea" id="edit-instructions" rows="8">${recipe.instructions.join('\n')}</textarea>
@@ -491,12 +500,56 @@ async function renderShoppingPanel() {
         const ingredients = scaledData ? JSON.parse(scaledData) : recipe.ingredients;
 
         for (const ing of ingredients) {
-            allIngredients.push({ text: ing, recipeTitle: recipe.title });
+            // Handle both formats: string (old) and {text, section} (new)
+            if (typeof ing === 'string') {
+                allIngredients.push({ text: ing, section: 'other', recipeTitle: recipe.title });
+            } else if (ing && typeof ing === 'object') {
+                allIngredients.push({ text: ing.text || String(ing), section: ing.section || 'other', recipeTitle: recipe.title });
+            }
         }
     }
 
     // Deduplicate by normalizing ingredient names
     const merged = mergeIngredients(allIngredients);
+
+    // Group by section
+    const sectionOrder = ['produce', 'meat', 'seafood', 'dairy', 'bakery', 'pantry', 'spices', 'frozen', 'condiments', 'beverages', 'other'];
+    const sectionLabels = {
+        produce: '🥬 Produce',
+        meat: '🥩 Meat',
+        seafood: '🐟 Seafood',
+        dairy: '🧀 Dairy & Eggs',
+        bakery: '🍞 Bakery',
+        pantry: '🫙 Pantry',
+        spices: '🧂 Spices & Seasonings',
+        frozen: '❄️ Frozen',
+        condiments: '🫗 Oils & Condiments',
+        beverages: '🥤 Beverages',
+        other: '🧊 Other'
+    };
+
+    const grouped = {};
+    for (const item of merged) {
+        const sec = item.section || 'other';
+        if (!grouped[sec]) grouped[sec] = [];
+        grouped[sec].push(item);
+    }
+
+    // Build grouped HTML
+    let listHtml = '';
+    let itemIdx = 0;
+    for (const sec of sectionOrder) {
+        if (!grouped[sec] || grouped[sec].length === 0) continue;
+        listHtml += `<li class="shopping-section-header">${sectionLabels[sec] || sec}</li>`;
+        for (const item of grouped[sec]) {
+            listHtml += `
+                <li class="shopping-item ${checked.includes(item.text) ? 'checked' : ''}">
+                    <input type="checkbox" ${checked.includes(item.text) ? 'checked' : ''} data-ing-idx="${itemIdx}" data-ing-text="${escapeAttr(item.text)}">
+                    <span class="shopping-item-text">${escapeHtml(item.text)}</span>
+                </li>`;
+            itemIdx++;
+        }
+    }
 
     shoppingContent.innerHTML = `
         <div class="shopping-header">
@@ -516,12 +569,7 @@ async function renderShoppingPanel() {
             `).join('')}
         </div>
         <ul class="shopping-list" id="shoppingListItems">
-            ${merged.map((item, idx) => `
-                <li class="shopping-item ${checked.includes(item.text) ? 'checked' : ''}">
-                    <input type="checkbox" ${checked.includes(item.text) ? 'checked' : ''} data-ing-idx="${idx}" data-ing-text="${escapeAttr(item.text)}">
-                    <span class="shopping-item-text">${escapeHtml(item.text)}</span>
-                </li>
-            `).join('')}
+            ${listHtml}
         </ul>
     `;
 
@@ -586,25 +634,44 @@ async function renderShoppingPanel() {
             } else if (typeof r.ingredients === 'string') {
                 ingredients = r.ingredients.split('\n').filter(Boolean);
             }
-            ingredients.forEach(ing => allIngredients.push({ text: (typeof ing === 'string' ? ing : String(ing)).trim(), recipeId: r.id }));
+            ingredients.forEach(ing => {
+                if (typeof ing === 'string') {
+                    allIngredients.push({ text: ing.trim(), section: 'other', recipeId: r.id });
+                } else if (ing && typeof ing === 'object') {
+                    allIngredients.push({ text: (ing.text || String(ing)).trim(), section: ing.section || 'other', recipeId: r.id });
+                }
+            });
         });
         const merged = mergeIngredients(allIngredients);
 
-        // Build formatted text for Apple Notes
-        let text = '🛒 Shopping List\n';
-        text += '━━━━━━━━━━━━━━━━\n\n';
-        // Group unchecked first, checked at bottom
-        const unchecked = merged.filter(item => !checked.includes(item.text));
-        const checkedItems = merged.filter(item => checked.includes(item.text));
+        // Build formatted text grouped by section
+        const sectionOrder = ['produce', 'meat', 'seafood', 'dairy', 'bakery', 'pantry', 'spices', 'frozen', 'condiments', 'beverages', 'other'];
+        const sectionLabels = {
+            produce: '🥬 Produce', meat: '🥩 Meat', seafood: '🐟 Seafood',
+            dairy: '🧀 Dairy & Eggs', bakery: '🍞 Bakery', pantry: '🫙 Pantry',
+            spices: '🧂 Spices', frozen: '❄️ Frozen', condiments: '🫗 Condiments',
+            beverages: '🥤 Beverages', other: '🧊 Other'
+        };
 
-        unchecked.forEach(item => {
-            text += `☐ ${item.text}\n`;
-        });
-        if (checkedItems.length > 0) {
-            text += '\n✓ Done:\n';
-            checkedItems.forEach(item => {
-                text += `☑ ${item.text}\n`;
-            });
+        const grouped = {};
+        for (const item of merged) {
+            const sec = item.section || 'other';
+            if (!grouped[sec]) grouped[sec] = [];
+            grouped[sec].push(item);
+        }
+
+        let text = '🛒 Shopping List\n';
+        text += '━━━━━━━━━━━━━━━━\n';
+
+        for (const sec of sectionOrder) {
+            if (!grouped[sec] || grouped[sec].length === 0) continue;
+            const unchecked = grouped[sec].filter(item => !checked.includes(item.text));
+            const checkedItems = grouped[sec].filter(item => checked.includes(item.text));
+            if (unchecked.length === 0 && checkedItems.length === 0) continue;
+
+            text += `\n${sectionLabels[sec] || sec}\n`;
+            unchecked.forEach(item => { text += `☐ ${item.text}\n`; });
+            checkedItems.forEach(item => { text += `☑ ${item.text}\n`; });
         }
         text += `\n— from Reel Cookbook`;
 
@@ -717,7 +784,7 @@ function mergeIngredients(allIngredients) {
             }
             // If we can't combine, just skip the duplicate
         } else {
-            const entry = { text: item.text, recipeTitle: item.recipeTitle };
+            const entry = { text: item.text, section: item.section || 'other', recipeTitle: item.recipeTitle };
             seen.set(key, entry);
             result.push(entry);
         }
@@ -760,7 +827,7 @@ function renderCookModeStep() {
         <details class="cook-ingredients-toggle">
             <summary>📋 Ingredients</summary>
             <div class="cook-ingredients-list">
-                ${cookModeRecipe.ingredients.map(ing => `<span>${escapeHtml(ing)}</span>`).join('')}
+                ${cookModeRecipe.ingredients.map(ing => `<span>${escapeHtml(ingText(ing))}</span>`).join('')}
             </div>
         </details>
         <div class="cook-step-area">
@@ -953,8 +1020,8 @@ function setupListeners() {
     });
 
     // Shopping panel
-    cartToggle.addEventListener('click', () => {
-        renderShoppingPanel();
+    cartToggle.addEventListener('click', async () => {
+        await renderShoppingPanel();
         openShoppingPanel();
     });
 
