@@ -23,8 +23,9 @@ const cartBadge = document.getElementById('cartBadge');
 let allRecipes = [];
 let currentRecipe = null;
 let debounceTimer = null;
-let currentScale = 1;
+let currentMultiplier = 1;
 let originalServings = 1;
+const MULTIPLIER_STEPS = [0.5, 1, 2, 3, 4];
 let wakeLockSentinel = null;
 
 // ─── Ingredient Helpers ─────────────────────────
@@ -271,7 +272,7 @@ function renderModal(recipe) {
     }
     currentRecipe = recipe;
     originalServings = parseServingsNumber(recipe.servings) || 1;
-    currentScale = 1;
+    currentMultiplier = 1;
 
     const cart = getCart();
     const inCart = cart.includes(recipe.id);
@@ -300,7 +301,7 @@ function renderModal(recipe) {
                         ${parseServingsNumber(recipe.servings) && recipeIsScalable(recipe) ? `
                             <span class="scaler-widget">
                                 <button class="scaler-btn" id="scalerMinus">−</button>
-                                <span class="scaler-value" id="scalerValue">${parseServingsNumber(recipe.servings)}</span>
+                                <span class="scaler-value" id="scalerValue">×1</span>
                                 <button class="scaler-btn" id="scalerPlus">+</button>
                             </span>
                         ` : `${escapeHtml(recipe.servings)}`}
@@ -372,11 +373,10 @@ function renderModal(recipe) {
 
 function addToCartWithScaledIngredients(recipe) {
     addToCart(recipe.id);
-    // Store scaled ingredients if scale != 1
-    if (currentScale !== 1) {
+    // Store scaled ingredients if multiplier != 1
+    if (currentMultiplier !== 1) {
         const scaledKey = `reel-cookbook-scaled-${recipe.id}`;
-        const ratio = currentScale / originalServings;
-        const scaledIngredients = recipe.ingredients.map(ing => scaleIngredient(ingText(ing), ratio));
+        const scaledIngredients = recipe.ingredients.map(ing => scaleIngredient(ingText(ing), currentMultiplier));
         localStorage.setItem(scaledKey, JSON.stringify(scaledIngredients));
     } else {
         // Remove any old scaled data
@@ -385,20 +385,22 @@ function addToCartWithScaledIngredients(recipe) {
 }
 
 function updateScale(delta) {
-    const newVal = currentScale + delta;
-    if (newVal < 1) return;
-    currentScale = newVal;
+    const currentIdx = MULTIPLIER_STEPS.indexOf(currentMultiplier);
+    const newIdx = currentIdx + delta;
+    if (newIdx < 0 || newIdx >= MULTIPLIER_STEPS.length) return;
+    currentMultiplier = MULTIPLIER_STEPS[newIdx];
 
     const scalerValue = document.getElementById('scalerValue');
-    if (scalerValue) scalerValue.textContent = currentScale;
+    if (scalerValue) {
+        scalerValue.textContent = currentMultiplier === 0.5 ? '×½' : `×${currentMultiplier}`;
+    }
 
     // Update ingredients display
-    const ratio = currentScale / originalServings;
     const ingredientsList = document.getElementById('ingredientsList');
     if (ingredientsList && currentRecipe) {
         ingredientsList.innerHTML = currentRecipe.ingredients.map(ing => {
             const text = ingText(ing);
-            const scaled = ratio === 1 ? text : scaleIngredient(text, ratio);
+            const scaled = currentMultiplier === 1 ? text : scaleIngredient(text, currentMultiplier);
             return `<li>${escapeHtml(scaled)}</li>`;
         }).join('');
     }
