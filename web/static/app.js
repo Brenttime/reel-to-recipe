@@ -197,7 +197,7 @@ function renderGrid(recipes) {
                 <span class="dot"></span>
                 ${r.platform || 'recipe'}
             </div>
-            <button class="card-add-btn ${cart.includes(r.id) ? 'in-cart' : ''}" data-add-id="${r.id}" title="${cart.includes(r.id) ? 'In shopping list' : 'Add to shopping list'}">
+            <button class="card-cart-btn ${cart.includes(r.id) ? 'in-cart' : ''}" data-add-id="${r.id}" title="${cart.includes(r.id) ? 'In shopping list' : 'Add to shopping list'}">
                 ${cart.includes(r.id) ? '✓' : '+'}
             </button>
             <h3 class="card-title">${escapeHtml(r.title)}</h3>
@@ -285,10 +285,6 @@ function renderModal(recipe) {
             ${recipe.ingredients.map(ing => `<li>${escapeHtml(ing)}</li>`).join('')}
         </ul>
 
-        <button class="btn btn-add-list" id="addToListBtn">
-            ${inCart ? '✓ In Shopping List' : '🛒 Add to Shopping List'}
-        </button>
-
         <h4 class="section-title">Instructions</h4>
         <ol class="instructions-list">
             ${recipe.instructions.map(step => `<li>${escapeHtml(step)}</li>`).join('')}
@@ -297,9 +293,14 @@ function renderModal(recipe) {
         ${recipe.tips ? `<div class="modal-tips">${escapeHtml(recipe.tips)}</div>` : ''}
         ${recipe.macros ? `<div class="modal-macros">📊 ${escapeHtml(recipe.macros)}</div>` : ''}
 
-        ${recipe.instructions.length > 0 ? `
-            <button class="btn btn-cook-mode" id="startCookModeBtn">👨‍🍳 Start Cooking</button>
-        ` : ''}
+        <div class="modal-action-bar">
+            <button class="btn-add-list ${inCart ? 'in-cart' : ''}" id="addToListBtn">
+                ${inCart ? '✓ In Shopping List' : '🛒 Add to Shopping List'}
+            </button>
+            ${recipe.instructions.length > 0 ? `
+                <button class="btn-cook" id="startCookModeBtn">👨‍🍳 Start Cooking</button>
+            ` : ''}
+        </div>
     `;
 
     // Bind action buttons
@@ -313,9 +314,11 @@ function renderModal(recipe) {
         if (cart.includes(recipe.id)) {
             removeFromCart(recipe.id);
             addBtn.textContent = '🛒 Add to Shopping List';
+            addBtn.classList.remove('in-cart');
         } else {
             addToCartWithScaledIngredients(recipe);
             addBtn.textContent = '✓ In Shopping List';
+            addBtn.classList.add('in-cart');
         }
         renderGrid(allRecipes);
     });
@@ -440,10 +443,12 @@ async function renderShoppingPanel() {
 
     if (cart.length === 0) {
         shoppingContent.innerHTML = `
-            <h2 class="shopping-title">🛒 Shopping List</h2>
+            <div class="shopping-header">
+                <h2>Shopping List</h2>
+            </div>
             <div class="shopping-empty">
                 <p>Your shopping list is empty</p>
-                <span>Add recipes by clicking the + button on recipe cards</span>
+                <span>Tap + on recipe cards to add ingredients</span>
             </div>
         `;
         return;
@@ -480,35 +485,34 @@ async function renderShoppingPanel() {
     const merged = mergeIngredients(allIngredients);
 
     shoppingContent.innerHTML = `
-        <h2 class="shopping-title">🛒 Shopping List</h2>
-        <div class="shopping-recipes">
-            <h4>Recipes (${recipes.length})</h4>
-            ${recipes.map(r => `
-                <div class="shopping-recipe-item">
-                    <span>${escapeHtml(r.title)}</span>
-                    <button class="shopping-remove-btn" data-remove-id="${r.id}" title="Remove">×</button>
-                </div>
-            `).join('')}
-        </div>
-        <div class="shopping-ingredients">
-            <h4>Ingredients (${merged.length})</h4>
-            <div class="shopping-list" id="shoppingListItems">
-                ${merged.map((item, idx) => `
-                    <label class="shopping-item ${checked.includes(item.text) ? 'checked' : ''}">
-                        <input type="checkbox" ${checked.includes(item.text) ? 'checked' : ''} data-ing-idx="${idx}" data-ing-text="${escapeAttr(item.text)}">
-                        <span class="shopping-item-text">${escapeHtml(item.text)}</span>
-                    </label>
-                `).join('')}
+        <div class="shopping-header">
+            <h2>Shopping List</h2>
+            <div class="shopping-actions">
+                <button id="copyListBtn" title="Copy to clipboard">📋 Copy</button>
+                <button id="clearCheckedBtn">Clear Checked</button>
+                <button id="clearAllBtn">Clear All</button>
             </div>
         </div>
-        <div class="shopping-actions">
-            <button class="btn btn-clear-checked" id="clearCheckedBtn">Clear Checked</button>
-            <button class="btn btn-clear-all" id="clearAllBtn">Clear All</button>
+        <div class="shopping-recipes">
+            ${recipes.map(r => `
+                <span class="shopping-recipe-chip">
+                    ${escapeHtml(r.title)}
+                    <button data-remove-id="${r.id}" title="Remove">×</button>
+                </span>
+            `).join('')}
         </div>
+        <ul class="shopping-list" id="shoppingListItems">
+            ${merged.map((item, idx) => `
+                <li class="shopping-item ${checked.includes(item.text) ? 'checked' : ''}">
+                    <input type="checkbox" ${checked.includes(item.text) ? 'checked' : ''} data-ing-idx="${idx}" data-ing-text="${escapeAttr(item.text)}">
+                    <span class="shopping-item-text">${escapeHtml(item.text)}</span>
+                </li>
+            `).join('')}
+        </ul>
     `;
 
     // Bind remove buttons
-    shoppingContent.querySelectorAll('.shopping-remove-btn').forEach(btn => {
+    shoppingContent.querySelectorAll('[data-remove-id]').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const id = btn.dataset.removeId;
             removeFromCart(id);
@@ -549,6 +553,60 @@ async function renderShoppingPanel() {
         setChecked([]);
         renderShoppingPanel();
         renderGrid(allRecipes);
+    });
+
+    // Copy to clipboard
+    document.getElementById('copyListBtn').addEventListener('click', () => {
+        const cart = getCart();
+        const checked = getChecked();
+        const recipes = allRecipes.filter(r => cart.includes(parseInt(r.id)));
+        const allIngredients = [];
+        recipes.forEach(r => {
+            const scaledKey = `reel-cookbook-scaled-${r.id}`;
+            const scaledData = localStorage.getItem(scaledKey);
+            let ingredients = r.ingredients ? r.ingredients.split('\n').filter(Boolean) : [];
+            if (scaledData) {
+                try { ingredients = JSON.parse(scaledData); } catch(e) {}
+            }
+            ingredients.forEach(ing => allIngredients.push({ text: ing.trim(), recipeId: r.id }));
+        });
+        const merged = mergeIngredients(allIngredients);
+
+        // Build formatted text for Apple Notes
+        let text = '🛒 Shopping List\n';
+        text += '━━━━━━━━━━━━━━━━\n\n';
+        // Group unchecked first, checked at bottom
+        const unchecked = merged.filter(item => !checked.includes(item.text));
+        const checkedItems = merged.filter(item => checked.includes(item.text));
+
+        unchecked.forEach(item => {
+            text += `☐ ${item.text}\n`;
+        });
+        if (checkedItems.length > 0) {
+            text += '\n✓ Done:\n';
+            checkedItems.forEach(item => {
+                text += `☑ ${item.text}\n`;
+            });
+        }
+        text += `\n— from Reel Cookbook`;
+
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById('copyListBtn');
+            const orig = btn.textContent;
+            btn.textContent = '✓ Copied!';
+            setTimeout(() => { btn.textContent = orig; }, 1500);
+        }).catch(() => {
+            // Fallback for non-HTTPS
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            const btn = document.getElementById('copyListBtn');
+            btn.textContent = '✓ Copied!';
+            setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
+        });
     });
 }
 
@@ -611,25 +669,25 @@ function renderCookModeStep() {
     const current = cookModeStep;
 
     cookModeContent.innerHTML = `
-        <button class="cook-exit-btn" id="cookModeExit">✕ Exit</button>
         <div class="cook-header">
             <h2 class="cook-title">${escapeHtml(cookModeRecipe.title)}</h2>
-            <div class="cook-ingredients-ref">
-                <details>
-                    <summary>📋 Ingredients</summary>
-                    <ul>
-                        ${cookModeRecipe.ingredients.map(ing => `<li>${escapeHtml(ing)}</li>`).join('')}
-                    </ul>
-                </details>
-            </div>
+            <button class="cook-exit" id="cookModeExit">✕ Exit</button>
         </div>
-        <div class="cook-step-counter">Step ${current + 1} of ${total}</div>
-        <div class="cook-step-text">${escapeHtml(steps[current])}</div>
+        <details class="cook-ingredients-toggle">
+            <summary>📋 Ingredients</summary>
+            <div class="cook-ingredients-list">
+                ${cookModeRecipe.ingredients.map(ing => `<span>${escapeHtml(ing)}</span>`).join('')}
+            </div>
+        </details>
+        <div class="cook-step-area">
+            <div class="cook-step-counter">Step ${current + 1} of ${total}</div>
+            <div class="cook-step-text">${escapeHtml(steps[current])}</div>
+            ${current === total - 1 ? `<div class="cook-done"><p>🎉</p><span>You're done! Enjoy your meal!</span></div>` : ''}
+        </div>
         <div class="cook-nav">
             <button class="cook-nav-btn" id="cookPrev" ${current === 0 ? 'disabled' : ''}>← Previous</button>
-            <button class="cook-nav-btn" id="cookNext" ${current === total - 1 ? 'disabled' : ''}>Next →</button>
+            <button class="cook-nav-btn primary" id="cookNext" ${current === total - 1 ? 'disabled' : ''}>Next →</button>
         </div>
-        ${current === total - 1 ? `<div class="cook-done">🎉 You're done! Enjoy your meal!</div>` : ''}
     `;
 
     document.getElementById('cookModeExit').addEventListener('click', closeCookMode);
@@ -779,7 +837,7 @@ function setupListeners() {
     // Card click → modal (but not if clicking the add button)
     recipeGrid.addEventListener('click', async (e) => {
         // Handle add to cart button on card
-        const addBtn = e.target.closest('.card-add-btn');
+        const addBtn = e.target.closest('.card-cart-btn');
         if (addBtn) {
             e.stopPropagation();
             const id = Number(addBtn.dataset.addId);
