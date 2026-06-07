@@ -117,6 +117,131 @@ def init_db():
     conn.close()
     # Initialize auth tables
     init_auth_db(DB_PATH)
+    # Initialize reviews table
+    _init_reviews_db()
+
+
+def _init_reviews_db():
+    """Create reviews table."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+            comment TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(recipe_id, user_id)
+        );
+    """)
+    conn.close()
+
+
+@app.route("/api/recipes/<int:recipe_id>/reviews")
+def api_get_reviews(recipe_id):
+    """Get all reviews for a recipe with user info and averages."""
+    db = get_db()
+    reviews = db.execute("""
+        SELECT r.id, r.rating, r.comment, r.created_at, r.updated_at,
+               u.id as user_id, u.username, u.display_name, u.discord_id, u.avatar
+        FROM reviews r
+        JOIN users u ON r.user_id = u.id
+        WHERE r.recipe_id = ?
+        ORDER BY r.created_at DESC
+    """, (recipe_id,)).fetchall()
+
+    reviews_list = []
+    for row in reviews:
+        avatar_url = None
+        if row['avatar']:
+            avatar_url = f"https://cdn.discordapp.com/avatars/{row['discord_id']}/{row['avatar']}.png?size=64"
+        reviews_list.append({
+            'id': row['id'],
+            'rating': row['rating'],
+            'comment': row['comment'],
+            'created_at': row['created_at'],
+            'updated_at': row['updated_at'],
+            'user': {
+                'id': row['user_id'],
+                'username': row['username'],
+                'display_name': row['display_name'],
+                'avatar_url': avatar_url,
+            }
+        })
+
+    # Calculate average
+    avg = 0
+    count = len(reviews_list)
+    if count > 0:
+        avg = round(sum(r['rating'] for r in reviews_list) / count, 1)
+
+    # Include current user's review if logged in
+    my_review = None
+    if session.get('user_id'):
+        for r in reviews_list:
+            if r['user']['id'] == session['user_id']:
+                my_review = r
+                break
+
+    return jsonify({
+        'average': avg,
+        'count': count,
+        'reviews': reviews_list,
+        'my_review': my_review,
+    })
+
+
+@app.route("/api/recipes/<int:recipe_id>/reviews", methods=["POST"])
+def api_post_review(recipe_id):
+    """Create or update a review (one per user per recipe)."""
+    if not session.get('user_id'):
+        return jsonify({'error': 'Authentication required'}), 401
+
+    data = request.get_json()
+    rating = data.get('rating')
+    comment = data.get('comment', '').strip()
+
+    if not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
+        return jsonify({'error': 'Rating must be 1-5'}), 400
+
+    db = get_db()
+    # Upsert — one review per user per recipe
+    existing = db.execute(
+        'SELECT id FROM reviews WHERE recipe_id = ? AND user_id = ?',
+        (recipe_id, session['user_id'])
+    ).fetchone()
+
+    if existing:
+        db.execute(
+            'UPDATE reviews SET rating = ?, comment = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            (rating, comment, existing['id'])
+        )
+    else:
+        db.execute(
+            'INSERT INTO reviews (recipe_id, user_id, rating, comment) VALUES (?, ?, ?, ?)',
+            (recipe_id, session['user_id'], rating, comment)
+        )
+    db.commit()
+    return jsonify({'status': 'ok'})
+
+
+@app.route("/api/recipes/<int:recipe_id>/reviews", methods=["DELETE"])
+def api_delete_review(recipe_id):
+    """Delete current user's review."""
+    if not session.get('user_id'):
+        return jsonify({'error': 'Authentication required'}), 401
+
+    db = get_db()
+    db.execute(
+        'DELETE FROM reviews WHERE recipe_id = ? AND user_id = ?',
+        (recipe_id, session['user_id'])
+    )
+    db.commit()
+    return jsonify({'status': 'ok'})
 
 
 @app.route("/")
