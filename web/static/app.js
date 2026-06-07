@@ -725,6 +725,9 @@ function renderEditModal(recipe) {
             <label class="edit-label">Source URL</label>
             <input type="text" class="edit-input" id="edit-source_url" value="${escapeAttr(recipe.source_url)}">
 
+            <label class="edit-label">Added by</label>
+            <input type="text" class="edit-input" id="edit-added_by" value="${escapeAttr(recipe.added_by || '')}">
+
             <label class="edit-label">Ingredients <span class="edit-hint">(one per line)</span></label>
             <textarea class="edit-textarea" id="edit-ingredients" rows="8">${recipe.ingredients.map(ing => ingText(ing)).join('\n')}</textarea>
 
@@ -1221,6 +1224,7 @@ async function saveRecipe(id) {
         creator: document.getElementById('edit-creator').value.trim(),
         platform: document.getElementById('edit-platform').value.trim(),
         source_url: document.getElementById('edit-source_url').value.trim(),
+        added_by: document.getElementById('edit-added_by').value.trim(),
         servings: document.getElementById('edit-servings').value.trim(),
         prep_time: document.getElementById('edit-prep_time').value.trim(),
         cook_time: document.getElementById('edit-cook_time').value.trim(),

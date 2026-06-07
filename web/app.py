@@ -367,7 +367,8 @@ def api_update_recipe(recipe_id):
         UPDATE recipes SET
             title = ?, creator = ?, source_url = ?, platform = ?,
             servings = ?, prep_time = ?, cook_time = ?, total_time = ?,
-            ingredients = ?, instructions = ?, tips = ?, macros = ?, tags = ?
+            ingredients = ?, instructions = ?, tips = ?, macros = ?, tags = ?,
+            added_by = ?
         WHERE id = ?
     """, (
         data.get("title", row["title"]),
@@ -383,6 +384,7 @@ def api_update_recipe(recipe_id):
         data.get("tips", row["tips"]),
         data.get("macros", row["macros"]),
         json.dumps(data["tags"]) if "tags" in data else row["tags"],
+        data.get("added_by", row["added_by"]),
         recipe_id,
     ))
     db.commit()
