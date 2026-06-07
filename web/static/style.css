@@ -599,6 +599,22 @@ body {
     margin-left: auto;
 }
 
+.meta-rating {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.card-star {
+    color: #FF9500;
+    font-size: 0.9em;
+}
+
+.rating-count {
+    font-weight: 400;
+    color: var(--text-secondary);
+    font-size: 0.85em;
+}
+
 .modal-date-added {
     font-size: 0.8rem;
     color: var(--text-tertiary);

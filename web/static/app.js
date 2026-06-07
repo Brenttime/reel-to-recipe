@@ -426,6 +426,12 @@ function renderGrid(recipes) {
                         ${formatDateAdded(r.created_at)}
                     </span>
                 ` : ''}
+                ${r.rating_avg ? `
+                    <span class="meta-item meta-rating">
+                        <span class="card-star">&#9733;</span>
+                        ${r.rating_avg} <span class="rating-count">(${r.rating_count})</span>
+                    </span>
+                ` : ''}
             </div>
             </div>
         </article>
