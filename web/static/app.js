@@ -508,6 +508,13 @@ function renderModal(recipe) {
                 <button class="btn-cook" id="startCookModeBtn">${isDrinkRecipe(recipe) ? '🍸 Start Mixing' : '👨‍🍳 Start Cooking'}</button>
             ` : ''}
         </div>
+
+        <!-- Rating & Reviews Section -->
+        <div class="reviews-section" id="reviewsSection">
+            <div class="reviews-summary" id="reviewsSummary">
+                <div class="reviews-loading">Loading reviews…</div>
+            </div>
+        </div>
     `;
 
     // Bind action buttons
@@ -546,6 +553,9 @@ function renderModal(recipe) {
 
     // Bind share button
     document.getElementById('shareCardBtn').addEventListener('click', () => shareRecipe(recipe));
+
+    // Load reviews
+    loadReviews(recipe.id);
 }
 
 function addToCartWithScaledIngredients(recipe) {
@@ -1455,6 +1465,187 @@ function escapeHtml(text) {
 function escapeAttr(text) {
     if (!text) return '';
     return text.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ─── Reviews & Ratings ──────────────────────────
+let currentUser = null;
+
+async function fetchCurrentUser() {
+    if (currentUser !== null) return currentUser;
+    try {
+        const res = await fetch('/auth/me', { credentials: 'same-origin' });
+        const data = await res.json();
+        currentUser = data.authenticated ? data : false;
+    } catch (e) {
+        currentUser = false;
+    }
+    return currentUser;
+}
+
+async function loadReviews(recipeId) {
+    const section = document.getElementById('reviewsSection');
+    if (!section) return;
+
+    try {
+        const res = await fetch(`/api/recipes/${recipeId}/reviews`, { credentials: 'same-origin' });
+        const data = await res.json();
+        const user = await fetchCurrentUser();
+        renderReviewsSection(section, data, recipeId, user);
+    } catch (e) {
+        section.innerHTML = '';
+    }
+}
+
+function renderStars(rating, interactive = false, size = 'sm') {
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+        const filled = i <= rating;
+        const cls = `review-star ${size} ${filled ? 'filled' : ''} ${interactive ? 'interactive' : ''}`;
+        stars.push(`<span class="${cls}" data-star="${i}">&#9733;</span>`);
+    }
+    return stars.join('');
+}
+
+function renderReviewsSection(container, data, recipeId, user) {
+    const { average, count, reviews, my_review } = data;
+
+    container.innerHTML = `
+        <div class="reviews-header" id="reviewsHeader">
+            <div class="reviews-score">
+                <span class="reviews-avg">${count > 0 ? average : '\u2014'}</span>
+                <div class="reviews-stars">${count > 0 ? renderStars(Math.round(average), false, 'md') : renderStars(0, false, 'md')}</div>
+                <span class="reviews-count">${count} ${count === 1 ? 'review' : 'reviews'}</span>
+            </div>
+            <svg class="reviews-chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        </div>
+        <div class="reviews-panel" id="reviewsPanel">
+            ${user ? renderMyReviewForm(my_review, recipeId) : ''}
+            <div class="reviews-list" id="reviewsList">
+                ${reviews.length > 0 ? reviews.map(r => renderReviewItem(r, user)).join('') : '<p class="reviews-empty">No reviews yet. Be the first!</p>'}
+            </div>
+        </div>
+    `;
+
+    const header = container.querySelector('#reviewsHeader');
+    const panel = container.querySelector('#reviewsPanel');
+    header.addEventListener('click', () => {
+        panel.classList.toggle('open');
+        header.classList.toggle('expanded');
+    });
+
+    if (user) {
+        bindReviewForm(container, recipeId, my_review);
+    }
+}
+
+function renderMyReviewForm(myReview, recipeId) {
+    const existingRating = myReview ? myReview.rating : 0;
+    const existingComment = myReview ? myReview.comment : '';
+
+    return `
+        <div class="review-form-container">
+            <h4 class="review-form-title">${myReview ? 'Your Review' : 'Rate this recipe'}</h4>
+            <div class="review-form-stars" id="reviewFormStars">
+                ${renderStars(existingRating, true, 'lg')}
+            </div>
+            <textarea class="review-comment-input" id="reviewCommentInput" placeholder="Add a comment (optional)\u2026" rows="2">${existingComment ? escapeHtml(existingComment) : ''}</textarea>
+            <div class="review-form-actions">
+                <button class="review-submit-btn" id="reviewSubmitBtn">${myReview ? 'Update' : 'Submit'}</button>
+                ${myReview ? '<button class="review-delete-btn" id="reviewDeleteBtn">Remove</button>' : ''}
+            </div>
+        </div>
+    `;
+}
+
+function renderReviewItem(review, user) {
+    const avatarUrl = review.user.avatar_url || 'https://cdn.discordapp.com/embed/avatars/0.png';
+    const displayName = review.user.display_name || review.user.username;
+    const isOwn = user && user.id === review.user.id;
+    const date = new Date(review.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    return `
+        <div class="review-item ${isOwn ? 'own-review' : ''}">
+            <div class="review-item-header">
+                <img class="review-avatar" src="${avatarUrl}" alt="${escapeHtml(displayName)}" />
+                <div class="review-item-meta">
+                    <span class="review-username">${escapeHtml(displayName)}</span>
+                    <span class="review-date">${date}</span>
+                </div>
+                <div class="review-item-stars">${renderStars(review.rating, false, 'sm')}</div>
+            </div>
+            ${review.comment ? `<p class="review-comment">${escapeHtml(review.comment)}</p>` : ''}
+        </div>
+    `;
+}
+
+function bindReviewForm(container, recipeId, myReview) {
+    let selectedRating = myReview ? myReview.rating : 0;
+    const starsContainer = container.querySelector('#reviewFormStars');
+    const stars = starsContainer.querySelectorAll('.review-star');
+    const submitBtn = container.querySelector('#reviewSubmitBtn');
+    const deleteBtn = container.querySelector('#reviewDeleteBtn');
+    const commentInput = container.querySelector('#reviewCommentInput');
+
+    stars.forEach(star => {
+        star.addEventListener('mouseenter', () => {
+            const val = parseInt(star.dataset.star);
+            stars.forEach(s => {
+                s.classList.toggle('hovered', parseInt(s.dataset.star) <= val);
+            });
+        });
+
+        star.addEventListener('mouseleave', () => {
+            stars.forEach(s => s.classList.remove('hovered'));
+        });
+
+        star.addEventListener('click', () => {
+            selectedRating = parseInt(star.dataset.star);
+            stars.forEach(s => {
+                s.classList.toggle('filled', parseInt(s.dataset.star) <= selectedRating);
+            });
+        });
+    });
+
+    submitBtn.addEventListener('click', async () => {
+        if (selectedRating === 0) {
+            submitBtn.textContent = 'Tap a star first';
+            setTimeout(() => { submitBtn.textContent = myReview ? 'Update' : 'Submit'; }, 1500);
+            return;
+        }
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving\u2026';
+        try {
+            const res = await fetch(`/api/recipes/${recipeId}/reviews`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ rating: selectedRating, comment: commentInput.value.trim() })
+            });
+            if (res.ok) {
+                await loadReviews(recipeId);
+            } else {
+                submitBtn.textContent = 'Error';
+                setTimeout(() => { submitBtn.textContent = myReview ? 'Update' : 'Submit'; }, 1500);
+            }
+        } catch (e) {
+            submitBtn.textContent = 'Error';
+        }
+        submitBtn.disabled = false;
+    });
+
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', async () => {
+            deleteBtn.disabled = true;
+            try {
+                await fetch(`/api/recipes/${recipeId}/reviews`, {
+                    method: 'DELETE',
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' }
+                });
+                await loadReviews(recipeId);
+            } catch (e) { /* ignore */ }
+        });
+    }
 }
 
 // ─── Boot ───────────────────────────────────────
