@@ -43,6 +43,7 @@ const spotlightOverlay = document.getElementById('spotlightOverlay');
 let allRecipes = [];
 let currentRecipe = null;
 let isEditMode = false;
+let editFormSnapshot = null;
 let debounceTimer = null;
 let currentMultiplier = 1;
 let originalServings = 1;
@@ -1264,9 +1265,30 @@ async function deleteRecipe(recipe) {
     }
 }
 
+function getEditFormSnapshot() {
+    const fields = ['edit-title','edit-creator','edit-platform','edit-servings',
+        'edit-prep_time','edit-cook_time','edit-source_url','edit-added_by',
+        'edit-ingredients','edit-instructions','edit-tips','edit-macros','edit-tags'];
+    const snap = {};
+    fields.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) snap[id] = el.value;
+    });
+    return JSON.stringify(snap);
+}
+
+function hasEditFormChanged() {
+    if (!editFormSnapshot) return false;
+    return getEditFormSnapshot() !== editFormSnapshot;
+}
+
 function openEditMode(recipe) {
     isEditMode = true;
     renderEditModal(recipe);
+    // Snapshot after a tick so any async population (added_by dropdown) settles
+    requestAnimationFrame(() => {
+        editFormSnapshot = getEditFormSnapshot();
+    });
 }
 
 async function saveRecipe(id) {
@@ -1685,7 +1707,7 @@ function openModal() {
 }
 
 function closeModal() {
-    if (isEditMode) {
+    if (isEditMode && hasEditFormChanged()) {
         showEditDiscardDialog();
         return;
     }
@@ -1694,6 +1716,7 @@ function closeModal() {
 
 function doCloseModal() {
     isEditMode = false;
+    editFormSnapshot = null;
     modalOverlay.classList.remove('active');
     document.body.style.overflow = '';
     currentRecipe = null;
@@ -1707,10 +1730,17 @@ function doCloseModal() {
 }
 
 function confirmDiscardEdit(recipe) {
-    showEditDiscardDialog(() => {
+    if (hasEditFormChanged()) {
+        showEditDiscardDialog(() => {
+            isEditMode = false;
+            editFormSnapshot = null;
+            renderModal(recipe);
+        });
+    } else {
         isEditMode = false;
+        editFormSnapshot = null;
         renderModal(recipe);
-    });
+    }
 }
 
 function showEditDiscardDialog(onDiscard) {
