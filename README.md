@@ -74,15 +74,28 @@ All pipelines auto-save to OnlyPans with duplicate detection (by source URL) and
 
 #### Gallery & Discovery
 - **Recipe cards** with thumbnail images, category chips, creator attribution, average rating, and "NEW" badges (< 24h old)
-- **Full-text search** across recipe titles, creators, ingredients, instructions, and tips (SQLite FTS5 with LIKE fallback)
+- **Full-text search** across recipe titles, creators, ingredients, instructions, tips, and who added it (SQLite FTS5 with LIKE fallback)
 - **DoorDash-style category chips** — emoji-tagged filter buttons (🇯🇵 Japanese, 🍗 Chicken, 💨 Air Fryer, 🦐 Seafood, etc.) generated from recipe tags
+- **"Added by Me" chip** — personal filter with your Discord avatar showing only recipes you added
+- **Dark mode** — system/light/dark toggle in profile dropdown; Apple Liquid Glass dark aesthetic with deep purple gradients and subtle glass effects
 - **Mobile-optimized** — viewport-locked, edge-to-edge layout, touch-friendly chip scrolling
 
 #### Spotlight Convert (⌘+Space style)
 - Full-screen dimmed blur overlay with a single dark frosted search bar
-- Paste any Instagram or TikTok URL → converts in-place with loading spinner
-- Auto-closes on success and scrolls to the new recipe
+- Paste any Instagram or TikTok URL → queues conversion instantly
+- **Non-blocking** — close the overlay and keep browsing while it converts
 - Duplicate detection prevents re-converting the same reel
+- Queue multiple URLs in rapid succession
+
+#### 🔄 Async Conversion Queue
+- **Background processing** — conversions run in background threads, UI never blocks
+- **Progress bar** — frosted-glass bar fixed to top of page with animated sliding indicator
+  - Shows *"Converting N recipes…"* for active jobs
+  - Green flash with ✓ *Added "Recipe Title"* on success
+  - Red flash on error, auto-hides after 5 seconds
+- **Observable pattern** — gallery auto-refreshes when a conversion finishes (no manual reload)
+- **Multi-queue** — paste 5 URLs, close the overlay, watch them appear one by one
+- **Hidden when idle** — bar is completely invisible with no active conversions
 
 #### Recipe Detail Modal
 - Full recipe view: ingredients, instructions, tips, macros, metadata
@@ -278,8 +291,11 @@ All endpoints except `POST /api/recipes` require Discord authentication (session
 | `/api/recipes/<id>/reviews` | PUT | ✅ | Update your existing review |
 | `/api/recipes/<id>/reviews` | DELETE | ✅ | Delete your review |
 | `/api/creators` | GET | ✅ | Unique creator names for filtering |
+| `/api/users` | GET | ✅ | All registered users (for "Added by" dropdown) |
 | `/api/categories` | GET | ✅ | Tags with counts for category chips |
-| `/api/convert` | POST | ✅ | Proxy conversion request to MCP server |
+| `/api/convert` | POST | ✅ | Queue a reel URL for conversion (returns job_id, 202) |
+| `/api/convert/<job_id>` | GET | ✅ | Poll conversion job status (queued/processing/done/error) |
+| `/api/convert/queue` | GET | ✅ | List all active conversion jobs |
 | `/api/thumbnail/<id>` | GET | ✅ | Proxy and cache recipe thumbnail images |
 | `/api/rebuild-index` | POST | ✅ | Rebuild FTS5 full-text search index |
 | `/auth/login` | GET | ❌ | Initiate Discord OAuth2 flow |
@@ -319,15 +335,15 @@ reel-to-recipe/
 │
 ├── web/                        # OnlyPans web app
 │   ├── Dockerfile
-│   ├── app.py                  # Flask backend — REST API, FTS5, reviews, auth gate
+│   ├── app.py                  # Flask backend — REST API, FTS5, reviews, auth gate, conversion queue
 │   ├── auth.py                 # Discord OAuth2 module (login, callback, logout, me)
 │   ├── seed.py                 # Database seeder (sample recipes)
 │   ├── requirements.txt        # Flask, Gunicorn, Requests, Flask-Session
 │   ├── templates/
 │   │   └── index.html          # SPA shell — Spotlight overlay, modal, shopping panel
 │   └── static/
-│       ├── app.js              # Frontend — gallery, search, cook mode, reviews, shopping list, share
-│       └── style.css           # Apple Liquid Glass design system
+│       ├── app.js              # Frontend — gallery, search, cook mode, reviews, queue tracker, dark mode, share
+│       └── style.css           # Apple Liquid Glass design system (light + dark themes)
 │
 └── docs/
     ├── agent-onboarding.md     # Architecture overview for AI agents
@@ -351,6 +367,7 @@ recipes (
     tips TEXT, servings TEXT, prep_time TEXT, cook_time TEXT,
     tags TEXT,  -- JSON array
     user_id INTEGER REFERENCES users(id),
+    added_by TEXT DEFAULT '',  -- display name of who added it (empty = MCP)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 
@@ -406,7 +423,10 @@ reviews (
 
 - **App name: OnlyPans** — A playful nod that's memorable and food-specific.
 - **Apple Liquid Glass** — Frosted glass cards, animated mesh gradients, blur effects, SF Pro typography. Mobile-first with viewport locking and edge-to-edge layout.
+- **Dark mode** — System/light/dark toggle persisted in localStorage. Dark theme uses deep indigo gradients with muted glass orbs — inspired by Apple's dark aesthetic, not just "invert colors."
 - **Discord OAuth2** — Simple auth for a LAN app shared among friends. No email/password to manage. Session-based (not JWT) with `SameSite=Lax` for HTTP access.
+- **Async conversion queue** — Background threads process conversions without blocking the UI. Client polls every 2s with an animated progress bar. Recipes appear automatically in the gallery when done (observable pattern).
+- **"Added by" attribution** — Tracks who added each recipe (auto-set from session on convert, editable with user dropdown in edit mode). "Added by Me" chip filters your personal contributions.
 - **Caption priority** — Captions are the highest-quality source (creators type them carefully). The full pipeline merges caption + audio + OCR with caption taking precedence.
 - **Whisper base model** — Balances speed and accuracy for recipe narration on CPU.
 - **Best-effort saves** — MCP conversion never fails if OnlyPans is down; saves are fire-and-forget (`try/except`).
