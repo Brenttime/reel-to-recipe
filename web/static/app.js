@@ -1086,9 +1086,10 @@ async function shareRecipe(recipe) {
     const ok = await copyToClipboard(url);
     if (ok) {
         const btn = document.getElementById('shareCardBtn');
-        const orig = btn.textContent;
-        btn.textContent = '✓ Link Copied!';
-        setTimeout(() => { btn.textContent = orig; }, 1500);
+        const origHTML = btn.innerHTML;
+        btn.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg>';
+        btn.title = 'Link copied!';
+        setTimeout(() => { btn.innerHTML = origHTML; btn.title = 'Share recipe'; }, 1500);
     } else {
         showCopyFallback(url);
     }
