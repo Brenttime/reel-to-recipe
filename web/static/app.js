@@ -408,6 +408,7 @@ function renderModal(recipe) {
             <button class="btn-add-list ${inCart ? 'in-cart' : ''}" id="addToListBtn">
                 ${inCart ? '✓ In Shopping List' : '🛒 Add to Shopping List'}
             </button>
+            <button class="btn-share" id="shareCardBtn">📤 Share</button>
             ${recipe.instructions.length > 0 ? `
                 <button class="btn-cook" id="startCookModeBtn">👨‍🍳 Start Cooking</button>
             ` : ''}
@@ -447,6 +448,9 @@ function renderModal(recipe) {
     if (cookBtn) {
         cookBtn.addEventListener('click', () => openCookMode(recipe));
     }
+
+    // Bind share card button
+    document.getElementById('shareCardBtn').addEventListener('click', () => generateShareCard(recipe));
 }
 
 function addToCartWithScaledIngredients(recipe) {
@@ -1035,6 +1039,253 @@ async function saveRecipe(id) {
     } else {
         alert('Failed to save changes.');
     }
+}
+
+// ─── Share Card Generator ────────────────────────
+async function generateShareCard(recipe) {
+    const W = 1080, H = 1350; // Instagram story dimensions
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // ── Background gradient ──
+    const grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, '#1a1a2e');
+    grad.addColorStop(0.4, '#16213e');
+    grad.addColorStop(0.7, '#0f3460');
+    grad.addColorStop(1, '#1a1a2e');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle mesh circles
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#5ee7df';
+    ctx.beginPath(); ctx.arc(200, 300, 300, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#b490ca';
+    ctx.beginPath(); ctx.arc(800, 900, 350, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    let y = 80;
+
+    // ── Thumbnail ──
+    if (recipe.image_url) {
+        try {
+            const img = await loadImage(`/api/thumbnail/${recipe.id}`);
+            const thumbH = 480;
+            const thumbW = W - 120;
+            const aspect = img.width / img.height;
+            let drawW = thumbW, drawH = thumbW / aspect;
+            if (drawH > thumbH) { drawH = thumbH; drawW = thumbH * aspect; }
+            const thumbX = (W - thumbW) / 2;
+
+            // Rounded clip
+            ctx.save();
+            roundedRect(ctx, thumbX, y, thumbW, thumbH, 24);
+            ctx.clip();
+            // Draw centered/cropped
+            const sx = (img.width - img.width) / 2;
+            ctx.drawImage(img, 0, 0, img.width, img.height, thumbX, y, thumbW, thumbH);
+            ctx.restore();
+
+            // Subtle border
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 1;
+            roundedRect(ctx, thumbX, y, thumbW, thumbH, 24);
+            ctx.stroke();
+
+            y += thumbH + 40;
+        } catch (e) {
+            y += 20;
+        }
+    } else {
+        y += 40;
+    }
+
+    // ── Category chips ──
+    if (recipe.tags && recipe.tags.length > 0) {
+        const tags = Array.isArray(recipe.tags) ? recipe.tags :
+            (typeof recipe.tags === 'string' ? recipe.tags.split(',').map(t => t.trim()).filter(Boolean) : []);
+        if (tags.length > 0) {
+            ctx.font = '500 26px -apple-system, BlinkMacSystemFont, sans-serif';
+            let chipX = 60;
+            const chipY = y;
+            for (const tag of tags.slice(0, 4)) {
+                const icon = getCategoryIcon(tag);
+                const label = tag;
+                const text = `${icon} ${label}`;
+                const tw = ctx.measureText(text).width + 28;
+
+                // Pill background
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                roundedRect(ctx, chipX, chipY, tw, 38, 19);
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                ctx.lineWidth = 1;
+                roundedRect(ctx, chipX, chipY, tw, 38, 19);
+                ctx.stroke();
+
+                // Text
+                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                ctx.fillText(text, chipX + 14, chipY + 27);
+                chipX += tw + 10;
+                if (chipX > W - 100) break;
+            }
+            y += 56;
+        }
+    }
+
+    // ── Title ──
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 52px -apple-system, BlinkMacSystemFont, sans-serif';
+    const titleLines = wrapText(ctx, recipe.title, W - 120, 52);
+    for (const line of titleLines) {
+        ctx.fillText(line, 60, y + 52);
+        y += 62;
+    }
+    y += 8;
+
+    // ── Creator ──
+    if (recipe.creator) {
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.font = '400 28px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText(`by ${recipe.creator}`, 60, y + 28);
+        y += 48;
+    }
+
+    // ── Divider ──
+    y += 12;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(60, y, W - 120, 1);
+    y += 28;
+
+    // ── Ingredients (two columns) ──
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '600 22px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillText('INGREDIENTS', 60, y + 22);
+    y += 44;
+
+    ctx.font = '400 26px -apple-system, BlinkMacSystemFont, sans-serif';
+    const ings = recipe.ingredients.map(i => ingText(i));
+    const colW = (W - 140) / 2;
+    const mid = Math.ceil(ings.length / 2);
+    const maxIngs = Math.min(ings.length, 16); // Cap at 16
+
+    for (let i = 0; i < Math.min(mid, 8); i++) {
+        const leftIng = ings[i];
+        const rightIng = ings[i + mid];
+
+        // Left column
+        ctx.fillStyle = '#007AFF';
+        ctx.beginPath(); ctx.arc(72, y + 14, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        const leftText = truncateText(ctx, leftIng, colW - 30);
+        ctx.fillText(leftText, 88, y + 20);
+
+        // Right column
+        if (rightIng) {
+            ctx.fillStyle = '#007AFF';
+            ctx.beginPath(); ctx.arc(W / 2 + 22, y + 14, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+            const rightText = truncateText(ctx, rightIng, colW - 30);
+            ctx.fillText(rightText, W / 2 + 38, y + 20);
+        }
+        y += 36;
+    }
+    if (ings.length > maxIngs) {
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillText(`+ ${ings.length - maxIngs} more…`, 88, y + 20);
+        y += 36;
+    }
+
+    // ── Footer branding ──
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.font = '500 22px -apple-system, BlinkMacSystemFont, sans-serif';
+    const footer = 'Reel Cookbook';
+    const footerW = ctx.measureText(footer).width;
+    ctx.fillText(footer, (W - footerW) / 2, H - 40);
+
+    // ── Export ──
+    canvas.toBlob(async (blob) => {
+        const file = new File([blob], `${recipe.title.replace(/[^a-zA-Z0-9]/g, '-')}.png`, { type: 'image/png' });
+
+        // Try native share (mobile)
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({
+                    title: recipe.title,
+                    text: `Check out this recipe: ${recipe.title}`,
+                    files: [file]
+                });
+                return;
+            } catch (e) {
+                // User cancelled or share failed — fall through to download
+            }
+        }
+
+        // Fallback: download
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        // Flash the button
+        const btn = document.getElementById('shareCardBtn');
+        btn.textContent = '✓ Saved!';
+        setTimeout(() => { btn.textContent = '📤 Share'; }, 1500);
+    }, 'image/png');
+}
+
+// Canvas helpers
+function loadImage(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+    });
+}
+
+function roundedRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+function wrapText(ctx, text, maxW, fontSize) {
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+        const test = line ? line + ' ' + word : word;
+        if (ctx.measureText(test).width > maxW && line) {
+            lines.push(line);
+            line = word;
+        } else {
+            line = test;
+        }
+    }
+    if (line) lines.push(line);
+    return lines.slice(0, 3); // Max 3 lines
+}
+
+function truncateText(ctx, text, maxW) {
+    if (ctx.measureText(text).width <= maxW) return text;
+    while (text.length > 0 && ctx.measureText(text + '…').width > maxW) {
+        text = text.slice(0, -1);
+    }
+    return text + '…';
 }
 
 // ─── Spotlight (macOS-style convert overlay) ─────
