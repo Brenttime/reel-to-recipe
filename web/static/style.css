@@ -1108,6 +1108,23 @@ body {
     color: var(--text-primary);
 }
 
+.shopping-section-header {
+    list-style: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--accent);
+    padding: 14px 0 6px;
+    margin-top: 4px;
+    border-bottom: 1px solid rgba(0, 122, 255, 0.15);
+}
+
+.shopping-section-header:first-child {
+    padding-top: 6px;
+    margin-top: 0;
+}
+
 .shopping-empty {
     text-align: center;
     padding: 48px 20px;
