@@ -210,6 +210,29 @@ async function init() {
     await loadCategories();
     setupListeners();
     updateCartBadge();
+    // Deep-link: open recipe if URL is /recipe/<id>/...
+    await openRecipeFromUrl();
+    // Handle browser back/forward
+    window.addEventListener('popstate', async () => {
+        if (location.pathname.startsWith('/recipe/')) {
+            await openRecipeFromUrl();
+        } else {
+            closeModal();
+        }
+    });
+}
+
+async function openRecipeFromUrl() {
+    const match = location.pathname.match(/^\/recipe\/(\d+)/);
+    if (!match) return;
+    try {
+        const res = await fetch(`/api/recipes/${match[1]}`);
+        if (!res.ok) return;
+        const recipe = await res.json();
+        renderModal(recipe);
+        modalOverlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    } catch (e) { /* recipe not found — stay on gallery */ }
 }
 
 // ─── Data Loading ───────────────────────────────
@@ -449,8 +472,8 @@ function renderModal(recipe) {
         cookBtn.addEventListener('click', () => openCookMode(recipe));
     }
 
-    // Bind share card button
-    document.getElementById('shareCardBtn').addEventListener('click', () => generateShareCard(recipe));
+    // Bind share button
+    document.getElementById('shareCardBtn').addEventListener('click', () => shareRecipe(recipe));
 }
 
 function addToCartWithScaledIngredients(recipe) {
@@ -1041,384 +1064,34 @@ async function saveRecipe(id) {
     }
 }
 
-// ─── Share Card Generator ────────────────────────
-async function generateShareCard(recipe) {
-    const W = 1080, H = 1350; // Instagram story dimensions
-    const canvas = document.createElement('canvas');
-    canvas.width = W;
-    canvas.height = H;
-    const ctx = canvas.getContext('2d');
+// ─── Share Recipe (like YouTube — share a link) ─
+async function shareRecipe(recipe) {
+    const slug = recipe.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const url = `${location.origin}/recipe/${recipe.id}/${slug}`;
+    const title = recipe.title;
 
-    // ── Background gradient ──
-    const grad = ctx.createLinearGradient(0, 0, W, H);
-    grad.addColorStop(0, '#1a1a2e');
-    grad.addColorStop(0.4, '#16213e');
-    grad.addColorStop(0.7, '#0f3460');
-    grad.addColorStop(1, '#1a1a2e');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-
-    // Subtle mesh circles
-    ctx.globalAlpha = 0.06;
-    ctx.fillStyle = '#5ee7df';
-    ctx.beginPath(); ctx.arc(200, 300, 300, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#b490ca';
-    ctx.beginPath(); ctx.arc(800, 900, 350, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1;
-
-    let y = 80;
-
-    // ── Thumbnail ──
-    if (recipe.image_url) {
+    // Native share sheet (works on iOS Safari, Android Chrome, even over HTTP)
+    if (navigator.share) {
         try {
-            const img = await loadImage(`/api/thumbnail/${recipe.id}`);
-            const thumbH = 480;
-            const thumbW = W - 120;
-            const aspect = img.width / img.height;
-            let drawW = thumbW, drawH = thumbW / aspect;
-            if (drawH > thumbH) { drawH = thumbH; drawW = thumbH * aspect; }
-            const thumbX = (W - thumbW) / 2;
-
-            // Rounded clip
-            ctx.save();
-            roundedRect(ctx, thumbX, y, thumbW, thumbH, 24);
-            ctx.clip();
-            // Draw centered/cropped
-            const sx = (img.width - img.width) / 2;
-            ctx.drawImage(img, 0, 0, img.width, img.height, thumbX, y, thumbW, thumbH);
-            ctx.restore();
-
-            // Subtle border
-            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-            ctx.lineWidth = 1;
-            roundedRect(ctx, thumbX, y, thumbW, thumbH, 24);
-            ctx.stroke();
-
-            y += thumbH + 40;
+            await navigator.share({ title, url });
+            return;
         } catch (e) {
-            y += 20;
+            if (e.name === 'AbortError') return; // User cancelled
         }
+    }
+
+    // Desktop fallback: copy link to clipboard
+    const ok = await copyToClipboard(url);
+    if (ok) {
+        const btn = document.getElementById('shareCardBtn');
+        const orig = btn.textContent;
+        btn.textContent = '✓ Link Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
     } else {
-        y += 40;
+        showCopyFallback(url);
     }
-
-    // ── Category chips ──
-    if (recipe.tags && recipe.tags.length > 0) {
-        const tags = Array.isArray(recipe.tags) ? recipe.tags :
-            (typeof recipe.tags === 'string' ? recipe.tags.split(',').map(t => t.trim()).filter(Boolean) : []);
-        if (tags.length > 0) {
-            ctx.font = '500 26px -apple-system, BlinkMacSystemFont, sans-serif';
-            let chipX = 60;
-            const chipY = y;
-            for (const tag of tags.slice(0, 4)) {
-                const icon = getCategoryIcon(tag);
-                const label = tag;
-                const text = `${icon} ${label}`;
-                const tw = ctx.measureText(text).width + 28;
-
-                // Pill background
-                ctx.fillStyle = 'rgba(255,255,255,0.08)';
-                roundedRect(ctx, chipX, chipY, tw, 38, 19);
-                ctx.fill();
-                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-                ctx.lineWidth = 1;
-                roundedRect(ctx, chipX, chipY, tw, 38, 19);
-                ctx.stroke();
-
-                // Text
-                ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                ctx.fillText(text, chipX + 14, chipY + 27);
-                chipX += tw + 10;
-                if (chipX > W - 100) break;
-            }
-            y += 56;
-        }
-    }
-
-    // ── Title ──
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '700 52px -apple-system, BlinkMacSystemFont, sans-serif';
-    const titleLines = wrapText(ctx, recipe.title, W - 120, 52);
-    for (const line of titleLines) {
-        ctx.fillText(line, 60, y + 52);
-        y += 62;
-    }
-    y += 8;
-
-    // ── Creator ──
-    if (recipe.creator) {
-        ctx.fillStyle = 'rgba(255,255,255,0.45)';
-        ctx.font = '400 28px -apple-system, BlinkMacSystemFont, sans-serif';
-        ctx.fillText(`by ${recipe.creator}`, 60, y + 28);
-        y += 48;
-    }
-
-    // ── Divider ──
-    y += 12;
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillRect(60, y, W - 120, 1);
-    y += 28;
-
-    // ── Ingredients (two columns) ──
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.font = '600 22px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.fillText('INGREDIENTS', 60, y + 22);
-    y += 44;
-
-    ctx.font = '400 26px -apple-system, BlinkMacSystemFont, sans-serif';
-    const ings = recipe.ingredients.map(i => ingText(i));
-    const colW = (W - 140) / 2;
-    const mid = Math.ceil(ings.length / 2);
-    const maxIngs = Math.min(ings.length, 16); // Cap at 16
-
-    for (let i = 0; i < Math.min(mid, 8); i++) {
-        const leftIng = ings[i];
-        const rightIng = ings[i + mid];
-
-        // Left column
-        ctx.fillStyle = '#007AFF';
-        ctx.beginPath(); ctx.arc(72, y + 14, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.8)';
-        const leftText = truncateText(ctx, leftIng, colW - 30);
-        ctx.fillText(leftText, 88, y + 20);
-
-        // Right column
-        if (rightIng) {
-            ctx.fillStyle = '#007AFF';
-            ctx.beginPath(); ctx.arc(W / 2 + 22, y + 14, 4, 0, Math.PI * 2); ctx.fill();
-            ctx.fillStyle = 'rgba(255,255,255,0.8)';
-            const rightText = truncateText(ctx, rightIng, colW - 30);
-            ctx.fillText(rightText, W / 2 + 38, y + 20);
-        }
-        y += 36;
-    }
-    if (ings.length > maxIngs) {
-        ctx.fillStyle = 'rgba(255,255,255,0.35)';
-        ctx.fillText(`+ ${ings.length - maxIngs} more…`, 88, y + 20);
-        y += 36;
-    }
-
-    // ── Footer branding ──
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.font = '500 22px -apple-system, BlinkMacSystemFont, sans-serif';
-    const footer = 'Reel Cookbook';
-    const footerW = ctx.measureText(footer).width;
-    ctx.fillText(footer, (W - footerW) / 2, H - 40);
-
-    // ── Export & Share ──
-    canvas.toBlob(async (blob) => {
-        const fileName = `${recipe.title.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
-        const shareText = formatRecipeForSharing(recipe);
-
-        // 1) Try native share with image (works on HTTPS / localhost)
-        if (navigator.share) {
-            try {
-                const file = new File([blob], fileName, { type: 'image/png' });
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                        title: recipe.title,
-                        text: shareText,
-                        files: [file]
-                    });
-                    return; // Shared successfully
-                }
-            } catch (e) {
-                if (e.name === 'AbortError') return; // User cancelled — done
-                // Not supported with files — try text-only below
-            }
-
-            // 2) Fall back to text-only native share (works on HTTP in Safari)
-            try {
-                await navigator.share({
-                    title: recipe.title,
-                    text: shareText,
-                });
-                return; // Shared successfully
-            } catch (e) {
-                if (e.name === 'AbortError') return; // User cancelled — done
-                // Not supported at all — fall through to desktop fallback
-            }
-        }
-
-        // 3) Desktop fallback — copy recipe text + download image
-        const url = URL.createObjectURL(blob);
-        showDesktopShareFallback(url, fileName, shareText);
-    }, 'image/png');
 }
 
-// Format recipe as clean shareable text (for Notes, Messages, etc.)
-function formatRecipeForSharing(recipe) {
-    let text = `🍽️ ${recipe.title}`;
-    if (recipe.creator) text += `\nby ${recipe.creator}`;
-    text += '\n';
-
-    // Ingredients
-    const ings = recipe.ingredients.map(i => ingText(i));
-    if (ings.length > 0) {
-        text += '\n📝 Ingredients:\n';
-        text += ings.map(i => `• ${i}`).join('\n');
-    }
-
-    // Instructions
-    if (recipe.instructions && recipe.instructions.length > 0) {
-        text += '\n\n👩‍🍳 Instructions:\n';
-        text += recipe.instructions.map((s, i) => `${i + 1}. ${s}`).join('\n');
-    }
-
-    // Source link
-    if (recipe.source_url) {
-        text += `\n\n🔗 ${recipe.source_url}`;
-    }
-
-    return text;
-}
-
-// Desktop-only fallback (no native share sheet available)
-function showDesktopShareFallback(imageUrl, fileName, shareText) {
-    document.getElementById('sharePreviewOverlay')?.remove();
-
-    const overlay = document.createElement('div');
-    overlay.id = 'sharePreviewOverlay';
-    overlay.style.cssText = `
-        position:fixed; inset:0; z-index:5000;
-        background:rgba(0,0,0,0.6);
-        backdrop-filter:blur(30px); -webkit-backdrop-filter:blur(30px);
-        display:flex; align-items:center; justify-content:center;
-        padding:24px; opacity:0; transition:opacity 0.25s ease;
-    `;
-
-    overlay.innerHTML = `
-        <div style="
-            max-width:340px; width:100%; border-radius:20px;
-            background:rgba(40,40,40,0.85);
-            backdrop-filter:blur(40px); -webkit-backdrop-filter:blur(40px);
-            border:1px solid rgba(255,255,255,0.12);
-            overflow:hidden;
-            box-shadow:0 24px 80px rgba(0,0,0,0.6);
-        ">
-            <div style="padding:20px 20px 12px; text-align:center; border-bottom:1px solid rgba(255,255,255,0.06);">
-                <div style="font-size:15px; font-weight:600; color:white; font-family:-apple-system,sans-serif;">
-                    Share Recipe
-                </div>
-            </div>
-            <div style="display:flex; flex-direction:column;">
-                <button id="shareCopyBtn" style="
-                    padding:16px 20px; border:none; background:transparent;
-                    color:white; font-size:16px; cursor:pointer;
-                    font-family:-apple-system,sans-serif; text-align:left;
-                    display:flex; align-items:center; gap:12px;
-                    border-bottom:1px solid rgba(255,255,255,0.06);
-                ">
-                    <span style="font-size:20px;">📋</span>
-                    <span>Copy Recipe Text</span>
-                </button>
-                <button id="shareDownloadBtn" style="
-                    padding:16px 20px; border:none; background:transparent;
-                    color:white; font-size:16px; cursor:pointer;
-                    font-family:-apple-system,sans-serif; text-align:left;
-                    display:flex; align-items:center; gap:12px;
-                ">
-                    <span style="font-size:20px;">💾</span>
-                    <span>Save Share Card</span>
-                </button>
-            </div>
-            <div style="padding:8px 20px 16px; border-top:1px solid rgba(255,255,255,0.06);">
-                <button id="shareCancelBtn" style="
-                    width:100%; padding:12px; border-radius:12px; border:none;
-                    background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.5);
-                    font-size:15px; cursor:pointer; font-family:-apple-system,sans-serif;
-                ">Cancel</button>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.style.opacity = '1');
-
-    const close = () => {
-        overlay.style.opacity = '0';
-        setTimeout(() => { overlay.remove(); URL.revokeObjectURL(imageUrl); }, 250);
-    };
-
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    document.getElementById('shareCancelBtn').addEventListener('click', close);
-    document.addEventListener('keydown', function esc(e) {
-        if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
-    });
-
-    // Copy recipe text
-    document.getElementById('shareCopyBtn').addEventListener('click', async () => {
-        const ok = await copyToClipboard(shareText);
-        const btn = document.getElementById('shareCopyBtn');
-        if (ok) {
-            btn.querySelector('span:last-child').textContent = '✓ Copied!';
-            setTimeout(close, 800);
-        } else {
-            showCopyFallback(shareText);
-        }
-    });
-
-    // Download share card image
-    document.getElementById('shareDownloadBtn').addEventListener('click', () => {
-        const a = document.createElement('a');
-        a.href = imageUrl;
-        a.download = fileName;
-        a.click();
-        const btn = document.getElementById('shareDownloadBtn');
-        btn.querySelector('span:last-child').textContent = '✓ Saved!';
-        setTimeout(close, 800);
-    });
-}
-
-// Canvas helpers
-function loadImage(src) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = src;
-    });
-}
-
-function roundedRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-}
-
-function wrapText(ctx, text, maxW, fontSize) {
-    const words = text.split(' ');
-    const lines = [];
-    let line = '';
-    for (const word of words) {
-        const test = line ? line + ' ' + word : word;
-        if (ctx.measureText(test).width > maxW && line) {
-            lines.push(line);
-            line = word;
-        } else {
-            line = test;
-        }
-    }
-    if (line) lines.push(line);
-    return lines.slice(0, 3); // Max 3 lines
-}
-
-function truncateText(ctx, text, maxW) {
-    if (ctx.measureText(text).width <= maxW) return text;
-    while (text.length > 0 && ctx.measureText(text + '…').width > maxW) {
-        text = text.slice(0, -1);
-    }
-    return text + '…';
-}
 
 // ─── Spotlight (macOS-style convert overlay) ─────
 function openSpotlight() {
@@ -1648,12 +1321,21 @@ function setupListeners() {
 function openModal() {
     modalOverlay.classList.add('active');
     document.body.style.overflow = 'hidden';
+    // Update URL to permalink
+    if (currentRecipe) {
+        const slug = currentRecipe.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        history.pushState({ recipeId: currentRecipe.id }, '', `/recipe/${currentRecipe.id}/${slug}`);
+    }
 }
 
 function closeModal() {
     modalOverlay.classList.remove('active');
     document.body.style.overflow = '';
     currentRecipe = null;
+    // Restore gallery URL
+    if (location.pathname.startsWith('/recipe/')) {
+        history.pushState({}, '', '/');
+    }
 }
 
 function openShoppingPanel() {
