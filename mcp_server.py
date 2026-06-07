@@ -25,6 +25,7 @@ mcp.settings.port = 8001
 mcp.settings.transport_security.enable_dns_rebinding_protection = False
 
 COOKIES_FILE = Path(__file__).parent / "cookies.txt"
+NETRC_FILE = Path.home() / ".netrc"
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 VENV_PYTHON = str(Path(__file__).parent / ".venv" / "bin" / "python")
 
@@ -53,6 +54,8 @@ def download_audio(url: str) -> str:
     ]
     if COOKIES_FILE.exists():
         cmd.extend(["--cookies", str(COOKIES_FILE)])
+    if NETRC_FILE.exists():
+        cmd.append("--netrc")
     cmd.append(url)
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode != 0:
@@ -69,6 +72,8 @@ def get_caption(url: str) -> str:
     ]
     if COOKIES_FILE.exists():
         cmd.extend(["--cookies", str(COOKIES_FILE)])
+    if NETRC_FILE.exists():
+        cmd.append("--netrc")
     cmd.append(url)
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     if result.returncode != 0:
@@ -86,6 +91,8 @@ def download_video(url: str) -> str:
     ]
     if COOKIES_FILE.exists():
         cmd.extend(["--cookies", str(COOKIES_FILE)])
+    if NETRC_FILE.exists():
+        cmd.append("--netrc")
     cmd.append(url)
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode != 0:

@@ -151,6 +151,22 @@ The MCP server exposes:
 - **Port 8001** — MCP protocol (streamable-http) for AI agent integration
 - **Port 8002** — Plain HTTP API (`/convert`) for the web app
 
+### 3. Instagram Authentication (optional)
+
+> ⚠️ **Age-restricted content** — Some Instagram Reels (cocktails, alcohol-related content, etc.) are gated behind an age check that requires a logged-in session. Without authentication, yt-dlp will fail on these reels. TikTok videos are unaffected (downloaded via TikWM API, which bypasses age gates).
+
+Add your Instagram credentials to `~/.netrc` — yt-dlp reads this automatically and the session persists until you change your password (no periodic re-export needed):
+
+```bash
+# Create ~/.netrc (one-time setup)
+echo "machine instagram login YOUR_USERNAME password YOUR_PASSWORD" > ~/.netrc
+chmod 600 ~/.netrc
+```
+
+The MCP server detects `~/.netrc` at runtime and passes `--netrc` to yt-dlp. No restart required after creating the file.
+
+**Alternative:** Place a Netscape-format `cookies.txt` in the project root. The server checks for this file as well (`--cookies cookies.txt`). However, cookie files expire and need periodic re-export — `.netrc` is preferred.
+
 ### 2. Reel Cookbook (Docker)
 
 ```bash
