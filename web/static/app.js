@@ -1,5 +1,7 @@
 /**
  * Reel Cookbook — Frontend Logic
+ * Features: Search, Filter, Recipe Modal, Edit, Delete,
+ *           Shopping List, Serving Scaler, Cook Mode
  */
 
 const searchInput = document.getElementById('searchInput');
@@ -10,16 +12,159 @@ const filterChips = document.getElementById('filterChips');
 const modalOverlay = document.getElementById('modalOverlay');
 const modalContent = document.getElementById('modalContent');
 const modalClose = document.getElementById('modalClose');
+const shoppingOverlay = document.getElementById('shoppingOverlay');
+const shoppingContent = document.getElementById('shoppingContent');
+const shoppingClose = document.getElementById('shoppingClose');
+const cookModeEl = document.getElementById('cookMode');
+const cookModeContent = document.getElementById('cookModeContent');
+const cartToggle = document.getElementById('cartToggle');
+const cartBadge = document.getElementById('cartBadge');
 
 let allRecipes = [];
 let currentRecipe = null;
 let debounceTimer = null;
+let currentScale = 1;
+let originalServings = 1;
+let wakeLockSentinel = null;
+
+// ─── Shopping List State ─────────────────────────
+const CART_KEY = 'reel-cookbook-cart';
+const CHECKED_KEY = 'reel-cookbook-checked';
+
+function getCart() {
+    try {
+        return JSON.parse(localStorage.getItem(CART_KEY)) || [];
+    } catch { return []; }
+}
+
+function setCart(ids) {
+    localStorage.setItem(CART_KEY, JSON.stringify(ids));
+    updateCartBadge();
+}
+
+function getChecked() {
+    try {
+        return JSON.parse(localStorage.getItem(CHECKED_KEY)) || [];
+    } catch { return []; }
+}
+
+function setChecked(items) {
+    localStorage.setItem(CHECKED_KEY, JSON.stringify(items));
+}
+
+function addToCart(recipeId) {
+    recipeId = Number(recipeId);
+    const cart = getCart();
+    if (!cart.includes(recipeId)) {
+        cart.push(recipeId);
+        setCart(cart);
+    }
+}
+
+function removeFromCart(recipeId) {
+    recipeId = Number(recipeId);
+    const cart = getCart().filter(id => id !== recipeId);
+    setCart(cart);
+}
+
+function updateCartBadge() {
+    const cart = getCart();
+    if (cart.length > 0) {
+        cartBadge.textContent = cart.length;
+        cartBadge.style.display = 'flex';
+    } else {
+        cartBadge.style.display = 'none';
+    }
+}
+
+// ─── Fraction Utilities ──────────────────────────
+const FRACTION_MAP = {
+    '1/8': 0.125, '1/4': 0.25, '1/3': 0.333333, '3/8': 0.375,
+    '1/2': 0.5, '5/8': 0.625, '2/3': 0.666667, '3/4': 0.75, '7/8': 0.875
+};
+
+const DECIMAL_TO_FRACTION = [
+    [0.125, '⅛'], [0.25, '¼'], [0.333, '⅓'], [0.375, '⅜'],
+    [0.5, '½'], [0.625, '⅝'], [0.667, '⅔'], [0.75, '¾'], [0.875, '⅞']
+];
+
+function parseFraction(str) {
+    str = str.trim();
+    // Handle mixed number like "1 1/2"
+    const mixedMatch = str.match(/^(\d+)\s+(\d+)\/(\d+)$/);
+    if (mixedMatch) {
+        return parseInt(mixedMatch[1]) + parseInt(mixedMatch[2]) / parseInt(mixedMatch[3]);
+    }
+    // Handle simple fraction like "1/2"
+    const fracMatch = str.match(/^(\d+)\/(\d+)$/);
+    if (fracMatch) {
+        return parseInt(fracMatch[1]) / parseInt(fracMatch[2]);
+    }
+    // Handle decimal
+    const num = parseFloat(str);
+    return isNaN(num) ? null : num;
+}
+
+function formatNumber(num) {
+    if (num === 0) return '0';
+    const whole = Math.floor(num);
+    const frac = num - whole;
+
+    if (frac < 0.05) return whole.toString();
+
+    // Find closest fraction
+    let closestFrac = '';
+    let closestDiff = 1;
+    for (const [val, symbol] of DECIMAL_TO_FRACTION) {
+        const diff = Math.abs(frac - val);
+        if (diff < closestDiff) {
+            closestDiff = diff;
+            closestFrac = symbol;
+        }
+    }
+
+    if (closestDiff < 0.05) {
+        return whole > 0 ? `${whole} ${closestFrac}` : closestFrac;
+    }
+
+    // Fall back to decimal with at most 2 places
+    const result = Math.round(num * 100) / 100;
+    return result % 1 === 0 ? result.toString() : result.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function parseIngredientQuantity(ingredient) {
+    // Match leading quantity: digits, fractions, decimals, mixed numbers
+    const match = ingredient.match(/^([\d\s\/\.]+)\s*(.*)$/);
+    if (!match) return { quantity: null, rest: ingredient };
+
+    const quantityStr = match[1].trim();
+    const rest = match[2];
+    const quantity = parseFraction(quantityStr);
+
+    if (quantity === null) return { quantity: null, rest: ingredient };
+    return { quantity, rest };
+}
+
+function scaleIngredient(ingredient, ratio) {
+    const { quantity, rest } = parseIngredientQuantity(ingredient);
+    if (quantity === null) return ingredient;
+    const scaled = quantity * ratio;
+    return `${formatNumber(scaled)} ${rest}`;
+}
+
+function parseServingsNumber(servingsStr) {
+    if (!servingsStr) return null;
+    // Try to get first number from string like "4", "2-4", "8 tacos", "4 servings"
+    const match = servingsStr.match(/(\d+)/);
+    return match ? parseInt(match[1]) : null;
+}
 
 // ─── Init ───────────────────────────────────────
 async function init() {
     await loadRecipes();
     await loadCreators();
     setupListeners();
+    updateCartBadge();
 }
 
 // ─── Data Loading ───────────────────────────────
@@ -45,12 +190,16 @@ function renderGrid(recipes) {
     }
 
     emptyState.style.display = 'none';
+    const cart = getCart();
     recipeGrid.innerHTML = recipes.map((r, i) => `
         <article class="recipe-card" data-id="${r.id}" style="animation-delay: ${i * 0.05}s">
             <div class="card-platform">
                 <span class="dot"></span>
                 ${r.platform || 'recipe'}
             </div>
+            <button class="card-add-btn ${cart.includes(r.id) ? 'in-cart' : ''}" data-add-id="${r.id}" title="${cart.includes(r.id) ? 'In shopping list' : 'Add to shopping list'}">
+                ${cart.includes(r.id) ? '✓' : '+'}
+            </button>
             <h3 class="card-title">${escapeHtml(r.title)}</h3>
             ${r.creator ? `<p class="card-creator">by ${escapeHtml(r.creator)}</p>` : ''}
             ${r.tags.length ? `
@@ -83,12 +232,18 @@ function renderGrid(recipes) {
 function renderChips(creators) {
     if (creators.length === 0) return;
     filterChips.innerHTML = creators.map(c => `
-        <button class="chip" data-creator="${escapeHtml(c)}">${escapeHtml(c)}</button>
+        <button class="chip" data-creator="${escapeAttr(c)}">${escapeHtml(c)}</button>
     `).join('');
 }
 
 function renderModal(recipe) {
     currentRecipe = recipe;
+    originalServings = parseServingsNumber(recipe.servings) || 1;
+    currentScale = 1;
+
+    const cart = getCart();
+    const inCart = cart.includes(recipe.id);
+
     modalContent.innerHTML = `
         <div class="modal-actions">
             <button class="action-btn edit-btn" id="editRecipeBtn" title="Edit recipe">
@@ -107,7 +262,18 @@ function renderModal(recipe) {
 
         ${(recipe.servings || recipe.prep_time || recipe.cook_time || recipe.total_time) ? `
             <div class="modal-meta-bar">
-                ${recipe.servings ? `<div class="modal-meta-item"><strong>Servings:</strong> ${escapeHtml(recipe.servings)}</div>` : ''}
+                ${recipe.servings ? `
+                    <div class="modal-meta-item">
+                        <strong>Servings:</strong>
+                        ${parseServingsNumber(recipe.servings) ? `
+                            <span class="scaler-widget">
+                                <button class="scaler-btn" id="scalerMinus">−</button>
+                                <span class="scaler-value" id="scalerValue">${parseServingsNumber(recipe.servings)}</span>
+                                <button class="scaler-btn" id="scalerPlus">+</button>
+                            </span>
+                        ` : `${escapeHtml(recipe.servings)}`}
+                    </div>
+                ` : ''}
                 ${recipe.prep_time ? `<div class="modal-meta-item"><strong>Prep:</strong> ${escapeHtml(recipe.prep_time)}</div>` : ''}
                 ${recipe.cook_time ? `<div class="modal-meta-item"><strong>Cook:</strong> ${escapeHtml(recipe.cook_time)}</div>` : ''}
                 ${recipe.total_time ? `<div class="modal-meta-item"><strong>Total:</strong> ${escapeHtml(recipe.total_time)}</div>` : ''}
@@ -115,9 +281,13 @@ function renderModal(recipe) {
         ` : ''}
 
         <h4 class="section-title">Ingredients</h4>
-        <ul class="ingredients-list">
+        <ul class="ingredients-list" id="ingredientsList">
             ${recipe.ingredients.map(ing => `<li>${escapeHtml(ing)}</li>`).join('')}
         </ul>
+
+        <button class="btn btn-add-list" id="addToListBtn">
+            ${inCart ? '✓ In Shopping List' : '🛒 Add to Shopping List'}
+        </button>
 
         <h4 class="section-title">Instructions</h4>
         <ol class="instructions-list">
@@ -126,11 +296,76 @@ function renderModal(recipe) {
 
         ${recipe.tips ? `<div class="modal-tips">${escapeHtml(recipe.tips)}</div>` : ''}
         ${recipe.macros ? `<div class="modal-macros">📊 ${escapeHtml(recipe.macros)}</div>` : ''}
+
+        ${recipe.instructions.length > 0 ? `
+            <button class="btn btn-cook-mode" id="startCookModeBtn">👨‍🍳 Start Cooking</button>
+        ` : ''}
     `;
 
     // Bind action buttons
     document.getElementById('deleteRecipeBtn').addEventListener('click', () => deleteRecipe(recipe));
     document.getElementById('editRecipeBtn').addEventListener('click', () => openEditMode(recipe));
+
+    // Bind add to list button
+    const addBtn = document.getElementById('addToListBtn');
+    addBtn.addEventListener('click', () => {
+        const cart = getCart();
+        if (cart.includes(recipe.id)) {
+            removeFromCart(recipe.id);
+            addBtn.textContent = '🛒 Add to Shopping List';
+        } else {
+            addToCartWithScaledIngredients(recipe);
+            addBtn.textContent = '✓ In Shopping List';
+        }
+        renderGrid(allRecipes);
+    });
+
+    // Bind scaler buttons
+    const scalerMinus = document.getElementById('scalerMinus');
+    const scalerPlus = document.getElementById('scalerPlus');
+    if (scalerMinus && scalerPlus) {
+        scalerMinus.addEventListener('click', () => updateScale(-1));
+        scalerPlus.addEventListener('click', () => updateScale(1));
+    }
+
+    // Bind cook mode button
+    const cookBtn = document.getElementById('startCookModeBtn');
+    if (cookBtn) {
+        cookBtn.addEventListener('click', () => openCookMode(recipe));
+    }
+}
+
+function addToCartWithScaledIngredients(recipe) {
+    addToCart(recipe.id);
+    // Store scaled ingredients if scale != 1
+    if (currentScale !== 1) {
+        const scaledKey = `reel-cookbook-scaled-${recipe.id}`;
+        const ratio = currentScale / originalServings;
+        const scaledIngredients = recipe.ingredients.map(ing => scaleIngredient(ing, ratio));
+        localStorage.setItem(scaledKey, JSON.stringify(scaledIngredients));
+    } else {
+        // Remove any old scaled data
+        localStorage.removeItem(`reel-cookbook-scaled-${recipe.id}`);
+    }
+}
+
+function updateScale(delta) {
+    const newVal = currentScale + delta;
+    if (newVal < 1) return;
+    currentScale = newVal;
+
+    const scalerValue = document.getElementById('scalerValue');
+    if (scalerValue) scalerValue.textContent = currentScale;
+
+    // Update ingredients display
+    const ratio = currentScale / originalServings;
+    const ingredientsList = document.getElementById('ingredientsList');
+    if (ingredientsList && currentRecipe) {
+        ingredientsList.innerHTML = currentRecipe.ingredients.map(ing => {
+            const scaled = ratio === 1 ? ing : scaleIngredient(ing, ratio);
+            return `<li>${escapeHtml(scaled)}</li>`;
+        }).join('');
+    }
 }
 
 function renderEditModal(recipe) {
@@ -198,12 +433,250 @@ function renderEditModal(recipe) {
     });
 }
 
+// ─── Shopping List Panel ─────────────────────────
+async function renderShoppingPanel() {
+    const cart = getCart();
+    const checked = getChecked();
+
+    if (cart.length === 0) {
+        shoppingContent.innerHTML = `
+            <h2 class="shopping-title">🛒 Shopping List</h2>
+            <div class="shopping-empty">
+                <p>Your shopping list is empty</p>
+                <span>Add recipes by clicking the + button on recipe cards</span>
+            </div>
+        `;
+        return;
+    }
+
+    // Fetch all recipes in cart
+    const recipes = [];
+    for (const id of cart) {
+        try {
+            const res = await fetch(`/api/recipes/${id}`);
+            if (res.ok) {
+                const recipe = await res.json();
+                recipes.push(recipe);
+            }
+        } catch (e) {
+            // Skip missing recipes
+        }
+    }
+
+    // Build combined ingredient list
+    const allIngredients = [];
+    for (const recipe of recipes) {
+        // Check if we have scaled ingredients stored
+        const scaledKey = `reel-cookbook-scaled-${recipe.id}`;
+        const scaledData = localStorage.getItem(scaledKey);
+        const ingredients = scaledData ? JSON.parse(scaledData) : recipe.ingredients;
+
+        for (const ing of ingredients) {
+            allIngredients.push({ text: ing, recipeTitle: recipe.title });
+        }
+    }
+
+    // Deduplicate by normalizing ingredient names
+    const merged = mergeIngredients(allIngredients);
+
+    shoppingContent.innerHTML = `
+        <h2 class="shopping-title">🛒 Shopping List</h2>
+        <div class="shopping-recipes">
+            <h4>Recipes (${recipes.length})</h4>
+            ${recipes.map(r => `
+                <div class="shopping-recipe-item">
+                    <span>${escapeHtml(r.title)}</span>
+                    <button class="shopping-remove-btn" data-remove-id="${r.id}" title="Remove">×</button>
+                </div>
+            `).join('')}
+        </div>
+        <div class="shopping-ingredients">
+            <h4>Ingredients (${merged.length})</h4>
+            <div class="shopping-list" id="shoppingListItems">
+                ${merged.map((item, idx) => `
+                    <label class="shopping-item ${checked.includes(item.text) ? 'checked' : ''}">
+                        <input type="checkbox" ${checked.includes(item.text) ? 'checked' : ''} data-ing-idx="${idx}" data-ing-text="${escapeAttr(item.text)}">
+                        <span class="shopping-item-text">${escapeHtml(item.text)}</span>
+                    </label>
+                `).join('')}
+            </div>
+        </div>
+        <div class="shopping-actions">
+            <button class="btn btn-clear-checked" id="clearCheckedBtn">Clear Checked</button>
+            <button class="btn btn-clear-all" id="clearAllBtn">Clear All</button>
+        </div>
+    `;
+
+    // Bind remove buttons
+    shoppingContent.querySelectorAll('.shopping-remove-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const id = btn.dataset.removeId;
+            removeFromCart(id);
+            localStorage.removeItem(`reel-cookbook-scaled-${id}`);
+            renderShoppingPanel();
+            renderGrid(allRecipes);
+        });
+    });
+
+    // Bind checkboxes
+    shoppingContent.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            const text = cb.dataset.ingText;
+            let checked = getChecked();
+            if (cb.checked) {
+                if (!checked.includes(text)) checked.push(text);
+                cb.closest('.shopping-item').classList.add('checked');
+            } else {
+                checked = checked.filter(t => t !== text);
+                cb.closest('.shopping-item').classList.remove('checked');
+            }
+            setChecked(checked);
+        });
+    });
+
+    // Bind clear buttons
+    document.getElementById('clearCheckedBtn').addEventListener('click', () => {
+        const checked = getChecked();
+        setChecked([]);
+        renderShoppingPanel();
+    });
+
+    document.getElementById('clearAllBtn').addEventListener('click', () => {
+        if (!confirm('Clear entire shopping list?')) return;
+        const cart = getCart();
+        cart.forEach(id => localStorage.removeItem(`reel-cookbook-scaled-${id}`));
+        setCart([]);
+        setChecked([]);
+        renderShoppingPanel();
+        renderGrid(allRecipes);
+    });
+}
+
+function mergeIngredients(allIngredients) {
+    // Simple deduplication: normalize ingredient text for matching
+    const seen = new Map();
+    const result = [];
+
+    for (const item of allIngredients) {
+        const normalized = item.text.toLowerCase().trim();
+        // Try to extract the "name" part (after quantity and unit)
+        const nameMatch = normalized.match(/^[\d\s\/\.]*(?:cups?|tbsp|tsp|oz|lbs?|pounds?|kg|g|ml|l|liters?|quarts?|pints?|gallons?|cloves?|cans?|packages?|bunche?s?|heads?|stalks?|slices?|pieces?)?\s*(.+)$/);
+        const key = nameMatch ? nameMatch[1].trim() : normalized;
+
+        if (seen.has(key)) {
+            // Already have this ingredient - try to combine quantities
+            const existing = seen.get(key);
+            const existingParsed = parseIngredientQuantity(existing.text);
+            const newParsed = parseIngredientQuantity(item.text);
+
+            if (existingParsed.quantity !== null && newParsed.quantity !== null && existingParsed.rest === newParsed.rest) {
+                const combined = existingParsed.quantity + newParsed.quantity;
+                existing.text = `${formatNumber(combined)} ${existingParsed.rest}`;
+            }
+            // If we can't combine, just skip the duplicate
+        } else {
+            const entry = { text: item.text, recipeTitle: item.recipeTitle };
+            seen.set(key, entry);
+            result.push(entry);
+        }
+    }
+
+    return result;
+}
+
+// ─── Cook Mode ───────────────────────────────────
+let cookModeStep = 0;
+let cookModeRecipe = null;
+
+function openCookMode(recipe) {
+    cookModeRecipe = recipe;
+    cookModeStep = 0;
+    cookModeEl.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    renderCookModeStep();
+    requestWakeLock();
+}
+
+function closeCookMode() {
+    cookModeEl.classList.remove('active');
+    document.body.style.overflow = '';
+    cookModeRecipe = null;
+    releaseWakeLock();
+}
+
+function renderCookModeStep() {
+    if (!cookModeRecipe) return;
+    const steps = cookModeRecipe.instructions;
+    const total = steps.length;
+    const current = cookModeStep;
+
+    cookModeContent.innerHTML = `
+        <button class="cook-exit-btn" id="cookModeExit">✕ Exit</button>
+        <div class="cook-header">
+            <h2 class="cook-title">${escapeHtml(cookModeRecipe.title)}</h2>
+            <div class="cook-ingredients-ref">
+                <details>
+                    <summary>📋 Ingredients</summary>
+                    <ul>
+                        ${cookModeRecipe.ingredients.map(ing => `<li>${escapeHtml(ing)}</li>`).join('')}
+                    </ul>
+                </details>
+            </div>
+        </div>
+        <div class="cook-step-counter">Step ${current + 1} of ${total}</div>
+        <div class="cook-step-text">${escapeHtml(steps[current])}</div>
+        <div class="cook-nav">
+            <button class="cook-nav-btn" id="cookPrev" ${current === 0 ? 'disabled' : ''}>← Previous</button>
+            <button class="cook-nav-btn" id="cookNext" ${current === total - 1 ? 'disabled' : ''}>Next →</button>
+        </div>
+        ${current === total - 1 ? `<div class="cook-done">🎉 You're done! Enjoy your meal!</div>` : ''}
+    `;
+
+    document.getElementById('cookModeExit').addEventListener('click', closeCookMode);
+    document.getElementById('cookPrev').addEventListener('click', () => {
+        if (cookModeStep > 0) {
+            cookModeStep--;
+            renderCookModeStep();
+        }
+    });
+    document.getElementById('cookNext').addEventListener('click', () => {
+        if (cookModeStep < steps.length - 1) {
+            cookModeStep++;
+            renderCookModeStep();
+        }
+    });
+}
+
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLockSentinel = await navigator.wakeLock.request('screen');
+            wakeLockSentinel.addEventListener('release', () => {
+                wakeLockSentinel = null;
+            });
+        }
+    } catch (err) {
+        // Wake Lock not supported or failed - silently continue
+        wakeLockSentinel = null;
+    }
+}
+
+function releaseWakeLock() {
+    if (wakeLockSentinel) {
+        wakeLockSentinel.release();
+        wakeLockSentinel = null;
+    }
+}
+
 // ─── Actions ────────────────────────────────────
 async function deleteRecipe(recipe) {
     if (!confirm(`Delete "${recipe.title}"? This can't be undone.`)) return;
 
     const res = await fetch(`/api/recipes/${recipe.id}`, { method: 'DELETE' });
     if (res.ok) {
+        // Also remove from cart if present
+        removeFromCart(recipe.id);
+        localStorage.removeItem(`reel-cookbook-scaled-${recipe.id}`);
         closeModal();
         await loadRecipes(searchInput.value);
         await loadCreators();
@@ -303,8 +776,24 @@ function setupListeners() {
         }
     });
 
-    // Card click → modal
+    // Card click → modal (but not if clicking the add button)
     recipeGrid.addEventListener('click', async (e) => {
+        // Handle add to cart button on card
+        const addBtn = e.target.closest('.card-add-btn');
+        if (addBtn) {
+            e.stopPropagation();
+            const id = Number(addBtn.dataset.addId);
+            const cart = getCart();
+            if (cart.includes(id)) {
+                removeFromCart(id);
+                localStorage.removeItem(`reel-cookbook-scaled-${id}`);
+            } else {
+                addToCart(id);
+            }
+            renderGrid(allRecipes);
+            return;
+        }
+
         const card = e.target.closest('.recipe-card');
         if (!card) return;
 
@@ -320,8 +809,52 @@ function setupListeners() {
     modalOverlay.addEventListener('click', (e) => {
         if (e.target === modalOverlay) closeModal();
     });
+
+    // Shopping panel
+    cartToggle.addEventListener('click', () => {
+        renderShoppingPanel();
+        openShoppingPanel();
+    });
+
+    shoppingClose.addEventListener('click', closeShoppingPanel);
+    shoppingOverlay.addEventListener('click', (e) => {
+        if (e.target === shoppingOverlay) closeShoppingPanel();
+    });
+
+    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeModal();
+        if (e.key === 'Escape') {
+            if (cookModeEl.classList.contains('active')) {
+                closeCookMode();
+            } else if (shoppingOverlay.classList.contains('active')) {
+                closeShoppingPanel();
+            } else {
+                closeModal();
+            }
+        }
+        // Arrow keys in cook mode
+        if (cookModeEl.classList.contains('active')) {
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (cookModeRecipe && cookModeStep < cookModeRecipe.instructions.length - 1) {
+                    cookModeStep++;
+                    renderCookModeStep();
+                }
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (cookModeStep > 0) {
+                    cookModeStep--;
+                    renderCookModeStep();
+                }
+            }
+        }
+    });
+
+    // Re-acquire wake lock when page becomes visible again
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && cookModeEl.classList.contains('active')) {
+            requestWakeLock();
+        }
     });
 }
 
@@ -334,6 +867,16 @@ function closeModal() {
     modalOverlay.classList.remove('active');
     document.body.style.overflow = '';
     currentRecipe = null;
+}
+
+function openShoppingPanel() {
+    shoppingOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeShoppingPanel() {
+    shoppingOverlay.classList.remove('active');
+    document.body.style.overflow = '';
 }
 
 // ─── Util ───────────────────────────────────────
