@@ -466,6 +466,13 @@ function renderModal(recipe) {
         </p>
         ${recipe.created_at ? `<p class="modal-date-added">${isNewRecipe(recipe) ? '<span class="new-badge-inline">NEW</span> ' : ''}Added ${formatDateAdded(recipe.created_at)}</p>` : ''}
 
+        <!-- Rating & Reviews Section -->
+        <div class="reviews-section" id="reviewsSection">
+            <div class="reviews-summary" id="reviewsSummary">
+                <div class="reviews-loading">Loading reviews…</div>
+            </div>
+        </div>
+
         ${(recipe.servings || recipe.prep_time || recipe.cook_time || recipe.total_time) ? `
             <div class="modal-meta-bar">
                 ${recipe.servings ? `
@@ -507,13 +514,6 @@ function renderModal(recipe) {
             ${recipe.instructions.length > 0 ? `
                 <button class="btn-cook" id="startCookModeBtn">${isDrinkRecipe(recipe) ? '🍸 Start Mixing' : '👨‍🍳 Start Cooking'}</button>
             ` : ''}
-        </div>
-
-        <!-- Rating & Reviews Section -->
-        <div class="reviews-section" id="reviewsSection">
-            <div class="reviews-summary" id="reviewsSummary">
-                <div class="reviews-loading">Loading reviews…</div>
-            </div>
         </div>
     `;
 

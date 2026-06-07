@@ -1811,9 +1811,8 @@ body {
 
 /* ─── Reviews & Ratings ──────────────────────── */
 .reviews-section {
-    margin-top: 24px;
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
-    padding-top: 20px;
+    margin-top: 12px;
+    margin-bottom: 16px;
 }
 
 .reviews-header {
