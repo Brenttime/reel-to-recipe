@@ -280,6 +280,10 @@ const CATEGORY_ICONS = {
     'air fryer': '💨', 'bbq': '🍖', 'fried': '🍳',
     // Dietary
     'spicy': '🌶️', 'vegan': '🌱', 'vegetarian': '🥬',
+    // Drinks & Cocktails
+    'cocktail': '🍸', 'mocktail': '🧃', 'spirits': '🥃',
+    'smoothie': '🥤', 'shake': '🥛', 'lemonade': '🍋',
+    'punch': '🍹', 'coffee': '☕', 'matcha': '🍵',
 };
 
 function getCategoryIcon(name) {
@@ -632,7 +636,7 @@ async function renderShoppingPanel() {
     const merged = mergeIngredients(allIngredients);
 
     // Group by section
-    const sectionOrder = ['produce', 'meat', 'seafood', 'dairy', 'bakery', 'pantry', 'spices', 'frozen', 'condiments', 'beverages', 'other'];
+    const sectionOrder = ['produce', 'meat', 'seafood', 'dairy', 'bakery', 'pantry', 'spices', 'frozen', 'condiments', 'beverages', 'bar', 'other'];
     const sectionLabels = {
         produce: '🥬 Produce',
         meat: '🥩 Meat',
@@ -644,6 +648,7 @@ async function renderShoppingPanel() {
         frozen: '❄️ Frozen',
         condiments: '🫗 Oils & Condiments',
         beverages: '🥤 Beverages',
+        bar: '🍸 Bar',
         other: '🧊 Other'
     };
 
@@ -764,12 +769,12 @@ async function renderShoppingPanel() {
         const merged = mergeIngredients(allIngredients);
 
         // Build formatted text grouped by section
-        const sectionOrder = ['produce', 'meat', 'seafood', 'dairy', 'bakery', 'pantry', 'spices', 'frozen', 'condiments', 'beverages', 'other'];
+        const sectionOrder = ['produce', 'meat', 'seafood', 'dairy', 'bakery', 'pantry', 'spices', 'frozen', 'condiments', 'beverages', 'bar', 'other'];
         const sectionLabels = {
             produce: '🥬 Produce', meat: '🥩 Meat', seafood: '🐟 Seafood',
             dairy: '🧀 Dairy & Eggs', bakery: '🍞 Bakery', pantry: '🫙 Pantry',
             spices: '🧂 Spices', frozen: '❄️ Frozen', condiments: '🫗 Condiments',
-            beverages: '🥤 Beverages', other: '🧊 Other'
+            beverages: '🥤 Beverages', bar: '🍸 Bar', other: '🧊 Other'
         };
 
         const grouped = {};
