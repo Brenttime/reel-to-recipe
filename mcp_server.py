@@ -552,28 +552,15 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, thumbnail_u
         # ── Cooking Method ──
         _method_tags = {
             "air fry": "air fryer", "air fryer": "air fryer", "airfryer": "air fryer",
-            "grilled": "grilled", "grill": "grilled", "bbq": "BBQ", "barbecue": "BBQ",
-            "smoked": "smoked", "slow cook": "slow cooker", "crockpot": "slow cooker",
-            "instant pot": "instant pot", "pressure cook": "instant pot",
-            "rice cooker": "rice cooker",
+            "bbq": "BBQ", "barbecue": "BBQ",
             "deep fry": "fried", "deep-fry": "fried", "deep fried": "fried",
-            "baked": "baked", "roasted": "roasted", "one pot": "one pot",
-            "one pan": "one pan", "sheet pan": "sheet pan", "no cook": "no cook",
         }
-        # ── Attributes / Dietary / Vibes ──
+        # ── Dietary ──
         _attr_tags = {
             "spicy": "spicy", "sriracha": "spicy", "jalapeño": "spicy",
             "habanero": "spicy", "cayenne": "spicy", "hot sauce": "spicy",
             "gochujang": "spicy", "chili flake": "spicy",
-            "healthy": "healthy", "high protein": "high protein",
-            "low carb": "low carb", "keto": "keto",
             "vegan": "vegan", "vegetarian": "vegetarian",
-            "gluten free": "gluten-free", "gluten-free": "gluten-free",
-            "dairy free": "dairy-free", "dairy-free": "dairy-free",
-            "quick": "quick", "easy": "easy", "meal prep": "meal prep",
-            "budget": "budget", "copycat": "copycat", "fast food": "fast food",
-            "comfort food": "comfort food", "street food": "street food",
-            "party": "party food", "game day": "game day",
         }
 
         # Merge all tag dictionaries and scan (word-boundary matching to avoid substrings)
@@ -581,12 +568,6 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, thumbnail_u
             for keyword, tag in tag_map.items():
                 if tag not in tags and re.search(r'\b' + re.escape(keyword) + r'\b', all_text):
                     tags.append(tag)
-
-        # Infer "quick" from cook times under 20 min
-        if "quick" not in tags:
-            time_match = re.search(r'(\d+)\s*min', (total_time or cook_time or "").lower())
-            if time_match and int(time_match.group(1)) <= 20:
-                tags.append("quick")
 
         if not title:
             title = "Untitled Recipe"
