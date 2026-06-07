@@ -108,29 +108,7 @@ def is_tiktok_url(url: str) -> bool:
 _tikwm_cache = {}
 
 
-def _get_thumbnail_url(url: str) -> str:
-    """Extract thumbnail URL from a reel/video URL.
 
-    TikTok: uses TikWM 'origin_cover' or 'cover' field.
-    Instagram: uses yt-dlp --print thumbnail.
-    Returns empty string on failure (best-effort).
-    """
-    try:
-        if is_tiktok_url(url):
-            data = _tikwm_fetch(url)
-            return data.get("origin_cover") or data.get("cover") or ""
-        else:
-            # Instagram: use yt-dlp to get thumbnail URL
-            result = subprocess.run(
-                ["yt-dlp", "--cookies-from-browser", "firefox",
-                 "--print", "thumbnail", url],
-                capture_output=True, text=True, timeout=30
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip()
-    except Exception as e:
-        print(f"[Thumbnail] Failed to get thumbnail for {url}: {e}")
-    return ""
 
 
 def _tikwm_fetch(url: str) -> dict:
@@ -311,7 +289,7 @@ def _strip_hermes_chrome(output: str) -> str:
     return "\n".join(content_lines).strip() if content_lines else output
 
 
-def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, thumbnail_url: str = "") -> None:
+def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
     """Parse recipe text and POST to Recipe Glass for persistent storage.
 
     Best-effort: failures are logged but don't break the MCP response.
@@ -599,8 +577,28 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, thumbnail_u
         }
 
         # Merge all tag dictionaries and scan (word-boundary matching to avoid substrings)
-        for tag_map in [_protein_tags, _cuisine_tags, _meal_tags, _dish_tags, _method_tags, _attr_tags, _drink_tags]:
+        # Apply non-drink tags first
+        for tag_map in [_protein_tags, _cuisine_tags, _meal_tags, _dish_tags, _method_tags, _attr_tags]:
             for keyword, tag in tag_map.items():
+                if tag not in tags and re.search(r'\b' + re.escape(keyword) + r'\b', all_text):
+                    tags.append(tag)
+
+        # Drink tags require stronger signal — only apply if the TITLE suggests it's a drink,
+        # not just because a spirit name appears in ingredients (e.g. sake in ramen broth,
+        # wine in a sauce, bourbon in a glaze). This prevents food recipes from being
+        # misclassified as cocktails.
+        _drink_title_signals = [
+            'cocktail', 'mocktail', 'martini', 'margarita', 'mojito', 'daiquiri',
+            'negroni', 'sour', 'spritz', 'highball', 'punch', 'sangria', 'mimosa',
+            'smoothie', 'milkshake', 'lemonade', 'latte', 'matcha', 'coffee',
+            'drink', 'beverage', 'soju', 'chu-hai', 'chuhai', 'highball',
+            'shot', 'toddy', 'fizz', 'mule', 'bellini', 'colada',
+        ]
+        title_lower = title.lower()
+        title_is_drink = any(s in title_lower for s in _drink_title_signals)
+
+        if title_is_drink:
+            for keyword, tag in _drink_tags.items():
                 if tag not in tags and re.search(r'\b' + re.escape(keyword) + r'\b', all_text):
                     tags.append(tag)
 
@@ -639,7 +637,6 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, thumbnail_u
             "tips": tips,
             "macros": macros,
             "tags": tags,
-            "image_url": thumbnail_url,
         }
 
         resp = httpx.post(
@@ -779,9 +776,8 @@ def convert_reel_to_recipe(url: str) -> str:
     recipe = format_recipe_combined(caption, transcript, ocr_text)
     timings["format"] = time.time() - t0
 
-    # Save to Recipe Glass (with thumbnail)
-    thumb = _get_thumbnail_url(url)
-    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram", thumbnail_url=thumb)
+    # Save to Recipe Glass
+    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
 
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe}\n\n---\n⏱️ {timing_str}"
@@ -852,9 +848,8 @@ def convert_reel_to_recipe_audio(url: str) -> str:
     recipe = format_recipe(caption, transcript)
     timings["format"] = time.time() - t0
 
-    # Save to Recipe Glass (with thumbnail)
-    thumb = _get_thumbnail_url(url)
-    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram", thumbnail_url=thumb)
+    # Save to Recipe Glass
+    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
 
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe}\n\n---\n⏱️ {timing_str}"
@@ -899,9 +894,8 @@ def convert_reel_to_recipe_ocr(url: str) -> str:
     recipe = format_recipe_from_ocr(caption, ocr_text)
     timings["format"] = time.time() - t0
 
-    # Save to Recipe Glass (with thumbnail)
-    thumb = _get_thumbnail_url(url)
-    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram", thumbnail_url=thumb)
+    # Save to Recipe Glass
+    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
 
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe}\n\n---\n⏱️ {timing_str}"

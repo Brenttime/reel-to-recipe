@@ -236,6 +236,7 @@ async function init() {
     await loadCategories();
     setupListeners();
     updateCartBadge();
+    await loadUserProfile();
     // Deep-link: open recipe if URL is /recipe/<id>/...
     await openRecipeFromUrl();
     // Handle browser back/forward
@@ -246,6 +247,46 @@ async function init() {
             closeModal();
         }
     });
+}
+
+// ─── User Profile ────────────────────────────────
+async function loadUserProfile() {
+    try {
+        const res = await fetch('/auth/me', { credentials: 'same-origin' });
+        const data = await res.json();
+        if (!data.authenticated) return;
+
+        const profileEl = document.getElementById('userProfile');
+        const avatarEl = document.getElementById('userAvatar');
+        const dropdownAvatarEl = document.getElementById('dropdownAvatar');
+        const nameEl = document.getElementById('dropdownName');
+        const usernameEl = document.getElementById('dropdownUsername');
+        const avatarBtn = document.getElementById('userAvatarBtn');
+        const dropdown = document.getElementById('userDropdown');
+
+        // Set avatar (fallback to Discord default)
+        const avatarUrl = data.avatar_url || `https://cdn.discordapp.com/embed/avatars/${parseInt(data.discord_id) % 5}.png`;
+        avatarEl.src = avatarUrl;
+        dropdownAvatarEl.src = avatarUrl;
+        nameEl.textContent = data.display_name || data.username;
+        usernameEl.textContent = `@${data.username}`;
+        profileEl.style.display = 'block';
+
+        // Toggle dropdown on click
+        avatarBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('open');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!dropdown.contains(e.target) && !avatarBtn.contains(e.target)) {
+                dropdown.classList.remove('open');
+            }
+        });
+    } catch (e) {
+        console.error('Failed to load user profile:', e);
+    }
 }
 
 async function openRecipeFromUrl() {
@@ -345,9 +386,8 @@ function renderGrid(recipes) {
     emptyState.style.display = 'none';
     const cart = getCart();
     recipeGrid.innerHTML = recipes.map((r, i) => `
-        <article class="recipe-card ${r.image_url ? 'has-thumb' : ''}" data-id="${r.id}" style="animation-delay: ${i * 0.05}s">
+        <article class="recipe-card" data-id="${r.id}" style="animation-delay: ${i * 0.05}s">
             ${isNewRecipe(r) ? '<span class="new-badge">NEW</span>' : ''}
-            ${r.image_url ? `<div class="card-thumb"><img src="/api/thumbnail/${r.id}" alt="" loading="lazy"></div>` : ''}
             <div class="card-body">
                 <div class="card-platform">
                     <span class="dot"></span>
@@ -384,6 +424,12 @@ function renderGrid(recipes) {
                     <span class="meta-item meta-date">
                         <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
                         ${formatDateAdded(r.created_at)}
+                    </span>
+                ` : ''}
+                ${r.rating_avg ? `
+                    <span class="meta-item meta-rating">
+                        <span class="card-star">&#9733;</span>
+                        ${r.rating_avg} <span class="rating-count">(${r.rating_count})</span>
                     </span>
                 ` : ''}
             </div>
@@ -425,6 +471,13 @@ function renderModal(recipe) {
             ${recipe.source_url ? ` · <a href="${escapeHtml(recipe.source_url)}" target="_blank" rel="noopener">View original</a>` : ''}
         </p>
         ${recipe.created_at ? `<p class="modal-date-added">${isNewRecipe(recipe) ? '<span class="new-badge-inline">NEW</span> ' : ''}Added ${formatDateAdded(recipe.created_at)}</p>` : ''}
+
+        <!-- Rating & Reviews Section -->
+        <div class="reviews-section" id="reviewsSection">
+            <div class="reviews-summary" id="reviewsSummary">
+                <div class="reviews-loading">Loading reviews…</div>
+            </div>
+        </div>
 
         ${(recipe.servings || recipe.prep_time || recipe.cook_time || recipe.total_time) ? `
             <div class="modal-meta-bar">
@@ -506,6 +559,9 @@ function renderModal(recipe) {
 
     // Bind share button
     document.getElementById('shareCardBtn').addEventListener('click', () => shareRecipe(recipe));
+
+    // Load reviews
+    loadReviews(recipe.id);
 }
 
 function addToCartWithScaledIngredients(recipe) {
@@ -1031,15 +1087,29 @@ function releaseWakeLock() {
 async function deleteRecipe(recipe) {
     if (!confirm(`Delete "${recipe.title}"? This can't be undone.`)) return;
 
-    const res = await fetch(`/api/recipes/${recipe.id}`, { method: 'DELETE' });
-    if (res.ok) {
-        // Also remove from cart if present
-        removeFromCart(recipe.id);
-        localStorage.removeItem(`reel-cookbook-scaled-${recipe.id}`);
-        closeModal();
-        await loadRecipes(searchInput.value);
-        await loadCategories();
-    } else {
+    try {
+        const res = await fetch(`/api/recipes/${recipe.id}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        });
+        if (res.ok) {
+            // Also remove from cart if present
+            removeFromCart(recipe.id);
+            localStorage.removeItem(`reel-cookbook-scaled-${recipe.id}`);
+            closeModal();
+            await loadRecipes(searchInput.value);
+            await loadCategories();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            if (data.login_url) {
+                window.location.href = data.login_url;
+            } else {
+                alert('Failed to delete recipe.');
+            }
+        }
+    } catch (err) {
+        console.error('Delete failed:', err);
         alert('Failed to delete recipe.');
     }
 }
@@ -1144,6 +1214,7 @@ function openSpotlight() {
 function closeSpotlight() {
     spotlightOverlay.classList.remove('active');
     document.body.style.overflow = '';
+    clearTimeout(window._spotlightNudgeTimer);
 }
 
 function toggleSpotlight() {
@@ -1174,6 +1245,7 @@ async function convertReel() {
     }
 
     // Show loading state — spinner replaces esc hint
+    clearTimeout(window._spotlightNudgeTimer);
     hint.style.display = 'none';
     spinner.style.display = 'inline-block';
     input.disabled = true;
@@ -1202,8 +1274,14 @@ async function convertReel() {
             input.value = '';
             await loadRecipes(searchInput.value);
             await loadCategories();
-            // Auto-close after a beat
-            setTimeout(() => closeSpotlight(), 1200);
+            // After 10s, show a gentle nudge that they can leave or keep going
+            clearTimeout(window._spotlightNudgeTimer);
+            window._spotlightNudgeTimer = setTimeout(() => {
+                if (spotlightOverlay.classList.contains('active')) {
+                    status.textContent = 'You can close this or paste another reel ✨';
+                    status.className = 'spotlight-status spotlight-nudge';
+                }
+            }, 10000);
         } else {
             status.textContent = data.message || 'Check results';
             status.className = 'spotlight-status';
@@ -1393,6 +1471,196 @@ function escapeHtml(text) {
 function escapeAttr(text) {
     if (!text) return '';
     return text.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ─── Reviews & Ratings ──────────────────────────
+let currentUser = null;
+
+async function fetchCurrentUser() {
+    if (currentUser !== null) return currentUser;
+    try {
+        const res = await fetch('/auth/me', { credentials: 'same-origin' });
+        const data = await res.json();
+        currentUser = data.authenticated ? data : false;
+    } catch (e) {
+        currentUser = false;
+    }
+    return currentUser;
+}
+
+async function loadReviews(recipeId) {
+    const section = document.getElementById('reviewsSection');
+    if (!section) return;
+
+    try {
+        const res = await fetch(`/api/recipes/${recipeId}/reviews`, {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!res.ok) {
+            console.warn('Reviews fetch failed:', res.status);
+            section.innerHTML = '';
+            return;
+        }
+        const data = await res.json();
+        const user = await fetchCurrentUser();
+        renderReviewsSection(section, data, recipeId, user);
+    } catch (e) {
+        console.error('Reviews error:', e);
+        section.innerHTML = '';
+    }
+}
+
+function renderStars(rating, interactive = false, size = 'sm') {
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+        const filled = i <= rating;
+        const cls = `review-star ${size} ${filled ? 'filled' : ''} ${interactive ? 'interactive' : ''}`;
+        stars.push(`<span class="${cls}" data-star="${i}">&#9733;</span>`);
+    }
+    return stars.join('');
+}
+
+function renderReviewsSection(container, data, recipeId, user) {
+    const { average, count, reviews, my_review } = data;
+
+    container.innerHTML = `
+        <div class="reviews-header" id="reviewsHeader">
+            <div class="reviews-score">
+                <span class="reviews-avg">${count > 0 ? average : '\u2014'}</span>
+                <div class="reviews-stars">${count > 0 ? renderStars(Math.round(average), false, 'md') : renderStars(0, false, 'md')}</div>
+                <span class="reviews-count">${count} ${count === 1 ? 'review' : 'reviews'}</span>
+            </div>
+            <svg class="reviews-chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        </div>
+        <div class="reviews-panel" id="reviewsPanel">
+            ${user ? renderMyReviewForm(my_review, recipeId) : ''}
+            <div class="reviews-list" id="reviewsList">
+                ${reviews.length > 0 ? reviews.map(r => renderReviewItem(r, user)).join('') : '<p class="reviews-empty">No reviews yet. Be the first!</p>'}
+            </div>
+        </div>
+    `;
+
+    const header = container.querySelector('#reviewsHeader');
+    const panel = container.querySelector('#reviewsPanel');
+    header.addEventListener('click', () => {
+        panel.classList.toggle('open');
+        header.classList.toggle('expanded');
+    });
+
+    if (user) {
+        bindReviewForm(container, recipeId, my_review);
+    }
+}
+
+function renderMyReviewForm(myReview, recipeId) {
+    const existingRating = myReview ? myReview.rating : 0;
+    const existingComment = myReview ? myReview.comment : '';
+
+    return `
+        <div class="review-form-container">
+            <h4 class="review-form-title">${myReview ? 'Your Review' : 'Rate this recipe'}</h4>
+            <div class="review-form-stars" id="reviewFormStars">
+                ${renderStars(existingRating, true, 'lg')}
+            </div>
+            <textarea class="review-comment-input" id="reviewCommentInput" placeholder="Add a comment (optional)\u2026" rows="2">${existingComment ? escapeHtml(existingComment) : ''}</textarea>
+            <div class="review-form-actions">
+                <button class="review-submit-btn" id="reviewSubmitBtn">${myReview ? 'Update' : 'Submit'}</button>
+                ${myReview ? '<button class="review-delete-btn" id="reviewDeleteBtn">Remove</button>' : ''}
+            </div>
+        </div>
+    `;
+}
+
+function renderReviewItem(review, user) {
+    const avatarUrl = review.user.avatar_url || 'https://cdn.discordapp.com/embed/avatars/0.png';
+    const displayName = review.user.display_name || review.user.username;
+    const isOwn = user && user.id === review.user.id;
+    const date = new Date(review.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    return `
+        <div class="review-item ${isOwn ? 'own-review' : ''}">
+            <div class="review-item-header">
+                <img class="review-avatar" src="${avatarUrl}" alt="${escapeHtml(displayName)}" />
+                <div class="review-item-meta">
+                    <span class="review-username">${escapeHtml(displayName)}</span>
+                    <span class="review-date">${date}</span>
+                </div>
+                <div class="review-item-stars">${renderStars(review.rating, false, 'sm')}</div>
+            </div>
+            ${review.comment ? `<p class="review-comment">${escapeHtml(review.comment)}</p>` : ''}
+        </div>
+    `;
+}
+
+function bindReviewForm(container, recipeId, myReview) {
+    let selectedRating = myReview ? myReview.rating : 0;
+    const starsContainer = container.querySelector('#reviewFormStars');
+    const stars = starsContainer.querySelectorAll('.review-star');
+    const submitBtn = container.querySelector('#reviewSubmitBtn');
+    const deleteBtn = container.querySelector('#reviewDeleteBtn');
+    const commentInput = container.querySelector('#reviewCommentInput');
+
+    stars.forEach(star => {
+        star.addEventListener('mouseenter', () => {
+            const val = parseInt(star.dataset.star);
+            stars.forEach(s => {
+                s.classList.toggle('hovered', parseInt(s.dataset.star) <= val);
+            });
+        });
+
+        star.addEventListener('mouseleave', () => {
+            stars.forEach(s => s.classList.remove('hovered'));
+        });
+
+        star.addEventListener('click', () => {
+            selectedRating = parseInt(star.dataset.star);
+            stars.forEach(s => {
+                s.classList.toggle('filled', parseInt(s.dataset.star) <= selectedRating);
+            });
+        });
+    });
+
+    submitBtn.addEventListener('click', async () => {
+        if (selectedRating === 0) {
+            submitBtn.textContent = 'Tap a star first';
+            setTimeout(() => { submitBtn.textContent = myReview ? 'Update' : 'Submit'; }, 1500);
+            return;
+        }
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving\u2026';
+        try {
+            const res = await fetch(`/api/recipes/${recipeId}/reviews`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ rating: selectedRating, comment: commentInput.value.trim() })
+            });
+            if (res.ok) {
+                await loadReviews(recipeId);
+            } else {
+                submitBtn.textContent = 'Error';
+                setTimeout(() => { submitBtn.textContent = myReview ? 'Update' : 'Submit'; }, 1500);
+            }
+        } catch (e) {
+            submitBtn.textContent = 'Error';
+        }
+        submitBtn.disabled = false;
+    });
+
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', async () => {
+            deleteBtn.disabled = true;
+            try {
+                await fetch(`/api/recipes/${recipeId}/reviews`, {
+                    method: 'DELETE',
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' }
+                });
+                await loadReviews(recipeId);
+            } catch (e) { /* ignore */ }
+        });
+    }
 }
 
 // ─── Boot ───────────────────────────────────────

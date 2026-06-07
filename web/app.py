@@ -7,12 +7,48 @@ import os
 import sqlite3
 import json
 import requests
-from flask import Flask, render_template, request, jsonify, g, Response
+from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for
+from auth import auth_bp, init_auth_db
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "onlypans-dev-key-change-in-prod")
+
+# Session cookie config — must work over plain HTTP with OAuth redirects
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+
+# Register auth blueprint
+app.register_blueprint(auth_bp)
 
 DB_PATH = os.environ.get("DB_PATH", "/data/recipes.db")
 MCP_URL = os.environ.get("MCP_URL", "http://host.docker.internal:8002/convert")
+
+# --- Gate the entire app behind Discord login ---
+# Exceptions: auth flow itself, static files, and the MCP save endpoint
+AUTH_EXEMPT_PREFIXES = ('/auth/', '/static/')
+AUTH_EXEMPT_ENDPOINTS = ('api_add_recipe',)  # MCP server pushes recipes without login
+
+
+@app.before_request
+def require_login():
+    """Redirect unauthenticated users to Discord login."""
+    # Skip auth check for exempt paths
+    path = request.path
+    if any(path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES):
+        return None
+    # Skip for exempt endpoints (MCP save)
+    if request.endpoint in AUTH_EXEMPT_ENDPOINTS:
+        return None
+    # Check if logged in
+    if not session.get('user_id'):
+        # API calls get 401, browser navigation gets redirected
+        if (request.is_json
+            or request.headers.get('Accept') == 'application/json'
+            or request.path.startswith('/api/')
+            or request.method in ('DELETE', 'PUT', 'PATCH')):
+            return jsonify({'error': 'Authentication required', 'login_url': '/auth/login'}), 401
+        return redirect(url_for('auth.login'))
 
 
 def get_db():
@@ -51,6 +87,7 @@ def init_db():
             macros TEXT DEFAULT '',
             tags TEXT DEFAULT '[]',
             image_url TEXT DEFAULT '',
+            user_id INTEGER DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -78,6 +115,133 @@ def init_db():
         END;
     """)
     conn.close()
+    # Initialize auth tables
+    init_auth_db(DB_PATH)
+    # Initialize reviews table
+    _init_reviews_db()
+
+
+def _init_reviews_db():
+    """Create reviews table."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+            comment TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(recipe_id, user_id)
+        );
+    """)
+    conn.close()
+
+
+@app.route("/api/recipes/<int:recipe_id>/reviews")
+def api_get_reviews(recipe_id):
+    """Get all reviews for a recipe with user info and averages."""
+    db = get_db()
+    reviews = db.execute("""
+        SELECT r.id, r.rating, r.comment, r.created_at, r.updated_at,
+               u.id as user_id, u.username, u.display_name, u.discord_id, u.avatar
+        FROM reviews r
+        JOIN users u ON r.user_id = u.id
+        WHERE r.recipe_id = ?
+        ORDER BY r.created_at DESC
+    """, (recipe_id,)).fetchall()
+
+    reviews_list = []
+    for row in reviews:
+        avatar_url = None
+        if row['avatar']:
+            avatar_url = f"https://cdn.discordapp.com/avatars/{row['discord_id']}/{row['avatar']}.png?size=64"
+        reviews_list.append({
+            'id': row['id'],
+            'rating': row['rating'],
+            'comment': row['comment'],
+            'created_at': row['created_at'],
+            'updated_at': row['updated_at'],
+            'user': {
+                'id': row['user_id'],
+                'username': row['username'],
+                'display_name': row['display_name'],
+                'avatar_url': avatar_url,
+            }
+        })
+
+    # Calculate average
+    avg = 0
+    count = len(reviews_list)
+    if count > 0:
+        avg = round(sum(r['rating'] for r in reviews_list) / count, 1)
+
+    # Include current user's review if logged in
+    my_review = None
+    if session.get('user_id'):
+        for r in reviews_list:
+            if r['user']['id'] == session['user_id']:
+                my_review = r
+                break
+
+    return jsonify({
+        'average': avg,
+        'count': count,
+        'reviews': reviews_list,
+        'my_review': my_review,
+    })
+
+
+@app.route("/api/recipes/<int:recipe_id>/reviews", methods=["POST"])
+def api_post_review(recipe_id):
+    """Create or update a review (one per user per recipe)."""
+    if not session.get('user_id'):
+        return jsonify({'error': 'Authentication required'}), 401
+
+    data = request.get_json()
+    rating = data.get('rating')
+    comment = data.get('comment', '').strip()
+
+    if not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
+        return jsonify({'error': 'Rating must be 1-5'}), 400
+
+    db = get_db()
+    # Upsert — one review per user per recipe
+    existing = db.execute(
+        'SELECT id FROM reviews WHERE recipe_id = ? AND user_id = ?',
+        (recipe_id, session['user_id'])
+    ).fetchone()
+
+    if existing:
+        db.execute(
+            'UPDATE reviews SET rating = ?, comment = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            (rating, comment, existing['id'])
+        )
+    else:
+        db.execute(
+            'INSERT INTO reviews (recipe_id, user_id, rating, comment) VALUES (?, ?, ?, ?)',
+            (recipe_id, session['user_id'], rating, comment)
+        )
+    db.commit()
+    return jsonify({'status': 'ok'})
+
+
+@app.route("/api/recipes/<int:recipe_id>/reviews", methods=["DELETE"])
+def api_delete_review(recipe_id):
+    """Delete current user's review."""
+    if not session.get('user_id'):
+        return jsonify({'error': 'Authentication required'}), 401
+
+    db = get_db()
+    db.execute(
+        'DELETE FROM reviews WHERE recipe_id = ? AND user_id = ?',
+        (recipe_id, session['user_id'])
+    )
+    db.commit()
+    return jsonify({'status': 'ok'})
 
 
 @app.route("/")
@@ -149,6 +313,22 @@ def api_recipes():
         recipe["tags"] = json.loads(recipe["tags"])
         recipes.append(recipe)
 
+    # Attach review averages in bulk
+    if recipes:
+        recipe_ids = [r["id"] for r in recipes]
+        placeholders = ",".join("?" * len(recipe_ids))
+        avg_rows = db.execute(f"""
+            SELECT recipe_id, ROUND(AVG(rating), 1) as avg_rating, COUNT(*) as review_count
+            FROM reviews
+            WHERE recipe_id IN ({placeholders})
+            GROUP BY recipe_id
+        """, recipe_ids).fetchall()
+        avg_map = {r["recipe_id"]: {"avg": r["avg_rating"], "count": r["review_count"]} for r in avg_rows}
+        for recipe in recipes:
+            info = avg_map.get(recipe["id"])
+            recipe["rating_avg"] = info["avg"] if info else None
+            recipe["rating_count"] = info["count"] if info else 0
+
     return jsonify(recipes)
 
 
@@ -180,7 +360,7 @@ def api_update_recipe(recipe_id):
         UPDATE recipes SET
             title = ?, creator = ?, source_url = ?, platform = ?,
             servings = ?, prep_time = ?, cook_time = ?, total_time = ?,
-            ingredients = ?, instructions = ?, tips = ?, macros = ?, tags = ?, image_url = ?
+            ingredients = ?, instructions = ?, tips = ?, macros = ?, tags = ?
         WHERE id = ?
     """, (
         data.get("title", row["title"]),
@@ -196,7 +376,6 @@ def api_update_recipe(recipe_id):
         data.get("tips", row["tips"]),
         data.get("macros", row["macros"]),
         json.dumps(data["tags"]) if "tags" in data else row["tags"],
-        data.get("image_url", row["image_url"]),
         recipe_id,
     ))
     db.commit()
@@ -225,8 +404,8 @@ def api_add_recipe():
     db.execute("""
         INSERT INTO recipes (title, creator, source_url, platform, servings,
                            prep_time, cook_time, total_time, ingredients,
-                           instructions, tips, macros, tags, image_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           instructions, tips, macros, tags)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data.get("title", "Untitled"),
         data.get("creator", ""),
@@ -241,7 +420,6 @@ def api_add_recipe():
         data.get("tips", ""),
         data.get("macros", ""),
         json.dumps(data.get("tags", [])),
-        data.get("image_url", ""),
     ))
     db.commit()
     return jsonify({"status": "ok", "id": db.execute("SELECT last_insert_rowid()").fetchone()[0]}), 201
@@ -391,47 +569,6 @@ def api_convert():
             "status": "partial",
             "message": "Conversion succeeded but recipe could not be saved. Check MCP logs.",
         }), 200
-
-
-@app.route("/api/thumbnail/<int:recipe_id>")
-def api_thumbnail(recipe_id):
-    """Proxy thumbnail images to avoid CORS/mixed-content issues.
-
-    Fetches the image_url stored for a recipe and streams it back.
-    Caches in /data/thumbnails/ for subsequent requests.
-    """
-    cache_dir = "/data/thumbnails"
-    cache_path = os.path.join(cache_dir, f"{recipe_id}.jpg")
-
-    # Serve from cache if available
-    if os.path.exists(cache_path):
-        with open(cache_path, "rb") as f:
-            return Response(f.read(), mimetype="image/jpeg",
-                          headers={"Cache-Control": "public, max-age=86400"})
-
-    # Fetch image_url from DB
-    db = get_db()
-    row = db.execute("SELECT image_url FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
-    if not row or not row["image_url"]:
-        return Response(status=404)
-
-    try:
-        resp = requests.get(row["image_url"], timeout=15, stream=True,
-                          headers={"User-Agent": "Mozilla/5.0"})
-        if resp.status_code != 200:
-            return Response(status=502)
-
-        img_data = resp.content
-        # Cache to disk
-        os.makedirs(cache_dir, exist_ok=True)
-        with open(cache_path, "wb") as f:
-            f.write(img_data)
-
-        content_type = resp.headers.get("Content-Type", "image/jpeg")
-        return Response(img_data, mimetype=content_type,
-                       headers={"Cache-Control": "public, max-age=86400"})
-    except Exception:
-        return Response(status=502)
 
 
 # Initialize database on startup

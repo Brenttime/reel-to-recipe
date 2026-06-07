@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>OnlyPans</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -14,6 +14,25 @@
     <div class="app-container">
         <!-- Header -->
         <header class="glass-header">
+            <div class="header-left">
+                <div class="user-profile" id="userProfile" style="display:none;">
+                    <button class="user-avatar-btn" id="userAvatarBtn">
+                        <img class="user-avatar" id="userAvatar" alt="Profile" />
+                    </button>
+                    <div class="user-dropdown" id="userDropdown">
+                        <div class="dropdown-user-info">
+                            <img class="dropdown-avatar" id="dropdownAvatar" alt="Profile" />
+                            <div class="dropdown-name" id="dropdownName"></div>
+                            <div class="dropdown-username" id="dropdownUsername"></div>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <a href="/auth/logout" class="dropdown-item dropdown-logout">
+                            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4a1 1 0 00-1-1H3zm7.707 3.293a1 1 0 010 1.414L9.414 9H17a1 1 0 110 2H9.414l1.293 1.293a1 1 0 01-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                            Sign Out
+                        </a>
+                    </div>
+                </div>
+            </div>
             <div class="header-content">
                 <div class="logo">
                     <h1>OnlyPans</h1>
@@ -107,6 +126,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=3"></script>
 </body>
 </html>
