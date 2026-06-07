@@ -86,6 +86,13 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/recipe/<int:recipe_id>")
+@app.route("/recipe/<int:recipe_id>/<path:slug>")
+def recipe_permalink(recipe_id, slug=None):
+    """Permalink — serves same SPA, JS picks up the path and opens the modal."""
+    return render_template("index.html")
+
+
 @app.route("/api/recipes")
 def api_recipes():
     """Get all recipes, optionally filtered by search or source_url."""
