@@ -86,6 +86,7 @@ body {
     text-align: center;
     position: relative;
     overflow: visible;
+    z-index: 100;
 }
 
 .glass-header::before {
