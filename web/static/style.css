@@ -875,3 +875,507 @@ body {
 .recipe-card:nth-child(7) { animation-delay: 0.35s; }
 .recipe-card:nth-child(8) { animation-delay: 0.4s; }
 .recipe-card:nth-child(9) { animation-delay: 0.45s; }
+
+/* ============ Cart Toggle (Header) ============ */
+
+.glass-header {
+    position: relative;
+}
+
+.cart-toggle {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    background: rgba(0,0,0,0.06);
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: var(--transition);
+}
+
+.cart-toggle:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.cart-toggle svg {
+    width: 20px;
+    height: 20px;
+}
+
+.cart-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    background: var(--accent);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+/* ============ Card Add-to-Cart Button ============ */
+
+.card-cart-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: var(--surface);
+    border: 1px solid var(--glass-border);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-tertiary);
+    transition: var(--transition);
+    font-size: 1.1rem;
+    font-weight: 500;
+    z-index: 2;
+}
+
+.card-cart-btn:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: rgba(0,122,255,0.3);
+}
+
+.card-cart-btn.in-cart {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+/* ============ Shopping Panel ============ */
+
+.shopping-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    padding: 24px;
+}
+
+.shopping-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.shopping-panel {
+    max-width: 560px;
+    width: 100%;
+}
+
+.shopping-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.shopping-header h2 {
+    font-size: 1.4rem;
+    font-weight: 600;
+}
+
+.shopping-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.shopping-actions button {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.1);
+    background: rgba(0,0,0,0.03);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: var(--transition);
+}
+
+.shopping-actions button:hover {
+    background: rgba(0,0,0,0.08);
+    color: var(--text-primary);
+}
+
+.shopping-recipes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.shopping-recipe-chip {
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.shopping-recipe-chip button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--accent);
+    font-size: 0.9rem;
+    line-height: 1;
+    opacity: 0.6;
+}
+
+.shopping-recipe-chip button:hover {
+    opacity: 1;
+}
+
+.shopping-list {
+    list-style: none;
+    padding: 0;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.shopping-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+    transition: var(--transition);
+}
+
+.shopping-item.checked {
+    opacity: 0.4;
+}
+
+.shopping-item.checked .shopping-item-text {
+    text-decoration: line-through;
+}
+
+.shopping-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.shopping-item-text {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.shopping-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-tertiary);
+}
+
+.shopping-empty p {
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+}
+
+/* ============ Serving Scaler ============ */
+
+.scaler-widget {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    background: rgba(0,0,0,0.04);
+    border-radius: 10px;
+    margin-left: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.08);
+}
+
+.scaler-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.scaler-btn:hover {
+    background: var(--accent-soft);
+}
+
+.scaler-value {
+    width: 32px;
+    text-align: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ============ Cook Mode ============ */
+
+.cook-mode {
+    position: fixed;
+    inset: 0;
+    background: #1a1a1a;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.cook-mode.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.cook-mode-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    max-width: 700px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 24px;
+}
+
+.cook-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.cook-title {
+    font-size: 1rem;
+    font-weight: 500;
+    color: rgba(255,255,255,0.7);
+}
+
+.cook-exit {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    color: rgba(255,255,255,0.8);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.cook-exit:hover {
+    background: rgba(255,255,255,0.2);
+    color: white;
+}
+
+.cook-ingredients-toggle {
+    margin-top: 16px;
+}
+
+.cook-ingredients-toggle summary {
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.5);
+    cursor: pointer;
+    padding: 8px 0;
+    user-select: none;
+}
+
+.cook-ingredients-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 0;
+}
+
+.cook-ingredients-list span {
+    background: rgba(255,255,255,0.08);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.6);
+}
+
+.cook-step-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 0;
+}
+
+.cook-step-counter {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.4);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+    margin-bottom: 24px;
+}
+
+.cook-step-text {
+    font-size: 1.8rem;
+    font-weight: 400;
+    color: white;
+    text-align: center;
+    line-height: 1.4;
+    max-width: 600px;
+}
+
+.cook-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.cook-nav-btn {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    border-radius: 12px;
+    padding: 14px 28px;
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    min-width: 100px;
+}
+
+.cook-nav-btn:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.cook-nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.cook-nav-btn.primary {
+    background: var(--accent);
+}
+
+.cook-nav-btn.primary:hover {
+    background: #0056CC;
+}
+
+.cook-done {
+    text-align: center;
+    color: rgba(255,255,255,0.9);
+}
+
+.cook-done p {
+    font-size: 2rem;
+    margin-bottom: 8px;
+}
+
+.cook-done span {
+    font-size: 1rem;
+    color: rgba(255,255,255,0.5);
+}
+
+/* ============ Modal Add-to-list / Cook buttons ============ */
+
+.modal-action-bar {
+    display: flex;
+    gap: 10px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(0,0,0,0.06);
+}
+
+.btn-add-list {
+    flex: 1;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--glass-border);
+    background: var(--surface);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    color: var(--text-secondary);
+}
+
+.btn-add-list:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: rgba(0,122,255,0.3);
+}
+
+.btn-add-list.in-cart {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: rgba(0,122,255,0.3);
+}
+
+.btn-cook {
+    flex: 1;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: var(--accent);
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-cook:hover {
+    background: #0056CC;
+    transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+    .cook-step-text {
+        font-size: 1.3rem;
+    }
+
+    .cart-toggle {
+        top: 16px;
+        right: 16px;
+    }
+
+    .cook-nav-btn {
+        padding: 12px 20px;
+        font-size: 0.85rem;
+    }
+}
