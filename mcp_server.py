@@ -478,19 +478,115 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, thumbnail_u
             elif "instagram.com" in url:
                 platform = "Instagram"
 
-        # Auto-tag based on content
-        all_text = (title + " " + " ".join(i["text"] if isinstance(i, dict) else i for i in ingredients)).lower()
-        tag_keywords = {
-            "chicken": "chicken", "beef": "beef", "shrimp": "seafood",
-            "fish": "seafood", "salmon": "seafood", "pasta": "pasta",
-            "breakfast": "breakfast", "dessert": "dessert", "cookie": "dessert",
-            "cake": "dessert", "sandwich": "sandwich", "taco": "Mexican",
-            "korean": "Korean", "japanese": "Japanese", "spicy": "spicy",
-            "vegan": "vegan", "vegetarian": "vegetarian",
+        # Auto-tag based on content — DoorDash-style food categories
+        all_text = (
+            title + " " +
+            " ".join(i["text"] if isinstance(i, dict) else i for i in ingredients) + " " +
+            " ".join(instructions) + " " +
+            tips
+        ).lower()
+
+        # ── Protein / Main Ingredient ──
+        _protein_tags = {
+            "chicken": "chicken", "poultry": "chicken",
+            "beef": "beef", "steak": "beef", "ground beef": "beef", "brisket": "beef",
+            "pork": "pork", "bacon": "pork", "ham": "pork", "sausage": "pork",
+            "lamb": "lamb",
+            "duck": "duck",
+            "turkey": "turkey",
+            "shrimp": "seafood", "prawn": "seafood", "fish": "seafood",
+            "salmon": "seafood", "tuna": "seafood", "crab": "seafood",
+            "lobster": "seafood", "clam": "seafood", "mussel": "seafood",
+            "scallop": "seafood", "octopus": "seafood", "squid": "seafood",
+            "tofu": "vegetarian", "tempeh": "vegetarian",
         }
-        for keyword, tag in tag_keywords.items():
-            if keyword in all_text and tag not in tags:
-                tags.append(tag)
+        # ── Cuisine ──
+        _cuisine_tags = {
+            "japanese": "Japanese", "sushi": "Japanese", "ramen": "Japanese",
+            "teriyaki": "Japanese", "miso": "Japanese", "takoyaki": "Japanese",
+            "tonkatsu": "Japanese", "tempura": "Japanese", "udon": "Japanese",
+            "korean": "Korean", "kimchi": "Korean", "bulgogi": "Korean",
+            "gochujang": "Korean", "bibimbap": "Korean",
+            "chinese": "Chinese", "wok": "Chinese", "stir fry": "Chinese",
+            "dim sum": "Chinese", "szechuan": "Chinese", "kung pao": "Chinese",
+            "thai": "Thai", "pad thai": "Thai", "green curry": "Thai",
+            "coconut curry": "Thai", "tom yum": "Thai",
+            "indian": "Indian", "tikka": "Indian", "masala": "Indian",
+            "tandoori": "Indian", "naan": "Indian", "biryani": "Indian",
+            "mexican": "Mexican", "taco": "Mexican", "burrito": "Mexican",
+            "enchilada": "Mexican", "quesadilla": "Mexican", "salsa": "Mexican",
+            "chipotle": "Mexican", "guacamole": "Mexican", "tortilla": "Mexican",
+            "italian": "Italian", "pasta": "Italian", "risotto": "Italian",
+            "lasagna": "Italian", "gnocchi": "Italian", "pesto": "Italian",
+            "parmesan": "Italian", "marinara": "Italian",
+            "mediterranean": "Mediterranean", "falafel": "Mediterranean",
+            "hummus": "Mediterranean", "tzatziki": "Mediterranean",
+            "french": "French", "croissant": "French", "béchamel": "French",
+            "vietnamese": "Vietnamese", "pho": "Vietnamese", "banh mi": "Vietnamese",
+            "american": "American", "cajun": "Cajun", "creole": "Cajun",
+            "middle eastern": "Middle Eastern", "shawarma": "Middle Eastern",
+        }
+        # ── Meal Type ──
+        _meal_tags = {
+            "breakfast": "breakfast", "brunch": "brunch",
+            "pancake": "breakfast", "waffle": "breakfast", "french toast": "breakfast",
+            "scrambled": "breakfast", "omelette": "breakfast", "omelet": "breakfast",
+            "lunch": "lunch", "dinner": "dinner", "supper": "dinner",
+            "snack": "snack", "appetizer": "appetizer",
+            "dessert": "dessert", "cookie": "dessert", "cake": "dessert",
+            "brownie": "dessert", "ice cream": "dessert", "pudding": "dessert",
+            "pie": "dessert", "cheesecake": "dessert", "mousse": "dessert",
+        }
+        # ── Dish Type ──
+        _dish_tags = {
+            "sandwich": "sandwich", "burger": "burger", "wrap": "wrap",
+            "pizza": "pizza", "flatbread": "pizza",
+            "soup": "soup", "stew": "soup", "chowder": "soup",
+            "salad": "salad", "bowl": "bowl", "poke": "bowl",
+            "rice": "rice", "fried rice": "rice", "risotto": "rice",
+            "noodle": "noodles", "lo mein": "noodles", "chow mein": "noodles",
+            "curry": "curry", "wing": "wings", "taco": "tacos",
+            "dumpling": "dumplings", "gyoza": "dumplings",
+            "fries": "fries", "croquette": "fried",
+        }
+        # ── Cooking Method ──
+        _method_tags = {
+            "air fry": "air fryer", "air fryer": "air fryer", "airfryer": "air fryer",
+            "grilled": "grilled", "grill": "grilled", "bbq": "BBQ", "barbecue": "BBQ",
+            "smoked": "smoked", "slow cook": "slow cooker", "crockpot": "slow cooker",
+            "instant pot": "instant pot", "pressure cook": "instant pot",
+            "rice cooker": "rice cooker",
+            "deep fry": "fried", "deep-fry": "fried", "deep fried": "fried",
+            "baked": "baked", "roasted": "roasted", "one pot": "one pot",
+            "one pan": "one pan", "sheet pan": "sheet pan", "no cook": "no cook",
+        }
+        # ── Attributes / Dietary / Vibes ──
+        _attr_tags = {
+            "spicy": "spicy", "sriracha": "spicy", "jalapeño": "spicy",
+            "habanero": "spicy", "cayenne": "spicy", "hot sauce": "spicy",
+            "gochujang": "spicy", "chili flake": "spicy",
+            "healthy": "healthy", "high protein": "high protein",
+            "low carb": "low carb", "keto": "keto",
+            "vegan": "vegan", "vegetarian": "vegetarian",
+            "gluten free": "gluten-free", "gluten-free": "gluten-free",
+            "dairy free": "dairy-free", "dairy-free": "dairy-free",
+            "quick": "quick", "easy": "easy", "meal prep": "meal prep",
+            "budget": "budget", "copycat": "copycat", "fast food": "fast food",
+            "comfort food": "comfort food", "street food": "street food",
+            "party": "party food", "game day": "game day",
+        }
+
+        # Merge all tag dictionaries and scan (word-boundary matching to avoid substrings)
+        for tag_map in [_protein_tags, _cuisine_tags, _meal_tags, _dish_tags, _method_tags, _attr_tags]:
+            for keyword, tag in tag_map.items():
+                if tag not in tags and re.search(r'\b' + re.escape(keyword) + r'\b', all_text):
+                    tags.append(tag)
+
+        # Infer "quick" from cook times under 20 min
+        if "quick" not in tags:
+            time_match = re.search(r'(\d+)\s*min', (total_time or cook_time or "").lower())
+            if time_match and int(time_match.group(1)) <= 20:
+                tags.append("quick")
 
         if not title:
             title = "Untitled Recipe"
