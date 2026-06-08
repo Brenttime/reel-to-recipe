@@ -29,6 +29,16 @@ NETRC_FILE = Path.home() / ".netrc"
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 VENV_PYTHON = str(Path(__file__).parent / ".venv" / "bin" / "python")
 
+# GPU acceleration (opt-in via environment variables)
+# WHISPER_DEVICE: "cpu" (default), "cuda" (NVIDIA), or "auto" (try CUDA, fall back to CPU)
+# WHISPER_COMPUTE_TYPE: "int8" (CPU default), "float16" (GPU default), "int8_float16", etc.
+# FFMPEG_HWACCEL: "" (disabled, default), "vaapi", "cuda", "qsv", "videotoolbox"
+# FFMPEG_HWACCEL_DEVICE: device path (e.g. "/dev/dri/renderD128" for VAAPI, "0" for CUDA)
+WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "cpu")
+WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "")  # auto-selected below
+FFMPEG_HWACCEL = os.environ.get("FFMPEG_HWACCEL", "")
+FFMPEG_HWACCEL_DEVICE = os.environ.get("FFMPEG_HWACCEL_DEVICE", "")
+
 # Age-restricted content error message (links to setup docs)
 AGE_RESTRICTED_MSG = (
     "Instagram is not granting access to this content. This reel may be age-restricted "
@@ -132,27 +142,56 @@ def _caption_has_recipe_signals(caption: str) -> bool:
         return False
 
     # Look for quantity patterns: "2 cups", "1/2 tsp", "500g", "3 tbsp", etc.
-    qty_pattern = r'\b(\d+[\s/½⅓¼⅔¾⅛]*(cups?|tbsp|tsp|oz|lb|g|kg|ml|liter|cloves?|slices?|pieces?|stalks?|cans?|packets?|sticks?))\b'
+    qty_pattern = r'\b(\d+[\s/½⅓¼⅔¾⅛]*(cups?|tbsp|tsp|oz|lb|g|kg|ml|liter|cloves?|slices?|pieces?|stalks?|cans?|packets?|sticks?))\\b'
     qty_matches = re.findall(qty_pattern, caption, re.IGNORECASE)
 
     # Look for ingredient-like lines (bullet points, hyphens, numbered lists)
-    list_pattern = r'^[\s]*[-•*]\s*\d|^\s*\d+[\.\)]\s'
+    list_pattern = r'^[\s]*[-•*]\s*\d|^\s*\d+[\.\\)]\s'
     list_lines = re.findall(list_pattern, caption, re.MULTILINE)
 
     # If we have 3+ quantity mentions OR 3+ list items, caption has recipe data
     return len(qty_matches) >= 3 or len(list_lines) >= 3
 
 
+_whisper_model = None
+
+
 def get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
         from faster_whisper import WhisperModel
+
+        device = WHISPER_DEVICE
+        if device == "auto":
+            try:
+                import torch
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            except ImportError:
+                device = "cpu"
+
+        # Auto-select compute type based on device if not explicitly set
+        compute_type = WHISPER_COMPUTE_TYPE
+        if not compute_type:
+            compute_type = "float16" if device == "cuda" else "int8"
+
         _whisper_model = WhisperModel(
             WHISPER_MODEL,
-            device="cpu",
-            compute_type=WHISPER_COMPUTE_TYPE
+            device=device,
+            compute_type=compute_type
         )
     return _whisper_model
+
+
+def _ffmpeg_hwaccel_args() -> list:
+    """Build ffmpeg hardware acceleration input args based on env config."""
+    args = []
+    if FFMPEG_HWACCEL:
+        args.extend(["-hwaccel", FFMPEG_HWACCEL])
+        if FFMPEG_HWACCEL_DEVICE:
+            args.extend(["-hwaccel_device", FFMPEG_HWACCEL_DEVICE])
+        # Output decoded frames in system memory for software filters (fps, etc.)
+        args.extend(["-hwaccel_output_format", "cpu"])
+    return args
 
 
 def is_blog_url(url: str) -> bool:
@@ -579,8 +618,11 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
             if has_audio:
                 # Extract audio from the already-downloaded video via ffmpeg (~1-2s local)
                 tmp_audio = tempfile.mktemp(suffix=".mp3")
+                ffmpeg_cmd = ["ffmpeg", "-y"] + _ffmpeg_hwaccel_args() + [
+                    "-i", tmp_video, "-vn", "-acodec", "libmp3lame", "-q:a", "2", tmp_audio
+                ]
                 ffmpeg_result = subprocess.run(
-                    ["ffmpeg", "-y", "-i", tmp_video, "-vn", "-acodec", "libmp3lame", "-q:a", "2", tmp_audio],
+                    ffmpeg_cmd,
                     capture_output=True, timeout=30
                 )
                 if ffmpeg_result.returncode != 0:
@@ -668,8 +710,11 @@ def tiktok_download_audio(url: str) -> str:
     with open(tmp_video, 'wb') as f:
         f.write(video_resp.content)
     # Extract audio with ffmpeg
+    ffmpeg_cmd = ['ffmpeg', '-y'] + _ffmpeg_hwaccel_args() + [
+        '-i', tmp_video, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', tmp_audio
+    ]
     subprocess.run(
-        ['ffmpeg', '-y', '-i', tmp_video, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', tmp_audio],
+        ffmpeg_cmd,
         capture_output=True, timeout=30
     )
     os.unlink(tmp_video)
@@ -722,9 +767,12 @@ def extract_text_from_video(video_path: str) -> str:
 
     try:
         # Extract at 1fps (was 2fps — recipe text holds 3-10s, no need for more)
+        ffmpeg_cmd = ["ffmpeg", "-y"] + _ffmpeg_hwaccel_args() + [
+            "-i", video_path, "-vf", "fps=1",
+            os.path.join(frames_dir, "frame_%04d.png")
+        ]
         subprocess.run(
-            ["ffmpeg", "-y", "-i", video_path, "-vf", "fps=1",
-             os.path.join(frames_dir, "frame_%04d.png")],
+            ffmpeg_cmd,
             capture_output=True, timeout=120
         )
 
