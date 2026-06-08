@@ -34,13 +34,13 @@ convert_jobs = {}  # job_id -> {status, url, added_by, recipe, error, created_at
 convert_lock = threading.Lock()
 
 
-def _conversion_worker(job_id, url, method, added_by):
+def _conversion_worker(job_id, url, added_by):
     """Background worker: calls MCP, saves recipe, updates job status."""
     try:
         with convert_lock:
             convert_jobs[job_id]["status"] = "processing"
 
-        resp = requests.post(MCP_URL, json={"url": url, "method": method, "job_id": job_id}, timeout=300)
+        resp = requests.post(MCP_URL, json={"url": url, "job_id": job_id}, timeout=300)
         if resp.status_code != 200:
             result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
             with convert_lock:
@@ -653,7 +653,6 @@ def api_convert():
 
     # Create job and start background worker
     job_id = str(uuid.uuid4())[:8]
-    method = data.get("method", "full")
 
     with convert_lock:
         convert_jobs[job_id] = {
@@ -667,7 +666,7 @@ def api_convert():
             "step_detail": "",
         }
 
-    thread = threading.Thread(target=_conversion_worker, args=(job_id, url, method, added_by), daemon=True)
+    thread = threading.Thread(target=_conversion_worker, args=(job_id, url, added_by), daemon=True)
     thread.start()
 
     return jsonify({"status": "queued", "job_id": job_id}), 202

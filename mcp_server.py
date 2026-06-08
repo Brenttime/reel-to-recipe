@@ -381,40 +381,6 @@ def transcribe(audio_path: str) -> str:
     return " ".join(segment.text.strip() for segment in segments)
 
 
-def format_recipe_from_ocr(caption: str, ocr_text: str) -> str:
-    """Send OCR text to Hermes for recipe formatting."""
-    prompt = f"""Format this cooking video into a clean recipe. You have two sources:
-
-1. CAPTION (context, may or may not have recipe details):
-{caption}
-
-2. OCR TEXT (extracted from video text overlays — authoritative for ingredients and steps):
-{ocr_text}
-
-Produce a structured recipe with:
-- Recipe title
-- Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere). For cocktails/drinks, include ABV or calories per serving if available.
-- Ingredients list with quantities — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [bar], [other]
-  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]", "2 oz vodka [bar]", "1 oz simple syrup [bar]", "club soda [beverages]"
-  Use [bar] for spirits, liqueurs, bitters, vermouths, and cocktail-specific ingredients (e.g. vodka, gin, rum, tequila, whiskey, bourbon, triple sec, Campari, Angostura bitters, maraschino liqueur). Use [beverages] for non-alcoholic mixers (club soda, tonic water, juice as a mixer). Use [produce] for fresh garnishes (lime, lemon, mint, cucumber).
-- Numbered step-by-step instructions
-- Tips section
-
-NOTE: This may be a cocktail, drink, or beverage recipe — not just food. Adapt accordingly: use "Ingredients" not "Grocery List", steps might be "shake", "stir", "muddle", "strain", "garnish" etc. If it's a drink, include glassware and garnish in the tips.
-
-IMPORTANT: Start your response with the recipe title on the FIRST line. Do NOT write any preamble like "Here's the recipe" or "Sure!". Output the recipe content only. The ingredients section is REQUIRED — always include it, even if you have to infer ingredients from the instructions.
-
-If the OCR is messy, use your best judgment to clean up typos and interpret ingredients."""
-
-    result = subprocess.run(
-        ["hermes", "chat", "-q", prompt, "-t", ""],
-        capture_output=True, text=True, timeout=120
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Hermes failed: {result.stderr}")
-    return _strip_hermes_chrome(result.stdout)
-
-
 def _strip_hermes_chrome(output: str) -> str:
     """Strip the hermes UI chrome — extract content between the box borders."""
     lines = output.split("\n")
@@ -800,40 +766,6 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
         print(f"[Recipe Glass] Error saving recipe: {e}")
 
 
-def format_recipe(caption: str, transcript: str) -> str:
-    """Send to Hermes for recipe formatting (audio pipeline)."""
-    prompt = f"""Format this cooking video into a clean recipe. You have two sources:
-
-1. CAPTION (authoritative — trust this for ingredients and quantities):
-{caption}
-
-2. TRANSCRIPT (supplementary — use for technique tips and context):
-{transcript}
-
-Return a structured recipe with:
-- Recipe title
-- Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere). For cocktails/drinks, include ABV or calories per serving if available.
-- Ingredients list with exact quantities (from caption) — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [bar], [other]
-  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]", "2 oz vodka [bar]", "1 oz simple syrup [bar]", "club soda [beverages]"
-  Use [bar] for spirits, liqueurs, bitters, vermouths, and cocktail-specific ingredients (e.g. vodka, gin, rum, tequila, whiskey, bourbon, triple sec, Campari, Angostura bitters, maraschino liqueur). Use [beverages] for non-alcoholic mixers (club soda, tonic water, juice as a mixer). Use [produce] for fresh garnishes (lime, lemon, mint, cucumber).
-- Numbered step-by-step instructions (combine both sources)
-- Tips section (from transcript)
-
-NOTE: This may be a cocktail, drink, or beverage recipe — not just food. Adapt accordingly: use "Ingredients" not "Grocery List", steps might be "shake", "stir", "muddle", "strain", "garnish" etc. If it's a drink, include glassware and garnish in the tips.
-
-IMPORTANT: Start your response with the recipe title on the FIRST line. Do NOT write any preamble like "Here's the recipe" or "Sure!". Output the recipe content only. The ingredients section is REQUIRED — always include it, even if you have to infer ingredients from the instructions.
-
-If the caption is empty or doesn't contain recipe info, rely on the transcript instead."""
-
-    result = subprocess.run(
-        ["hermes", "chat", "-q", prompt, "-t", ""],
-        capture_output=True, text=True, timeout=120
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Hermes failed: {result.stderr}")
-    return _strip_hermes_chrome(result.stdout)
-
-
 def format_recipe_combined(caption: str, transcript: str, ocr_text: str) -> str:
     """Send all three sources to Hermes for comprehensive recipe formatting."""
     prompt = f"""Format this cooking video into a clean recipe. You have three sources:
@@ -926,138 +858,6 @@ def convert_reel_to_recipe(url: str) -> str:
     return f"{recipe}\n\n---\n⏱️ {timing_str}"
 
 
-@mcp.tool()
-def get_reel_caption(url: str) -> str:
-    """Get just the caption/description from an Instagram Reel or TikTok.
-
-    Useful for checking if a reel has recipe info in the caption before
-    running full transcription.
-
-    Args:
-        url: Full Instagram Reel or TikTok URL
-
-    Returns:
-        The post caption text, or empty string if unavailable.
-    """
-    return smart_get_caption(url)
-
-
-@mcp.tool()
-def transcribe_reel(url: str) -> str:
-    """Download and transcribe an Instagram Reel or TikTok's audio without recipe formatting.
-
-    Args:
-        url: Full Instagram Reel or TikTok URL
-
-    Returns:
-        Raw transcript text from Whisper.
-    """
-    audio_path = smart_download_audio(url)
-    try:
-        return transcribe(audio_path)
-    finally:
-        os.unlink(audio_path)
-
-
-@mcp.tool()
-def convert_reel_to_recipe_audio(url: str) -> str:
-    """Convert an Instagram Reel or TikTok URL into a recipe using audio transcription only.
-
-    Best for reels where the recipe is spoken aloud. Uses caption + Whisper transcript.
-    For a full attempt using all methods, use convert_reel_to_recipe instead.
-
-    Args:
-        url: Full Instagram Reel or TikTok URL
-
-    Returns:
-        Formatted recipe text with title, ingredients, instructions, and tips.
-    """
-    timings = {}
-
-    t0 = time.time()
-    dl = combined_download(url, need_audio=True, need_video=False)
-    timings["download"] = time.time() - t0
-
-    caption = dl["caption"]
-    audio_path = dl["audio_path"]
-
-    t0 = time.time()
-    transcript = transcribe(audio_path)
-    timings["transcribe"] = time.time() - t0
-    os.unlink(audio_path)
-
-    t0 = time.time()
-    recipe = format_recipe(caption, transcript)
-    timings["format"] = time.time() - t0
-
-    # Save to Recipe Glass
-    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
-
-    timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
-    return f"{recipe}\n\n---\n⏱️ {timing_str}"
-
-
-@mcp.tool()
-def convert_reel_to_recipe_ocr(url: str) -> str:
-    """Convert an Instagram Reel or TikTok URL into a recipe by reading text overlays from the video.
-
-    Best for reels where the recipe is shown as text on screen (not spoken).
-    Downloads the video, extracts frames, OCRs each frame with tesseract,
-    deduplicates, and formats into a structured recipe.
-
-    Args:
-        url: Full Instagram Reel or TikTok URL
-
-    Returns:
-        Formatted recipe text with title, ingredients, instructions, and tips.
-    """
-    timings = {}
-
-    # Combined download: caption + video
-    t0 = time.time()
-    dl = combined_download(url, need_audio=False, need_video=True)
-    timings["download"] = time.time() - t0
-
-    caption = dl["caption"]
-    video_path = dl["video_path"]
-
-    # OCR frames
-    t0 = time.time()
-    ocr_text = extract_text_from_video(video_path)
-    timings["ocr"] = time.time() - t0
-
-    # Cleanup video
-    os.unlink(video_path)
-
-    # Format recipe
-    t0 = time.time()
-    recipe = format_recipe_from_ocr(caption, ocr_text)
-    timings["format"] = time.time() - t0
-
-    # Save to Recipe Glass
-    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
-
-    timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
-    return f"{recipe}\n\n---\n⏱️ {timing_str}"
-
-
-@mcp.tool()
-def ocr_reel(url: str) -> str:
-    """Extract raw text from an Instagram Reel or TikTok's video frames without recipe formatting.
-
-    Useful for inspecting what text is shown on screen before formatting.
-
-    Args:
-        url: Full Instagram Reel or TikTok URL
-
-    Returns:
-        Raw OCR text blocks separated by --- dividers.
-    """
-    video_path = smart_download_video(url)
-    try:
-        return extract_text_from_video(video_path)
-    finally:
-        os.unlink(video_path)
 
 
 if __name__ == "__main__":
@@ -1082,8 +882,6 @@ if __name__ == "__main__":
                 return
 
             job_id = body.get("job_id", "")  # Passed by web app for progress tracking
-            method = body.get("method", "full")
-            caption = None  # May be preloaded by smart detection
 
             # ── Early duplicate check (before expensive processing) ──
             _report_progress(job_id, "checking", "Checking for duplicates…")
@@ -1096,125 +894,71 @@ if __name__ == "__main__":
                 }, 409)
                 return
 
-            # ── Smart method selection ──
-            # If method is "full", check if caption has enough recipe data to skip OCR
-            if method == "full":
-                _report_progress(job_id, "analyzing", "Fetching caption…")
-                caption = smart_get_caption(url)
-                if _caption_has_recipe_signals(caption):
-                    # Caption is rich — audio pipeline is sufficient, skip OCR (saves 90-120s)
-                    _report_progress(job_id, "downloading", "Caption has recipe data — using audio pipeline")
-                    method = "audio_with_caption"
-                else:
-                    _report_progress(job_id, "downloading", "Downloading video + audio…")
+            # ── Smart detection: skip OCR if caption is rich enough ──
+            _report_progress(job_id, "analyzing", "Fetching caption…")
+            caption = smart_get_caption(url)
+            skip_ocr = _caption_has_recipe_signals(caption)
+
+            if skip_ocr:
+                _report_progress(job_id, "downloading", "Caption has recipe data — skipping OCR")
+            else:
+                _report_progress(job_id, "downloading", "Downloading video + audio…")
 
             try:
-                if method == "audio" or method == "audio_with_caption":
-                    result = self._run_audio_pipeline(url, job_id,
-                        preloaded_caption=caption if method == "audio_with_caption" else None)
-                elif method == "ocr":
-                    result = self._run_ocr_pipeline(url, job_id)
-                else:
-                    result = self._run_full_pipeline(url, job_id)
+                result = self._run_pipeline(url, job_id, caption, skip_ocr=skip_ocr)
                 self._json_response({"status": "ok", "result": result})
             except Exception as e:
                 self._json_response({"error": str(e)}, 500)
 
-        def _run_audio_pipeline(self, url, job_id, preloaded_caption=None):
-            """Audio pipeline with combined download."""
+        def _run_pipeline(self, url, job_id, preloaded_caption, skip_ocr=False):
+            """Single unified pipeline. Skips OCR when caption is recipe-rich."""
             timings = {}
 
-            if preloaded_caption is not None:
-                # Caption already fetched during smart detection — just need audio
+            if skip_ocr:
+                # Audio-only: caption already has ingredients
                 _report_progress(job_id, "downloading", "Downloading audio…")
                 t0 = time.time()
                 dl = combined_download(url, need_audio=True, need_video=False)
                 timings["download"] = time.time() - t0
-                caption = preloaded_caption
+
                 audio_path = dl["audio_path"]
-            else:
-                _report_progress(job_id, "downloading", "Downloading caption + audio…")
+
+                _report_progress(job_id, "transcribing", "Transcribing audio…")
                 t0 = time.time()
-                dl = combined_download(url, need_audio=True, need_video=False)
+                transcript = transcribe(audio_path)
+                timings["transcribe"] = time.time() - t0
+                os.unlink(audio_path)
+
+                _report_progress(job_id, "formatting", "Formatting recipe…")
+                t0 = time.time()
+                recipe = format_recipe_combined(preloaded_caption, transcript, "")
+                timings["format"] = time.time() - t0
+            else:
+                # Full pipeline: audio + OCR
+                _report_progress(job_id, "downloading", "Downloading video + audio (single pass)…")
+                t0 = time.time()
+                dl = combined_download(url, need_audio=True, need_video=True)
                 timings["download"] = time.time() - t0
-                caption = dl["caption"]
+
                 audio_path = dl["audio_path"]
+                video_path = dl["video_path"]
 
-            _report_progress(job_id, "transcribing", "Transcribing audio…")
-            t0 = time.time()
-            transcript = transcribe(audio_path)
-            timings["transcribe"] = time.time() - t0
-            os.unlink(audio_path)
+                _report_progress(job_id, "transcribing", "Transcribing audio…")
+                t0 = time.time()
+                transcript = transcribe(audio_path)
+                timings["transcribe"] = time.time() - t0
+                os.unlink(audio_path)
 
-            _report_progress(job_id, "formatting", "Formatting recipe…")
-            t0 = time.time()
-            recipe = format_recipe(caption, transcript)
-            timings["format"] = time.time() - t0
+                _report_progress(job_id, "ocr", "Extracting text from frames…")
+                t0 = time.time()
+                ocr_text = extract_text_from_video(video_path)
+                timings["ocr"] = time.time() - t0
+                os.unlink(video_path)
 
-            _report_progress(job_id, "saving", "Saving recipe…")
-            _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
-
-            timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
-            return f"{recipe}\n\n---\n⏱️ {timing_str}"
-
-        def _run_ocr_pipeline(self, url, job_id):
-            """OCR pipeline with combined download."""
-            timings = {}
-
-            _report_progress(job_id, "downloading", "Downloading video…")
-            t0 = time.time()
-            dl = combined_download(url, need_audio=False, need_video=True)
-            timings["download"] = time.time() - t0
-
-            caption = dl["caption"]
-            video_path = dl["video_path"]
-
-            _report_progress(job_id, "ocr", "Extracting text from frames…")
-            t0 = time.time()
-            ocr_text = extract_text_from_video(video_path)
-            timings["ocr"] = time.time() - t0
-            os.unlink(video_path)
-
-            _report_progress(job_id, "formatting", "Formatting recipe…")
-            t0 = time.time()
-            recipe = format_recipe_from_ocr(caption, ocr_text)
-            timings["format"] = time.time() - t0
-
-            _report_progress(job_id, "saving", "Saving recipe…")
-            _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
-
-            timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
-            return f"{recipe}\n\n---\n⏱️ {timing_str}"
-
-        def _run_full_pipeline(self, url, job_id):
-            """Full pipeline (audio + OCR) with combined download."""
-            timings = {}
-
-            _report_progress(job_id, "downloading", "Downloading video + audio (single pass)…")
-            t0 = time.time()
-            dl = combined_download(url, need_audio=True, need_video=True)
-            timings["download"] = time.time() - t0
-
-            caption = dl["caption"]
-            audio_path = dl["audio_path"]
-            video_path = dl["video_path"]
-
-            _report_progress(job_id, "transcribing", "Transcribing audio…")
-            t0 = time.time()
-            transcript = transcribe(audio_path)
-            timings["transcribe"] = time.time() - t0
-            os.unlink(audio_path)
-
-            _report_progress(job_id, "ocr", "Extracting text from frames…")
-            t0 = time.time()
-            ocr_text = extract_text_from_video(video_path)
-            timings["ocr"] = time.time() - t0
-            os.unlink(video_path)
-
-            _report_progress(job_id, "formatting", "Formatting recipe…")
-            t0 = time.time()
-            recipe = format_recipe_combined(caption, transcript, ocr_text)
-            timings["format"] = time.time() - t0
+                _report_progress(job_id, "formatting", "Formatting recipe…")
+                t0 = time.time()
+                recipe = format_recipe_combined(preloaded_caption, transcript, ocr_text)
+                timings["format"] = time.time() - t0
 
             _report_progress(job_id, "saving", "Saving recipe…")
             _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
