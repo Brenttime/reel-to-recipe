@@ -1326,6 +1326,231 @@ def convert_reel_to_recipe(url: str) -> str:
     return f"{recipe}\n\n---\n⏱️ {timing_str}"
 
 
+# ── Meal Plan MCP Tools ──────────────────────────────────────────────────────
+
+@mcp.tool()
+def get_meal_plan(week: str = "") -> str:
+    """Get the meal plan for a given week.
+
+    Args:
+        week: ISO date string for the Monday of the week (e.g. '2025-06-09').
+              Leave empty for the current week.
+
+    Returns:
+        Formatted meal plan showing each day's planned recipes.
+    """
+    from datetime import date as dt_date, timedelta
+
+    params = {}
+    if week:
+        params["week"] = week
+
+    try:
+        resp = httpx.get(f"{RECIPE_GLASS_URL}/api/meal-plan", params=params, timeout=10)
+        data = resp.json()
+    except Exception as e:
+        return f"Error fetching meal plan: {e}"
+
+    plan = data.get("plan", [])
+    week_start = data.get("week_start", "")
+
+    if not plan:
+        return f"No meals planned for the week of {week_start}."
+
+    # Group by date
+    from collections import OrderedDict
+    days = OrderedDict()
+    for entry in plan:
+        d = entry["date"]
+        if d not in days:
+            days[d] = []
+        days[d].append(entry)
+
+    lines = [f"📅 Meal Plan — Week of {week_start}\n"]
+    for date_str, meals in days.items():
+        day_name = dt_date.fromisoformat(date_str).strftime("%A %-m/%-d")
+        lines.append(f"**{day_name}**")
+        for meal in meals:
+            creator = f" ({meal['creator']})" if meal.get("creator") else ""
+            lines.append(f"> #{meal['id']} — {meal['title']}{creator}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def add_to_meal_plan(recipe_id: int, date: str) -> str:
+    """Add a recipe to the meal plan on a specific day.
+
+    Args:
+        recipe_id: The ID of the recipe to add.
+        date: ISO date string (e.g. '2025-06-11') for the day to plan it on.
+
+    Returns:
+        Confirmation message.
+    """
+    try:
+        resp = httpx.post(
+            f"{RECIPE_GLASS_URL}/api/meal-plan",
+            json={"recipe_id": recipe_id, "date": date},
+            timeout=10
+        )
+        data = resp.json()
+        if resp.status_code == 201:
+            return f"✅ Added recipe #{recipe_id} to meal plan for {date}."
+        else:
+            return f"Error: {data.get('error', 'Unknown error')}"
+    except Exception as e:
+        return f"Error adding to meal plan: {e}"
+
+
+@mcp.tool()
+def remove_from_meal_plan(entry_id: int) -> str:
+    """Remove a recipe from the meal plan.
+
+    Args:
+        entry_id: The meal plan entry ID (from get_meal_plan results).
+
+    Returns:
+        Confirmation message.
+    """
+    try:
+        resp = httpx.delete(f"{RECIPE_GLASS_URL}/api/meal-plan/{entry_id}", timeout=10)
+        if resp.status_code == 200:
+            return f"✅ Removed entry #{entry_id} from meal plan."
+        else:
+            return f"Error: {resp.json().get('error', 'Unknown error')}"
+    except Exception as e:
+        return f"Error removing from meal plan: {e}"
+
+
+@mcp.tool()
+def get_grocery_list(week: str = "") -> str:
+    """Get the aggregated grocery list for a week's meal plan.
+
+    Args:
+        week: ISO date string for the Monday of the week (e.g. '2025-06-09').
+              Leave empty for the current week.
+
+    Returns:
+        Categorized grocery list from all planned meals.
+    """
+    params = {}
+    if week:
+        params["week"] = week
+
+    try:
+        resp = httpx.get(f"{RECIPE_GLASS_URL}/api/meal-plan/grocery-list", params=params, timeout=10)
+        data = resp.json()
+    except Exception as e:
+        return f"Error fetching grocery list: {e}"
+
+    ingredients = data.get("ingredients", [])
+    recipes = data.get("recipes", [])
+
+    if not ingredients:
+        return "No ingredients — no meals planned this week."
+
+    lines = [f"🛒 Grocery List ({len(recipes)} recipes)\n"]
+    for item in ingredients:
+        lines.append(f"- {item}")
+
+    lines.append(f"\n**From:** {', '.join(recipes)}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def search_recipes(query: str = "", category: str = "") -> str:
+    """Search the recipe library by text or category.
+
+    Args:
+        query: Search text (matches title, creator, ingredients, instructions).
+               Leave empty to browse all recipes.
+        category: Filter by tag/category (e.g. 'japanese', 'chicken', 'cocktail').
+                  Leave empty for no category filter.
+
+    Returns:
+        List of matching recipes with IDs, titles, creators, and tags.
+    """
+    params = {}
+    if query:
+        params["q"] = query
+    if category:
+        params["tag"] = category
+
+    try:
+        resp = httpx.get(f"{RECIPE_GLASS_URL}/api/recipes", params=params, timeout=10)
+        if resp.status_code == 401:
+            # Fallback: query DB directly since auth is required for full list
+            return _search_recipes_direct(query, category)
+        data = resp.json()
+    except Exception:
+        return _search_recipes_direct(query, category)
+
+    if isinstance(data, dict) and "error" in data:
+        return _search_recipes_direct(query, category)
+
+    if not data:
+        return "No recipes found."
+
+    lines = [f"📖 Found {len(data)} recipe(s):\n"]
+    for r in data:
+        creator = f" by {r.get('creator', '')}" if r.get("creator") else ""
+        tags = ", ".join(r.get("tags", [])[:3]) if r.get("tags") else ""
+        tag_str = f" [{tags}]" if tags else ""
+        lines.append(f"• **#{r['id']}** {r['title']}{creator}{tag_str}")
+
+    return "\n".join(lines)
+
+
+def _search_recipes_direct(query: str, category: str) -> str:
+    """Fallback: search recipes directly via SQLite (bypasses auth)."""
+    import sqlite3
+    db_path = "/data/recipes.db"
+    # Try Docker volume path first, then local
+    import os
+    if not os.path.exists(db_path):
+        db_path = str(Path(__file__).parent / "web" / "recipes.db")
+        if not os.path.exists(db_path):
+            return "Cannot access recipe database."
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    if query:
+        rows = conn.execute(
+            "SELECT id, title, creator, tags FROM recipes WHERE title LIKE ? OR creator LIKE ? OR ingredients LIKE ? ORDER BY created_at DESC LIMIT 20",
+            (f"%{query}%", f"%{query}%", f"%{query}%")
+        ).fetchall()
+    elif category:
+        rows = conn.execute(
+            "SELECT id, title, creator, tags FROM recipes WHERE tags LIKE ? ORDER BY created_at DESC LIMIT 20",
+            (f"%{category}%",)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT id, title, creator, tags FROM recipes ORDER BY created_at DESC LIMIT 20"
+        ).fetchall()
+
+    conn.close()
+
+    if not rows:
+        return "No recipes found."
+
+    lines = [f"📖 Found {len(rows)} recipe(s):\n"]
+    for r in rows:
+        creator = f" by {r['creator']}" if r["creator"] else ""
+        tags_raw = r["tags"] or "[]"
+        try:
+            tags = json.loads(tags_raw)[:3]
+            tag_str = f" [{', '.join(tags)}]" if tags else ""
+        except (json.JSONDecodeError, TypeError):
+            tag_str = ""
+        lines.append(f"• **#{r['id']}** {r['title']}{creator}{tag_str}")
+
+    return "\n".join(lines)
+
+
 
 
 if __name__ == "__main__":

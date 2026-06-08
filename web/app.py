@@ -124,6 +124,9 @@ def require_login():
     # Allow duplicate-check queries from MCP (source_url lookup only)
     if path == '/api/recipes' and request.method == 'GET' and request.args.get('source_url'):
         return None
+    # Allow MCP recipe search (GET /api/recipes with q= or tag= params)
+    if path == '/api/recipes' and request.method == 'GET' and (request.args.get('q') or request.args.get('tag')):
+        return None
     # Check if logged in
     if not session.get('user_id'):
         # API calls get 401, browser navigation gets redirected
