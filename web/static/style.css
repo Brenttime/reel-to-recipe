@@ -2386,39 +2386,39 @@ body {
 @media all and (display-mode: standalone) {
     .convert-queue-bar {
         /*
-         * Dynamic Island integration.
-         * iPhone 14 Pro+: Dynamic Island is centered, ~126×37px, starts ~11px from top.
-         * safe-area-inset-top ≈ 59px on Dynamic Island phones.
-         * For notch iPhones (safe-area ≈ 47px), pill sits just below the notch.
-         * We use safe-area-inset-top to align the pill's TOP with the island's bottom edge,
-         * then subtract to visually "merge" with it.
+         * Expand AROUND the physical Dynamic Island.
+         * iPhone 14 Pro+: island is ~126×37px, starts ~11px from screen top.
+         * iPhone 16: island is slightly wider (~162px with action button area).
+         * We make our pill START at the island's top edge and extend DOWN past it.
+         * The glow ring wraps the whole pill (= wraps around the island).
+         * Content (text + progress) lives below the physical cutout.
          */
-        top: calc(env(safe-area-inset-top, 20px) - 11px);
+        top: 11px;
         left: 50%;
         right: auto;
         transform: translateX(-50%);
-        width: auto;
-        min-width: 160px;
+        /* Wide enough to encompass the island + breathing room */
+        width: 200px;
+        min-width: 200px;
         max-width: calc(100% - 32px);
         padding: 0;
         border: none;
         border-bottom: none;
-        border-radius: 99px;
+        border-radius: 36px;
         background: #000000;
         box-shadow:
-            0 0 0 0px rgba(0, 150, 255, 0),
-            0 8px 32px rgba(0, 0, 0, 0.3),
+            0 8px 32px rgba(0, 0, 0, 0.4),
             0 2px 8px rgba(0, 0, 0, 0.2);
         overflow: visible;
         animation: islandAppear 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
     }
 
-    /* The animated glow ring around the island pill */
+    /* The animated glow ring — wraps around the entire pill (= around the island) */
     .queue-bar-island-glow {
         display: block;
         position: absolute;
         inset: -3px;
-        border-radius: 99px;
+        border-radius: 38px;
         overflow: hidden;
         z-index: -1;
     }
@@ -2427,7 +2427,7 @@ body {
     .queue-bar-island-glow::before {
         content: '';
         position: absolute;
-        /* Make it large enough to cover when rotated (diagonal of parent) */
+        /* Oversized to cover during rotation */
         top: -50%;
         left: -50%;
         width: 200%;
@@ -2443,26 +2443,34 @@ body {
         animation: islandGlowSpin 2s linear infinite;
     }
 
-    /* Inner mask to create ring (cut out center) */
+    /* Inner mask — cut out center to create ring border effect */
     .queue-bar-island-glow::after {
         content: '';
         position: absolute;
         inset: 2.5px;
-        border-radius: 99px;
+        border-radius: 36px;
         background: #000000;
     }
 
     .queue-bar-content {
         position: relative;
         z-index: 1;
-        padding: 10px 20px;
-        gap: 10px;
+        /*
+         * Push content BELOW the physical Dynamic Island.
+         * Island is ~37px tall from its top (which is our pill's top).
+         * Add padding so text starts below the hardware cutout.
+         */
+        padding: 44px 18px 12px 18px;
+        gap: 8px;
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .queue-bar-text {
         color: rgba(255, 255, 255, 0.95) !important;
         font-size: 0.78rem;
         letter-spacing: -0.01em;
+        text-align: center;
     }
 
     .queue-bar-inner {
