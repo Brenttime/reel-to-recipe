@@ -1925,6 +1925,10 @@ async function loadReviews(recipeId) {
     const section = document.getElementById('reviewsSection');
     if (!section) return;
 
+    // Preserve scroll position of the modal to prevent scroll jump after re-render
+    const modal = section.closest('.glass-modal');
+    const scrollTop = modal ? modal.scrollTop : 0;
+
     try {
         const res = await fetch(`/api/recipes/${recipeId}/reviews`, {
             credentials: 'same-origin',
@@ -1938,6 +1942,13 @@ async function loadReviews(recipeId) {
         const data = await res.json();
         const user = await fetchCurrentUser();
         renderReviewsSection(section, data, recipeId, user);
+
+        // Restore scroll position after DOM update
+        if (modal) {
+            requestAnimationFrame(() => {
+                modal.scrollTop = scrollTop;
+            });
+        }
     } catch (e) {
         console.error('Reviews error:', e);
         section.innerHTML = '';
