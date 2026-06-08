@@ -262,6 +262,8 @@ async function init() {
             closeModal();
         }
     });
+    // Poll for new recipes every 60s
+    setInterval(pollForNewRecipes, 60000);
 }
 
 // ─── User Profile ────────────────────────────────
@@ -394,6 +396,30 @@ async function loadRecipes(query = '') {
     renderGrid(allRecipes);
 }
 
+async function pollForNewRecipes() {
+    // Silent background poll — reload only if recipe count changed
+    try {
+        const query = searchInput ? searchInput.value : '';
+        const url = query ? `/api/recipes?q=${encodeURIComponent(query)}` : '/api/recipes';
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const recipes = await res.json();
+        if (recipes.length !== allRecipes.length) {
+            recipes.forEach(r => {
+                if (typeof r.tags === 'string') {
+                    r.tags = r.tags ? r.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+                } else if (!Array.isArray(r.tags)) {
+                    r.tags = [];
+                }
+            });
+            allRecipes = recipes;
+            renderGrid(allRecipes);
+            loadCategories();
+        }
+    } catch (e) {
+        // Silent — don't disrupt UX on network blips
+    }
+}
 async function loadCategories() {
     const res = await fetch('/api/categories');
     const categories = await res.json();
