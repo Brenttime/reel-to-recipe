@@ -143,7 +143,7 @@ def require_login():
             or request.path.startswith('/api/')
             or request.method in ('DELETE', 'PUT', 'PATCH')):
             return jsonify({'error': 'Authentication required', 'login_url': '/auth/login'}), 401
-        return redirect(url_for('auth.login'))
+        return render_template('login.html')
 
 
 def get_db():
