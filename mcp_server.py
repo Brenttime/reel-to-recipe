@@ -828,12 +828,14 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
             if source_match:
                 if not creator:
                     creator_raw = source_match.group(1).strip()
-                    # Normalize: if not starting with @, add it and remove spaces
-                    if creator_raw.startswith("@"):
+                    # Skip placeholder values from LLM
+                    if creator_raw.lower() in ("@creatorhandle", "@creator", "creatorhandle", "unknown"):
+                        pass  # leave creator empty — will be filled by fallback
+                    elif creator_raw.startswith("@"):
                         creator = creator_raw.split()[0]  # just the @handle
                     else:
-                        # "El Cooks" -> "@elcooks"
-                        creator = "@" + creator_raw.lower().replace(" ", "")
+                        # Proper name (blog author, website) — keep as-is
+                        creator = creator_raw
                 continue
 
             # Detect title (first non-empty line, or after # header)
@@ -952,8 +954,40 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
         # If no creator yet, scan recipe text for @username pattern
         if not creator:
             at_match = re.search(r'@(\w{3,30})', recipe_text)
-            if at_match:
+            if at_match and at_match.group(1).lower() not in ("creatorhandle", "creator"):
                 creator = f"@{at_match.group(1)}"
+
+        # If still no creator, derive from URL domain (for web/blog sources)
+        if not creator and url:
+            domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
+            if domain_match:
+                domain = domain_match.group(1)
+                # Strip TLD and format nicely: "heygrillhey.com" -> "Hey Grill Hey"
+                site_name = domain.split('.')[0]
+                # Common sites with proper names
+                site_names = {
+                    "foodnetwork": "Food Network",
+                    "allrecipes": "AllRecipes",
+                    "budgetbytes": "Budget Bytes",
+                    "heygrillhey": "Hey Grill Hey",
+                    "sprinklesandsprouts": "Sprinkles and Sprouts",
+                    "seriouseats": "Serious Eats",
+                    "bonappetit": "Bon Appétit",
+                    "thefoodie": "The Foodie Menu",
+                    "epicurious": "Epicurious",
+                    "delish": "Delish",
+                    "tasty": "Tasty",
+                    "simplyrecipes": "Simply Recipes",
+                    "cookieandkate": "Cookie and Kate",
+                    "minimalistbaker": "Minimalist Baker",
+                    "halfbakedharvest": "Half Baked Harvest",
+                    "damndelicious": "Damn Delicious",
+                    "pinchofyum": "Pinch of Yum",
+                    "smittenkitchen": "Smitten Kitchen",
+                    "recipetineats": "RecipeTin Eats",
+                    "kingarthurbaking": "King Arthur Baking",
+                }
+                creator = site_names.get(site_name, site_name.replace("-", " ").replace("_", " ").title())
 
         # Title case if ALL CAPS (check alpha chars only)
         alpha_chars = [c for c in title if c.isalpha()]
