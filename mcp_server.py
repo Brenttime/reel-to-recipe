@@ -312,7 +312,7 @@ def convert_blog_to_recipe(url: str, job_id: str = "") -> str:
     timings["parse"] = time.time() - t0
 
     if jsonld and jsonld.get("title") and jsonld.get("ingredients"):
-        _report_progress(job_id, "formatting", "Found structured recipe — running through AI for aisle tags…")
+        _report_progress(job_id, "formatting", "Found structured recipe — running through AI for tags…")
 
         # Build a clean text representation to feed the LLM for section tagging
         lines = []
@@ -351,7 +351,7 @@ def convert_blog_to_recipe(url: str, job_id: str = "") -> str:
 
         structured_text = "\n".join(lines)
 
-        # Run through LLM for proper [section] aisle tags on ingredients
+        # Run through LLM for proper [section] tags on ingredients
         t0 = time.time()
         recipe_text = format_recipe_combined(structured_text, "", "")
         timings["format"] = time.time() - t0

@@ -1,6 +1,6 @@
 # 🍳 OnlyPans
 
-**Reels to Ingredients** — A local-first pipeline that converts Instagram Reels and TikTok videos into structured recipes, served through a beautiful web cookbook with Apple's Liquid Glass design language.
+**Reels to Ingredients** — A local-first pipeline that converts Instagram Reels, TikTok videos, and recipe blog URLs into structured recipes, served through a beautiful web cookbook with Apple's Liquid Glass design language.
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)
 ![Docker](https://img.shields.io/badge/docker-compose-blue)
@@ -39,6 +39,10 @@
 │  │ (yt-dlp /   │  │ (Audio    │  │ (OCR from │               │
 │  │  TikWM API) │  │ Transcr.) │  │  Frames)  │               │
 │  └─────────────┘  └───────────┘  └───────────┘               │
+│  ┌─────────────────────────────────────────────┐              │
+│  │ Blog Import (JSON-LD Schema.org extraction  │              │
+│  │ + LLM fallback for unstructured pages)      │              │
+│  └─────────────────────────────────────────────┘              │
 │        │                │               │                      │
 │        └────────┬───────┘───────────────┘                      │
 │                 ▼                                               │
@@ -53,32 +57,37 @@
 **Two components, one repo:**
 
 | Component | Port | Stack | Purpose |
-|-----------|------|-------|---------| 
-| **MCP Server** | 8001 (MCP) / 8002 (HTTP) | Python, Whisper, Tesseract, yt-dlp | Convert reels → structured recipes |
-| **OnlyPans** | 5100 | Flask, SQLite/FTS5, Discord OAuth2, Gunicorn, Docker | Browse, search, rate, cook, and share recipes |
+|-----------|------|-------|---------|
+| **MCP Server** | 8001 (MCP) / 8002 (HTTP) | Python, faster-whisper, Tesseract, yt-dlp | Convert reels + blog URLs → structured recipes |
+| **OnlyPans** | 5100 | Flask, SQLite/FTS5, Discord OAuth2, Gunicorn, Docker | Browse, search, rate, cook, plan, and share recipes |
 
 ---
 
 ## Features
 
-### 🔄 Three Conversion Pipelines
+### 🔄 Conversion Pipelines
 
-Each pipeline extracts content differently and routes it through Hermes for structured formatting:
+The MCP server exposes a single unified tool — `convert_reel_to_recipe(url)` — that auto-detects the source type and routes to the correct pipeline:
 
-| Pipeline | Method | Best For |
-|----------|--------|----------|
-| **Full** | Caption + Whisper audio + OCR frames | Maximum coverage — merges all sources |
-| **Audio** | Caption + Whisper transcript | Spoken/narrated recipe videos |
-| **OCR** | Caption + Tesseract frame extraction | Text-on-screen recipe cards |
+| Source | Pipeline | Speed |
+|--------|----------|-------|
+| **Instagram Reel** | Combined download (yt-dlp) → caption analysis → Whisper audio + OCR frames → LLM format | ~35-50s |
+| **TikTok** | TikWM API → caption + audio + OCR → LLM format | ~35-50s |
+| **Recipe blog** | Fetch HTML → JSON-LD extraction → LLM format (for aisle tags) | ~10s |
+| **Other web URL** | Fetch HTML → strip to text → LLM format | ~15s |
 
-All pipelines auto-save to OnlyPans with duplicate detection (by source URL) and automatic category tagging.
+**Smart optimizations:**
+- Caption signal detection — skips OCR entirely when caption has 3+ quantity patterns (saves ~20s)
+- Perceptual frame dedup (pHash) — identical consecutive frames skipped during OCR (saves ~40s)
+- Combined yt-dlp download — single network session for caption + media (saves ~8s)
+- JSON-LD instant parse — structured recipe data extracted without AI when available
 
 ### 🍳 OnlyPans Web App
 
 **Apple Liquid Glass UI** — frosted glass cards, gradient mesh backgrounds, blur effects, SF Pro typography. Designed to look and feel like something Apple made.
 
 #### Gallery & Discovery
-- **Recipe cards** with thumbnail images, category chips, creator attribution, average rating, and "NEW" badges (< 24h old)
+- **Recipe cards** with category chips, creator attribution, average rating, and "NEW" badges (< 24h old)
 - **Full-text search** across recipe titles, creators, ingredients, instructions, tips, and who added it (SQLite FTS5 with LIKE fallback)
 - **DoorDash-style category chips** — emoji-tagged filter buttons (🇯🇵 Japanese, 🍗 Chicken, 💨 Air Fryer, 🦐 Seafood, etc.) generated from recipe tags
 - **"Added by Me" chip** — personal filter with your Discord avatar showing only recipes you added
@@ -87,9 +96,10 @@ All pipelines auto-save to OnlyPans with duplicate detection (by source URL) and
 
 #### Spotlight Convert (⌘+Space style)
 - Full-screen dimmed blur overlay with a single dark frosted search bar
-- Paste any Instagram or TikTok URL → queues conversion instantly
+- Paste any Instagram, TikTok, or recipe blog URL → queues conversion instantly
+- **Blog support** — recipe blogs with JSON-LD schema are parsed in ~2s; others use AI extraction
 - **Non-blocking** — close the overlay and keep browsing while it converts
-- Duplicate detection prevents re-converting the same reel
+- Duplicate detection prevents re-converting the same URL
 - Queue multiple URLs in rapid succession
 
 #### 🔄 Async Conversion Queue
@@ -135,6 +145,18 @@ All pipelines auto-save to OnlyPans with duplicate detection (by source URL) and
 
 #### 📅 Meal Planner
 A shared weekly meal planner with an Apple-inspired radial day selector.
+
+**Today's Meals Card (DoorDash-style):**
+- Appears on the homepage below search when meals are planned for today
+- Shows each meal with smart category emoji, title, and creator
+- Tap any meal → opens full recipe detail modal
+- "View Plan →" opens the meal plan panel
+- Auto-refreshes when meals are added/removed
+
+**Long-press Recipe Detail:**
+- Hold a meal chip for 500ms in the calendar view → opens the full recipe detail
+- Haptic feedback on supported devices
+- Short tap still triggers day reassignment (existing behavior)
 
 **Radial Day Selector:**
 - Full-screen frosted glass overlay with Apple Liquid Glass design
@@ -287,24 +309,24 @@ The script writes a `cookies.txt` that yt-dlp picks up automatically — no serv
 
 ## MCP Tools
 
-Six tools available to any MCP-compatible client:
+One unified tool available to any MCP-compatible client:
 
 | Tool | Description |
 |------|-------------|
-| `convert_reel_to_recipe(url)` | Full pipeline — caption + audio + OCR, all sources merged |
-| `convert_reel_to_recipe_audio(url)` | Audio pipeline — caption + Whisper transcript |
-| `convert_reel_to_recipe_ocr(url)` | OCR pipeline — caption + Tesseract frame extraction |
-| `get_reel_caption(url)` | Fetch just the post caption/description |
-| `transcribe_reel(url)` | Raw Whisper audio transcript (no formatting) |
-| `ocr_reel(url)` | Raw OCR text from video frames (no formatting) |
+| `convert_reel_to_recipe(url)` | Auto-detect source type and convert to structured recipe. Handles Instagram Reels, TikTok videos, recipe blogs (JSON-LD), and any web page with recipe content. |
 
 ### HTTP API (Port 8002)
 
 ```bash
-# Convert a reel (from web app or curl)
+# Convert a reel
 curl -X POST http://localhost:8002/convert \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://www.tiktok.com/@user/video/123", "method": "full"}'
+  -d '{"url": "https://www.tiktok.com/@user/video/123"}'
+
+# Convert a recipe blog
+curl -X POST http://localhost:8002/convert \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://www.budgetbytes.com/dragon-noodles/"}'
 ```
 
 ---
@@ -325,7 +347,7 @@ All endpoints except `POST /api/recipes` require Discord authentication (session
 | `/api/recipes/<id>/reviews` | PUT | ✅ | Update your existing review |
 | `/api/recipes/<id>/reviews` | DELETE | ✅ | Delete your review |
 | `/api/categories` | GET | ✅ | Tags with counts for category chips |
-| `/api/convert` | POST | ✅ | Queue a reel URL for conversion (returns job_id, 202) |
+| `/api/convert` | POST | ✅ | Queue a URL for conversion (returns job_id, 202) |
 | `/api/convert/<job_id>` | GET | ✅ | Poll conversion job status (queued/processing/done/error) |
 | `/api/convert/queue` | GET | ✅ | List all active conversion jobs |
 | `/api/meal-plan` | GET | ✅ | Get meal plan for a week (`?week=YYYY-MM-DD`, defaults to current week) |
@@ -333,7 +355,6 @@ All endpoints except `POST /api/recipes` require Discord authentication (session
 | `/api/meal-plan/<id>` | PUT | ✅ | Move a meal plan entry to a different date (`{date}`) |
 | `/api/meal-plan/<id>` | DELETE | ✅ | Remove a meal plan entry |
 | `/api/meal-plan/grocery-list` | GET | ✅ | Aggregated grocery list for a week (`?week=YYYY-MM-DD`) |
-| `/api/thumbnail/<id>` | GET | ✅ | Proxy and cache recipe thumbnail images |
 | `/api/rebuild-index` | POST | ✅ | Rebuild FTS5 full-text search index |
 | `/auth/login` | GET | ❌ | Initiate Discord OAuth2 flow |
 | `/auth/callback` | GET | ❌ | OAuth2 callback handler |
@@ -350,10 +371,12 @@ All endpoints except `POST /api/recipes` require Discord authentication (session
 
 ## Supported Platforms
 
-| Platform | Download Method | Thumbnails |
-|----------|----------------|------------|
-| **TikTok** | TikWM API (no cookies, 1 req/sec rate limit, cached) | `origin_cover` / `cover` from TikWM |
-| **Instagram Reels** | yt-dlp (no auth required for public reels) | `yt-dlp --print thumbnail` |
+| Platform | Download Method |
+|----------|----------------|
+| **TikTok** | TikWM API (no cookies, 1 req/sec rate limit, cached) |
+| **Instagram Reels** | yt-dlp (optional session cookie for age-gated content) |
+| **Recipe Blogs** | HTTP fetch + JSON-LD Schema.org extraction (instant) |
+| **Any Web URL** | HTTP fetch + AI text extraction (LLM fallback) |
 
 ---
 
@@ -414,7 +437,6 @@ recipes (
     tips TEXT DEFAULT '',
     macros TEXT DEFAULT '',
     tags TEXT DEFAULT '[]',    -- JSON array
-    image_url TEXT DEFAULT '',
     user_id INTEGER DEFAULT NULL,
     added_by TEXT DEFAULT '',  -- display name of who added it
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -457,14 +479,14 @@ meal_plan (
 
 | Package | Purpose |
 |---------|---------|
-| `openai-whisper` | Audio transcription |
-| `pytesseract` / `pillow` | OCR from video frames |
-| `yt-dlp` | Instagram Reel downloads |
-| `curl-cffi` / `httpx` | TikTok downloads (TikWM API) |
-| `mcp` | MCP protocol server |
-| `fastapi` / `uvicorn` | HTTP API (port 8002) |
+| `faster-whisper` | Audio transcription (CTranslate2, int8 quantization) |
+| `imagehash` / `pillow` | Perceptual frame deduplication (pHash) |
+| `pytesseract` | OCR from video frames |
+| `yt-dlp` | Instagram Reel/video downloads |
+| `httpx` | TikTok (TikWM API) + blog page fetching |
+| `mcp` | MCP protocol server (streamable-http) |
 
-**System:** `ffmpeg`, `tesseract-ocr`, [Hermes Agent](https://github.com/nousresearch/hermes-agent) (LLM formatting via `hermes chat -q`)
+**System:** `ffmpeg`, `tesseract-ocr`, [Hermes Agent](https://github.com/nousresearch/hermes-agent) (LLM formatting via `hermes chat -q -m gpt-4o-mini`)
 
 ### OnlyPans (Docker)
 
@@ -486,7 +508,7 @@ meal_plan (
 - **Async conversion queue** — Background threads process conversions without blocking the UI. Client polls every 2s with an animated progress bar. Recipes appear automatically in the gallery when done (observable pattern).
 - **"Added by" attribution** — Tracks who added each recipe (auto-set from session on convert, editable with user dropdown in edit mode). "Added by Me" chip filters your personal contributions.
 - **Caption priority** — Captions are the highest-quality source (creators type them carefully). The full pipeline merges caption + audio + OCR with caption taking precedence.
-- **Whisper base model** — Balances speed and accuracy for recipe narration on CPU.
+- **Whisper base model (faster-whisper)** — CTranslate2 with int8 quantization; 3-5s transcription on CPU (4x faster than openai-whisper).
 - **Best-effort saves** — MCP conversion never fails if OnlyPans is down; saves are fire-and-forget (`try/except`).
 - **FTS5 with LIKE fallback** — Full-text search for speed, with LIKE as a safety net for edge cases.
 - **Duplicate detection** — Checked by `source_url` before insert to prevent re-converting the same reel.
@@ -497,6 +519,9 @@ meal_plan (
 - **One review per user** — UNIQUE(recipe_id, user_id) constraint. Users edit their existing review rather than stacking multiple.
 - **Shared meal planner** — A single calendar visible to all household members (not per-user isolation). Radial day selector uses Apple-inspired arc segments with frosted glass, staggered entrance animations, and counter-rotated text for readability. Grocery list auto-categorizes ingredients by keyword matching into standard grocery sections.
 - **100% local** — No cloud APIs, no subscriptions. Whisper runs on CPU, Tesseract is local, LLM formatting goes through your own Hermes Agent.
+- **Blog import via JSON-LD** — Schema.org Recipe type is the gold standard; 90%+ of recipe blogs embed it. Extraction is instant, then we still run through the LLM for aisle section tags on ingredients.
+- **Single gunicorn worker + threads** — In-memory `convert_jobs` dict requires single process; gthread provides concurrency without the state-splitting bug of multiple workers.
+- **gpt-4o-mini for formatting** — Structured extraction doesn't need large models; 4x faster than Claude for the same quality on recipe parsing.
 
 ---
 
