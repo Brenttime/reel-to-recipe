@@ -89,6 +89,19 @@ Most reels work without this. Only needed for age-restricted content (cocktails,
 ./export-ig-cookie.sh
 ```
 
+### 5. HTTPS with a Domain (optional)
+
+Want to access OnlyPans from outside your LAN with automatic HTTPS?
+
+👉 **[HTTPS Deployment Guide](docs/https-deployment.md)**
+
+```bash
+# Add to .env: DOMAIN=onlypans.example.com, HTTPS_ENABLED=true
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+Caddy handles Let's Encrypt certs automatically — zero maintenance.
+
 ---
 
 ## Architecture
@@ -122,6 +135,7 @@ Most reels work without this. Only needed for age-restricted content (cocktails,
 | [MCP Server](docs/mcp-server.md) | MCP tools reference, performance profile, optimizations |
 | [MCP Client Integration](docs/agent-onboarding.md) | Quick reference for connecting MCP clients |
 | [Discord Auth Setup](docs/discord-auth-setup.md) | Step-by-step Discord OAuth2 configuration |
+| [HTTPS Deployment](docs/https-deployment.md) | Deploy with Caddy + auto HTTPS (Let's Encrypt) |
 | [Instagram Auth](docs/instagram-age-restricted.md) | Cookie export for age-restricted reels |
 
 ---

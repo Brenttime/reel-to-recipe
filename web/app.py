@@ -11,15 +11,23 @@ import threading
 import time
 import requests
 from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 from auth import auth_bp, init_auth_db
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "onlypans-dev-key-change-in-prod")
 
-# Session cookie config — must work over plain HTTP with OAuth redirects
+# Trust X-Forwarded-* headers from reverse proxy (Caddy/nginx)
+# x_for=1, x_proto=1, x_host=1 — trusts one level of proxy
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+# Session cookie config — adapts to HTTP vs HTTPS
+HTTPS_MODE = os.environ.get("HTTPS_ENABLED", "false").lower() in ("1", "true", "yes")
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = False
+app.config['SESSION_COOKIE_SECURE'] = HTTPS_MODE
 app.config['SESSION_COOKIE_HTTPONLY'] = True
+if HTTPS_MODE:
+    app.config['PREFERRED_URL_SCHEME'] = 'https'
 
 # Register auth blueprint
 app.register_blueprint(auth_bp)
