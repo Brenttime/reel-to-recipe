@@ -290,19 +290,34 @@ def convert_blog_to_recipe(url: str, job_id: str = "") -> str:
     t0 = time.time()
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
 
+    html = None
+    # Try httpx first (fast, lightweight)
     try:
         resp = httpx.get(url, headers=headers, timeout=20, follow_redirects=True)
-        resp.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        raise RuntimeError(f"Failed to fetch page: HTTP {e.response.status_code}")
-    except Exception as e:
-        raise RuntimeError(f"Failed to fetch page: {e}")
+        if resp.status_code == 200:
+            html = resp.text
+    except Exception:
+        pass
 
-    html = resp.text
+    # Fallback: curl_cffi with Chrome TLS impersonation (bypasses Akamai/PerimeterX)
+    if html is None:
+        try:
+            from curl_cffi import requests as curl_requests
+            resp = curl_requests.get(url, impersonate="chrome", timeout=20)
+            if resp.status_code == 200:
+                html = resp.text
+            else:
+                raise RuntimeError(f"Failed to fetch page: HTTP {resp.status_code}")
+        except ImportError:
+            raise RuntimeError("Failed to fetch page: HTTP 403 (site blocks automated requests)")
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Failed to fetch page: {e}")
     timings["fetch"] = time.time() - t0
 
     # Try JSON-LD first (instant, structured)
