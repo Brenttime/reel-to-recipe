@@ -1545,7 +1545,7 @@ function updateQueueBar() {
         bar.style.display = 'none';
     } else {
         bar.style.display = 'flex';
-        text.textContent = count === 1 ? 'Converting 1 recipe…' : `Converting ${count} recipes…`;
+        text.textContent = count === 1 ? 'Converting…' : `Converting ${count}…`;
     }
 }
 
@@ -1564,7 +1564,9 @@ function showRecipeAdded(recipe) {
 
     bar.style.display = 'flex';
     bar.classList.add('queue-bar-success');
-    text.textContent = `✓ Added "${recipe.title}"`;
+    // Truncate title for compact island display
+    const title = recipe.title.length > 18 ? recipe.title.slice(0, 16) + '…' : recipe.title;
+    text.textContent = `✓ ${title}`;
 
     setTimeout(() => {
         bar.classList.remove('queue-bar-success');
@@ -1585,9 +1587,11 @@ function showQueueError(error) {
 
     // Check for age-restricted error with doc link
     if (error && error.includes('age-restricted')) {
-        text.innerHTML = `✗ Age-restricted content. <a href="https://github.com/Brenttime/reel-to-recipe/blob/master/docs/instagram-age-restricted.md" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">How to fix →</a>`;
+        text.innerHTML = `✗ Age-restricted`;
     } else {
-        text.textContent = `✗ ${error}`;
+        // Truncate error for compact island display
+        const msg = error && error.length > 20 ? error.slice(0, 18) + '…' : (error || 'Failed');
+        text.textContent = `✗ ${msg}`;
     }
 
     setTimeout(() => {

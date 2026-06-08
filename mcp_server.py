@@ -463,7 +463,7 @@ def convert_blog_to_recipe(url: str, job_id: str = "", source_url: str = "", pla
     save_platform = platform
     timings = {}
 
-    _report_progress(job_id, "downloading", "Fetching page…")
+    _report_progress(job_id, "downloading", "Fetching…")
     t0 = time.time()
 
     headers = {
@@ -498,13 +498,13 @@ def convert_blog_to_recipe(url: str, job_id: str = "", source_url: str = "", pla
     timings["fetch"] = time.time() - t0
 
     # Try JSON-LD first (instant, structured)
-    _report_progress(job_id, "analyzing", "Looking for structured recipe data…")
+    _report_progress(job_id, "analyzing", "Analyzing…")
     t0 = time.time()
     jsonld = _extract_jsonld_recipe(html)
     timings["parse"] = time.time() - t0
 
     if jsonld and jsonld.get("title") and jsonld.get("ingredients"):
-        _report_progress(job_id, "formatting", "Found structured recipe — running through AI for tags…")
+        _report_progress(job_id, "formatting", "Tagging…")
 
         # Build a clean text representation to feed the LLM for section tagging
         lines = []
@@ -548,13 +548,13 @@ def convert_blog_to_recipe(url: str, job_id: str = "", source_url: str = "", pla
         recipe_text = format_recipe_combined(structured_text, "", "")
         timings["format"] = time.time() - t0
 
-        _report_progress(job_id, "saving", "Saving recipe…")
+        _report_progress(job_id, "saving", "Saving…")
         _save_to_recipe_glass(recipe_text, save_url, save_platform)
         timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
         return f"{recipe_text}\n\n---\n⏱️ {timing_str}"
 
     # No JSON-LD — fall back to LLM extraction from page text
-    _report_progress(job_id, "formatting", "No structured data found — using AI to extract recipe…")
+    _report_progress(job_id, "formatting", "Extracting…")
     t0 = time.time()
     page_text = _extract_page_text(html)
 
@@ -564,7 +564,7 @@ def convert_blog_to_recipe(url: str, job_id: str = "", source_url: str = "", pla
     recipe_text = format_recipe_combined(page_text, "", "")
     timings["format"] = time.time() - t0
 
-    _report_progress(job_id, "saving", "Saving recipe…")
+    _report_progress(job_id, "saving", "Saving…")
     _save_to_recipe_glass(recipe_text, save_url, save_platform)
 
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
@@ -1703,7 +1703,7 @@ if __name__ == "__main__":
             job_id = body.get("job_id", "")  # Passed by web app for progress tracking
 
             # ── Early duplicate check (before expensive processing) ──
-            _report_progress(job_id, "checking", "Checking for duplicates…")
+            _report_progress(job_id, "checking", "Checking…")
             existing = _check_duplicate(url)
             if existing:
                 self._json_response({
@@ -1723,13 +1723,13 @@ if __name__ == "__main__":
                 return
 
             # ── Smart detection: skip OCR if caption is rich enough ──
-            _report_progress(job_id, "analyzing", "Fetching caption…")
+            _report_progress(job_id, "analyzing", "Reading caption…")
             caption = smart_get_caption(url)
 
             # ── Check if caption contains a link to the full recipe ──
             recipe_link = _extract_recipe_url_from_caption(caption)
             if recipe_link:
-                _report_progress(job_id, "analyzing", "Found recipe link in caption — following it…")
+                _report_progress(job_id, "analyzing", "Following link…")
                 try:
                     platform = "TikTok" if is_tiktok_url(url) else "Instagram"
                     result = convert_blog_to_recipe(recipe_link, job_id, source_url=url, platform=platform)
@@ -1737,14 +1737,14 @@ if __name__ == "__main__":
                     return
                 except Exception:
                     # Link failed (404, Cloudflare, etc.) — fall through to normal pipeline
-                    _report_progress(job_id, "analyzing", "Recipe link failed — using video pipeline…")
+                    _report_progress(job_id, "analyzing", "Using video…")
 
             skip_ocr = _caption_has_recipe_signals(caption)
 
             if skip_ocr:
-                _report_progress(job_id, "downloading", "Caption has recipe data — skipping OCR")
+                _report_progress(job_id, "downloading", "From caption")
             else:
-                _report_progress(job_id, "downloading", "Downloading video + audio…")
+                _report_progress(job_id, "downloading", "Downloading…")
 
             try:
                 result = self._run_pipeline(url, job_id, caption, skip_ocr=skip_ocr)
@@ -1758,14 +1758,14 @@ if __name__ == "__main__":
 
             if skip_ocr:
                 # Audio-only: caption already has ingredients
-                _report_progress(job_id, "downloading", "Downloading audio…")
+                _report_progress(job_id, "downloading", "Downloading…")
                 t0 = time.time()
                 dl = combined_download(url, need_audio=True, need_video=False)
                 timings["download"] = time.time() - t0
 
                 audio_path = dl.get("audio_path")
 
-                _report_progress(job_id, "transcribing", "Transcribing audio…")
+                _report_progress(job_id, "transcribing", "Transcribing…")
                 t0 = time.time()
                 if audio_path:
                     transcript = transcribe(audio_path)
@@ -1774,13 +1774,13 @@ if __name__ == "__main__":
                     transcript = ""
                 timings["transcribe"] = time.time() - t0
 
-                _report_progress(job_id, "formatting", "Formatting recipe…")
+                _report_progress(job_id, "formatting", "Formatting…")
                 t0 = time.time()
                 recipe = format_recipe_combined(preloaded_caption, transcript, "")
                 timings["format"] = time.time() - t0
             else:
                 # Full pipeline: audio + OCR
-                _report_progress(job_id, "downloading", "Downloading video + audio (single pass)…")
+                _report_progress(job_id, "downloading", "Downloading…")
                 t0 = time.time()
                 dl = combined_download(url, need_audio=True, need_video=True)
                 timings["download"] = time.time() - t0
@@ -1788,7 +1788,7 @@ if __name__ == "__main__":
                 audio_path = dl.get("audio_path")
                 video_path = dl["video_path"]
 
-                _report_progress(job_id, "transcribing", "Transcribing audio…")
+                _report_progress(job_id, "transcribing", "Transcribing…")
                 t0 = time.time()
                 if audio_path:
                     transcript = transcribe(audio_path)
@@ -1797,18 +1797,18 @@ if __name__ == "__main__":
                     transcript = ""
                 timings["transcribe"] = time.time() - t0
 
-                _report_progress(job_id, "ocr", "Extracting text from frames…")
+                _report_progress(job_id, "ocr", "Reading frames…")
                 t0 = time.time()
                 ocr_text = extract_text_from_video(video_path)
                 timings["ocr"] = time.time() - t0
                 os.unlink(video_path)
 
-                _report_progress(job_id, "formatting", "Formatting recipe…")
+                _report_progress(job_id, "formatting", "Formatting…")
                 t0 = time.time()
                 recipe = format_recipe_combined(preloaded_caption, transcript, ocr_text)
                 timings["format"] = time.time() - t0
 
-            _report_progress(job_id, "saving", "Saving recipe…")
+            _report_progress(job_id, "saving", "Saving…")
             _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
 
             timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
