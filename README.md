@@ -4,7 +4,7 @@
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)
 ![Docker](https://img.shields.io/badge/docker-compose-blue)
-![License: MIT](https://img.shields.io/badge/license-MIT-green)
+![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20NC%201.0-blue)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/M4M31KYZ9Y)
 
 ## Architecture
@@ -519,4 +519,6 @@ If you find OnlyPans useful, consider buying me a coffee!
 
 ## License
 
-MIT
+[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — free for personal use, self-hosting, and non-commercial purposes.
+
+Commercial licensing available — contact [Brenttime](https://github.com/Brenttime).
