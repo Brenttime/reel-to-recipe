@@ -196,7 +196,10 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
 
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
         if proc.returncode != 0:
-            raise RuntimeError(f"Combined download failed: {proc.stderr}")
+            stderr = proc.stderr.strip()
+            if "no video in this post" in stderr.lower():
+                raise RuntimeError("This is a photo post, not a video/reel. Only video content can be converted.")
+            raise RuntimeError(f"Download failed: {stderr[-300:]}")
 
         caption = proc.stdout.strip()
         result = {"caption": caption, "video_path": tmp_video}
@@ -232,7 +235,10 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
 
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
         if proc.returncode != 0:
-            raise RuntimeError(f"Combined download failed: {proc.stderr}")
+            stderr = proc.stderr.strip()
+            if "no video in this post" in stderr.lower():
+                raise RuntimeError("This is a photo post, not a video/reel. Only video content can be converted.")
+            raise RuntimeError(f"Download failed: {stderr[-300:]}")
 
         caption = proc.stdout.strip()
         return {"caption": caption, "audio_path": tmp_audio}
