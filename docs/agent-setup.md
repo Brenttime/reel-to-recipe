@@ -72,10 +72,7 @@ uv run mcp_server.py
 ### Option B: systemd user service (recommended)
 
 ```bash
-# Edit the service file to match your paths
-sed -i "s|HOMEDIR|$HOME|g" reel-to-recipe.service
-
-# Install as user service
+# Install as user service (service file uses %h — no path editing needed)
 mkdir -p ~/.config/systemd/user
 cp reel-to-recipe.service ~/.config/systemd/user/
 systemctl --user daemon-reload
@@ -201,15 +198,20 @@ See [docs/instagram-age-restricted.md](instagram-age-restricted.md) for details.
 
 ## MCP Tool Reference
 
-One tool, handles everything:
+Six tools available:
 
-```
-convert_reel_to_recipe(url: str) -> str
-```
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `convert_reel_to_recipe` | `url: str` | Convert any URL (Instagram Reel, TikTok, recipe blog) → structured recipe |
+| `get_meal_plan` | `week?: str` | Get meal plan for a week (ISO date, defaults to current) |
+| `add_to_meal_plan` | `recipe_id: int, date: str` | Add a recipe to the shared meal plan |
+| `remove_from_meal_plan` | `entry_id: int` | Remove a meal plan entry |
+| `get_grocery_list` | `week?: str` | Aggregated shopping list for the week's meals |
+| `search_recipes` | `query?: str, category?: str` | Search recipes by text or category tag |
 
-**Accepts:**
+**`convert_reel_to_recipe` accepts:**
 - Instagram Reel URLs (`instagram.com/reel/...`)
-- TikTok URLs (`tiktok.com/...`)
+- TikTok URLs (`tiktok.com/...`, `vm.tiktok.com/...`)
 - Recipe blog URLs (`budgetbytes.com/...`, `foodnetwork.com/...`, etc.)
 - Any HTTP URL with recipe content
 

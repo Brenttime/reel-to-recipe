@@ -43,15 +43,18 @@ hermes mcp test reel-to-recipe
 
 ---
 
-## Tool
+## Tools
 
-One tool handles everything:
+Six tools available:
 
-```
-convert_reel_to_recipe(url: str) -> str
-```
-
-Pass any Instagram Reel, TikTok, or recipe blog URL. Returns formatted recipe text. Auto-saves to OnlyPans.
+| Tool | Description |
+|------|-------------|
+| `convert_reel_to_recipe(url)` | Convert Instagram Reel / TikTok / blog URL → structured recipe. Auto-saves to OnlyPans. |
+| `get_meal_plan(week?)` | Weekly meal plan (ISO date, defaults to current week) |
+| `add_to_meal_plan(recipe_id, date)` | Add a recipe to a date |
+| `remove_from_meal_plan(entry_id)` | Remove a meal plan entry |
+| `get_grocery_list(week?)` | Aggregated shopping list for the week |
+| `search_recipes(query?, category?)` | Full-text search or filter by tag |
 
 ---
 

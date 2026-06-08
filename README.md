@@ -56,7 +56,7 @@ uv run mcp_server.py
 ### 2. OnlyPans (Docker)
 
 ```bash
-# Create .env with your Discord app credentials
+# Create .env with your Discord app credentials (all required)
 cat > .env << 'EOF'
 DISCORD_CLIENT_ID=your_client_id_here
 DISCORD_CLIENT_SECRET=your_client_secret_here
@@ -64,7 +64,7 @@ DISCORD_REDIRECT_URI=http://YOUR_HOST_IP:5100/auth/callback
 SECRET_KEY=any-random-secret-string
 EOF
 
-# Start
+# Start (fails fast with clear error if any required env var is missing)
 docker compose up -d
 ```
 
@@ -102,12 +102,13 @@ Most reels work without this. Only needed for age-restricted content (cocktails,
 ┌────────────────────────────┴─────────────────────────────┐
 │  MCP Server (:8001 MCP / :8002 HTTP)                      │
 │  yt-dlp → faster-whisper → Tesseract OCR → gpt-4o-mini   │
+│  6 tools: convert, meal plan, grocery list, search        │
 └──────────────────────────────────────────────────────────┘
 ```
 
 | Component | Port | Purpose |
 |-----------|------|---------|
-| **MCP Server** | 8001 / 8002 | Convert reels + blog URLs → structured recipes |
+| **MCP Server** | 8001 / 8002 | Convert reels + blog URLs → structured recipes; meal planning; search |
 | **OnlyPans** | 5100 | Browse, search, rate, cook, plan, and share recipes |
 
 ---
@@ -116,8 +117,9 @@ Most reels work without this. Only needed for age-restricted content (cocktails,
 
 | Doc | Description |
 |-----|-------------|
-| [Agent Setup Guide](docs/agent-setup.md) | Full install instructions for AI agents (clone to running in 5 steps) |
+| [Agent Setup Guide](docs/agent-setup.md) | Full install instructions for AI agents (clone to running in 6 steps) |
 | [Development Guide](docs/development.md) | REST API, database schema, project structure, design decisions |
+| [MCP Server](docs/mcp-server.md) | MCP tools reference, performance profile, optimizations |
 | [MCP Client Integration](docs/agent-onboarding.md) | Quick reference for connecting MCP clients |
 | [Discord Auth Setup](docs/discord-auth-setup.md) | Step-by-step Discord OAuth2 configuration |
 | [Instagram Auth](docs/instagram-age-restricted.md) | Cookie export for age-restricted reels |
