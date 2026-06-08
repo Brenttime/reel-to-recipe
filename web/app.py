@@ -707,8 +707,149 @@ def api_convert_queue():
     return jsonify(active)
 
 
+# ─── Meal Plan API (shared calendar) ─────────────────────────────
+from datetime import date as dt_date, timedelta
+
+
+@app.route("/api/meal-plan")
+def get_meal_plan():
+    """Get meal plan for a week. ?week=2025-06-09 (Monday). Shared between all users."""
+    week_start = request.args.get("week")
+    if not week_start:
+        today = dt_date.today()
+        monday = today - timedelta(days=today.weekday())
+        week_start = monday.isoformat()
+
+    week_end = (dt_date.fromisoformat(week_start) + timedelta(days=6)).isoformat()
+
+    db = get_db()
+    rows = db.execute(
+        """SELECT mp.id, mp.recipe_id, mp.date, mp.added_by_name,
+                  r.title, r.creator, r.ingredients, r.tags
+           FROM meal_plan mp
+           JOIN recipes r ON r.id = mp.recipe_id
+           WHERE mp.date >= ? AND mp.date <= ?
+           ORDER BY mp.date, mp.id""",
+        (week_start, week_end)
+    ).fetchall()
+
+    plan = []
+    for row in rows:
+        plan.append({
+            "id": row["id"],
+            "recipe_id": row["recipe_id"],
+            "date": row["date"],
+            "added_by": row["added_by_name"],
+            "title": row["title"],
+            "creator": row["creator"],
+            "ingredients": json.loads(row["ingredients"]) if row["ingredients"] else [],
+            "tags": json.loads(row["tags"]) if row["tags"] else [],
+        })
+
+    return jsonify({"week_start": week_start, "week_end": week_end, "plan": plan})
+
+
+@app.route("/api/meal-plan", methods=["POST"])
+def add_to_meal_plan():
+    """Add a recipe to a specific day. Body: {recipe_id, date}"""
+    data = request.json
+    recipe_id = data.get("recipe_id")
+    plan_date = data.get("date")
+
+    if not recipe_id or not plan_date:
+        return jsonify({"error": "recipe_id and date required"}), 400
+
+    user_name = session.get("user", {}).get("display_name", "")
+    user_id = session.get("user_id")
+
+    db = get_db()
+    cursor = db.execute(
+        "INSERT INTO meal_plan (recipe_id, date, added_by_user_id, added_by_name) VALUES (?, ?, ?, ?)",
+        (recipe_id, plan_date, user_id, user_name)
+    )
+    db.commit()
+
+    return jsonify({"status": "ok", "id": cursor.lastrowid}), 201
+
+
+@app.route("/api/meal-plan/<int:entry_id>", methods=["PUT"])
+def move_meal_plan_entry(entry_id):
+    """Move an entry to a different day. Body: {date}"""
+    data = request.json
+    new_date = data.get("date")
+
+    if not new_date:
+        return jsonify({"error": "date required"}), 400
+
+    db = get_db()
+    db.execute("UPDATE meal_plan SET date = ? WHERE id = ?", (new_date, entry_id))
+    db.commit()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/meal-plan/<int:entry_id>", methods=["DELETE"])
+def remove_from_meal_plan(entry_id):
+    """Remove a recipe from the meal plan."""
+    db = get_db()
+    db.execute("DELETE FROM meal_plan WHERE id = ?", (entry_id,))
+    db.commit()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/meal-plan/grocery-list")
+def get_grocery_list():
+    """Generate a grocery list for a week. Aggregates ingredients from assigned recipes."""
+    week_start = request.args.get("week")
+    if not week_start:
+        today = dt_date.today()
+        monday = today - timedelta(days=today.weekday())
+        week_start = monday.isoformat()
+
+    week_end = (dt_date.fromisoformat(week_start) + timedelta(days=6)).isoformat()
+
+    db = get_db()
+    rows = db.execute(
+        """SELECT DISTINCT r.id, r.title, r.ingredients
+           FROM meal_plan mp
+           JOIN recipes r ON r.id = mp.recipe_id
+           WHERE mp.date >= ? AND mp.date <= ?""",
+        (week_start, week_end)
+    ).fetchall()
+
+    all_ingredients = []
+    recipes_included = []
+    for row in rows:
+        recipes_included.append(row["title"])
+        items = json.loads(row["ingredients"]) if row["ingredients"] else []
+        for item in items:
+            text = item if isinstance(item, str) else (item.get("text", "") if isinstance(item, dict) else str(item))
+            if text:
+                all_ingredients.append(text)
+
+    return jsonify({
+        "week_start": week_start,
+        "recipes": recipes_included,
+        "ingredients": all_ingredients
+    })
+
+
 # Initialize database on startup
 with app.app_context():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     init_db()
     _ensure_fts_integrity()
+    # Meal plan table (shared between all users)
+    conn = sqlite3.connect(DB_PATH)
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS meal_plan (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            added_by_user_id INTEGER,
+            added_by_name TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_meal_plan_date ON meal_plan(date);
+    """)
+    conn.close()

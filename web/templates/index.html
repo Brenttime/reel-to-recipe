@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>OnlyPans</title>
     <link rel="stylesheet" href="/static/style.css?v=12">
+    <link rel="stylesheet" href="/static/meal-plan.css?v=1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -21,6 +22,10 @@
         <!-- Header -->
         <header class="glass-header">
             <div class="header-left">
+                <button class="header-action-btn" id="mealPlanBtn" title="Meal Plan">
+                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
+                    <span class="meal-plan-badge" id="mealPlanBadge" style="display:none;">0</span>
+                </button>
                 <div class="user-profile" id="userProfile" style="display:none;">
                     <button class="user-avatar-btn" id="userAvatarBtn">
                         <img class="user-avatar" id="userAvatar" alt="Profile" />
@@ -145,8 +150,68 @@
         <div class="cook-mode" id="cookMode">
             <div class="cook-mode-content" id="cookModeContent"></div>
         </div>
+
+        <!-- Meal Plan Calendar Panel -->
+        <div class="meal-plan-overlay" id="mealPlanOverlay">
+            <div class="glass-modal meal-plan-panel">
+                <div class="meal-plan-header">
+                    <h2 class="meal-plan-title">Meal Plan</h2>
+                    <div class="meal-plan-header-actions">
+                        <button class="header-action-btn" id="groceryListBtn" title="Grocery List">
+                            <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18"><path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/></svg>
+                        </button>
+                        <button class="modal-close" id="mealPlanClose">
+                            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <!-- Week Navigator -->
+                <div class="week-nav">
+                    <button class="week-arrow" id="mpPrevWeek">
+                        <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                    </button>
+                    <span class="week-title" id="mpWeekTitle"></span>
+                    <button class="week-arrow" id="mpNextWeek">
+                        <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+                    </button>
+                </div>
+                <!-- Day columns (kanban) -->
+                <div class="mp-week-grid" id="mpWeekGrid"></div>
+            </div>
+        </div>
+
+        <!-- Radial Day Picker (Zelda weapon wheel) -->
+        <div class="radial-overlay" id="radialOverlay">
+            <div class="radial-menu" id="radialMenu">
+                <div class="radial-center">
+                    <div class="radial-recipe-title" id="radialRecipeTitle"></div>
+                    <div class="radial-week-label" id="radialWeekLabel"></div>
+                </div>
+                <div class="radial-ring" id="radialRing"></div>
+                <div class="radial-week-nav">
+                    <button class="radial-nav-btn" id="radialPrev">‹</button>
+                    <button class="radial-nav-btn" id="radialNext">›</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Grocery List Modal -->
+        <div class="grocery-overlay" id="groceryOverlay">
+            <div class="glass-modal grocery-panel">
+                <div class="grocery-header">
+                    <h3>Grocery List</h3>
+                    <button class="modal-close" id="groceryClose">
+                        <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    </button>
+                </div>
+                <p class="grocery-subtitle" id="grocerySubtitle"></p>
+                <div class="grocery-body" id="groceryBody"></div>
+                <button class="grocery-copy-btn" id="groceryCopyBtn">Copy to Clipboard</button>
+            </div>
+        </div>
     </div>
 
     <script src="/static/app.js?v=9"></script>
+    <script src="/static/meal-plan.js?v=1"></script>
 </body>
 </html>

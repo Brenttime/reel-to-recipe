@@ -488,6 +488,9 @@ function renderGrid(recipes) {
                 <button class="card-cart-btn ${cart.includes(r.id) ? 'in-cart' : ''}" data-add-id="${r.id}" title="${cart.includes(r.id) ? 'In shopping list' : 'Add to shopping list'}">
                     ${cart.includes(r.id) ? '✓' : '+'}
                 </button>
+                <button class="recipe-card-plan-btn" data-plan-id="${r.id}" data-plan-title="${escapeAttr(r.title)}" title="Add to meal plan">
+                    <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
+                </button>
             <h3 class="card-title">${escapeHtml(r.title)}${isDrinkRecipe(r) ? ` <span class="drink-badge">${getDrinkEmoji(r)}</span>` : ''}</h3>
             ${r.creator ? `<p class="card-creator">by ${escapeHtml(r.creator)}</p>` : ''}
             ${r.tags.length ? `
@@ -1627,6 +1630,18 @@ function setupListeners() {
                 addToCart(id);
             }
             renderGrid(allRecipes);
+            return;
+        }
+
+        // Handle add to meal plan button (opens radial menu)
+        const planBtn = e.target.closest('.recipe-card-plan-btn');
+        if (planBtn) {
+            e.stopPropagation();
+            const id = Number(planBtn.dataset.planId);
+            const title = planBtn.dataset.planTitle;
+            if (window.openMealPlanRadial) {
+                window.openMealPlanRadial(id, title);
+            }
             return;
         }
 
