@@ -29,6 +29,23 @@ NETRC_FILE = Path.home() / ".netrc"
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 VENV_PYTHON = str(Path(__file__).parent / ".venv" / "bin" / "python")
 
+# Age-restricted content error message (links to setup docs)
+AGE_RESTRICTED_MSG = (
+    "Instagram is not granting access to this content. This reel may be age-restricted "
+    "(cocktails, alcohol, 18+ content). To fix this, set up an Instagram session cookie: "
+    "https://github.com/Brenttime/reel-to-recipe/blob/master/docs/instagram-age-restricted.md"
+)
+
+
+def _check_ig_age_gate(stderr: str) -> bool:
+    """Check if yt-dlp error is an Instagram age/login gate."""
+    lower = stderr.lower()
+    return (
+        "not granting access" in lower
+        or "empty media response" in lower
+        or "login" in lower and "instagram" in lower
+    )
+
 # Recipe Glass integration — save converted recipes to the web viewer
 RECIPE_GLASS_URL = os.environ.get("RECIPE_GLASS_URL", "http://localhost:5100")
 
@@ -410,6 +427,8 @@ def download_audio(url: str) -> str:
     cmd.append(url)
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode != 0:
+        if _check_ig_age_gate(result.stderr):
+            raise RuntimeError(AGE_RESTRICTED_MSG)
         raise RuntimeError(f"Download failed: {result.stderr}")
     return tmp
 
@@ -490,6 +509,8 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
             stderr = proc.stderr.strip()
             if "no video in this post" in stderr.lower():
                 raise RuntimeError("This is a photo post, not a video/reel. Only video content can be converted.")
+            if _check_ig_age_gate(stderr):
+                raise RuntimeError(AGE_RESTRICTED_MSG)
             raise RuntimeError(f"Download failed: {stderr[-300:]}")
 
         caption = proc.stdout.strip()
@@ -529,6 +550,8 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
             stderr = proc.stderr.strip()
             if "no video in this post" in stderr.lower():
                 raise RuntimeError("This is a photo post, not a video/reel. Only video content can be converted.")
+            if _check_ig_age_gate(stderr):
+                raise RuntimeError(AGE_RESTRICTED_MSG)
             raise RuntimeError(f"Download failed: {stderr[-300:]}")
 
         caption = proc.stdout.strip()

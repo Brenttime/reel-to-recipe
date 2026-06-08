@@ -1465,7 +1465,12 @@ async function convertReel() {
             status.textContent = `Already in your cookbook`;
             status.className = 'spotlight-status error';
         } else if (!resp.ok && resp.status !== 202) {
-            status.textContent = data.error || 'Conversion failed';
+            const errMsg = data.error || 'Conversion failed';
+            if (errMsg.includes('age-restricted')) {
+                status.innerHTML = 'Age-restricted content. <a href="https://github.com/Brenttime/reel-to-recipe/blob/master/docs/instagram-age-restricted.md" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">How to fix →</a>';
+            } else {
+                status.textContent = errMsg;
+            }
             status.className = 'spotlight-status error';
         } else if (data.status === 'queued') {
             status.textContent = 'Converting… you can close this and keep browsing';
@@ -1577,7 +1582,13 @@ function showQueueError(error) {
 
     bar.style.display = 'flex';
     bar.classList.add('queue-bar-error');
-    text.textContent = `✗ ${error}`;
+
+    // Check for age-restricted error with doc link
+    if (error && error.includes('age-restricted')) {
+        text.innerHTML = `✗ Age-restricted content. <a href="https://github.com/Brenttime/reel-to-recipe/blob/master/docs/instagram-age-restricted.md" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">How to fix →</a>`;
+    } else {
+        text.textContent = `✗ ${error}`;
+    }
 
     setTimeout(() => {
         bar.classList.remove('queue-bar-error');
@@ -1586,7 +1597,7 @@ function showQueueError(error) {
         } else {
             updateQueueBar();
         }
-    }, 5000);
+    }, 8000);
 }
 
 function setupListeners() {

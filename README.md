@@ -275,35 +275,19 @@ Short version:
 
 ### 4. Instagram Authentication (optional)
 
-> ⚠️ **Age-restricted content** — Some Instagram Reels (cocktails, alcohol-related content) are gated behind an age check requiring a logged-in session. Without auth, yt-dlp will fail on these. TikTok videos are unaffected (TikWM API bypasses age gates).
+> ℹ️ **Most users don't need this.** Public recipe reels work without any authentication. You only need this if you convert age-restricted content (cocktails, alcohol, 18+ posts).
 
-> **Note:** yt-dlp does **not** support Instagram password login. You need a browser session cookie.
+If you hit an "age-restricted" error when converting a reel, see the full setup guide:
 
-Run the included helper script:
+👉 **[Instagram Age-Restricted Content Guide](docs/instagram-age-restricted.md)**
+
+Quick version:
 
 ```bash
 ./export-ig-cookie.sh
+# Paste your Instagram sessionid when prompted
+# Lasts ~1 year, no restarts needed
 ```
-
-It will prompt you for your Instagram `sessionid`. To find it:
-
-> ℹ️ The `sessionid` cookie is **HttpOnly** — invisible to `document.cookie`. You must copy it from DevTools storage.
-
-1. Open **instagram.com** in your browser, logged in
-2. Open DevTools:
-   - **Chrome / Edge:** `F12` → **Application** → **Cookies** → `.instagram.com`
-   - **Firefox:** `F12` → **Storage** → **Cookies** → `.instagram.com`
-   - **Safari:** `⌥⌘I` → **Storage** → **Cookies** → `.instagram.com`
-3. Find the `sessionid` row and copy the **Value**
-4. Paste it when the script asks
-
-Or pass it directly:
-
-```bash
-./export-ig-cookie.sh "YOUR_SESSIONID_VALUE"
-```
-
-The script writes a `cookies.txt` that yt-dlp picks up automatically — no server restart needed. The session lasts **~1 year** (set-and-forget).
 
 ---
 
