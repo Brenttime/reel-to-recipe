@@ -4,12 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=HOMEDIR/projects/tiktok-recipe
-ExecStart=HOMEDIR/projects/tiktok-recipe/.venv/bin/python mcp_server.py
+WorkingDirectory=%h/projects/tiktok-recipe
+ExecStart=%h/projects/tiktok-recipe/.venv/bin/python mcp_server.py
 Restart=on-failure
 RestartSec=5
 Environment=WHISPER_MODEL=base
-Environment=PATH=HOMEDIR/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 
 [Install]
 WantedBy=default.target

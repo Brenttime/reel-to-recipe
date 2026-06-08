@@ -15,10 +15,10 @@ DISCORD_API = "https://discord.com/api/v10"
 AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
 TOKEN_URL = "https://discord.com/api/oauth2/token"
 
-# Config from environment
-CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "DISCORD_CLIENT_ID")
+# Config from environment (all required — no insecure fallbacks)
+CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
-REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "http://YOUR_HOST_IP:5100/auth/callback")
+REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "")
 
 # Scopes: identify gives us user ID, username, avatar
 SCOPES = "identify"

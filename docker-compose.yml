@@ -7,9 +7,9 @@ services:
     volumes:
       - cookbook-data:/data
     environment:
-      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:-DISCORD_CLIENT_ID}
-      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:-}
-      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI:-http://YOUR_HOST_IP:5100/auth/callback}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:?Set DISCORD_CLIENT_ID in .env}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:?Set DISCORD_CLIENT_SECRET in .env}
+      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI:?Set DISCORD_REDIRECT_URI in .env}
       - SECRET_KEY=${SECRET_KEY:-onlypans-change-me-in-prod}
       - SHOW_KOFI=${SHOW_KOFI:-true}
     extra_hosts:
