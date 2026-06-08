@@ -312,9 +312,9 @@ def convert_blog_to_recipe(url: str, job_id: str = "") -> str:
     timings["parse"] = time.time() - t0
 
     if jsonld and jsonld.get("title") and jsonld.get("ingredients"):
-        _report_progress(job_id, "formatting", "Found structured recipe — formatting…")
+        _report_progress(job_id, "formatting", "Found structured recipe — running through AI for aisle tags…")
 
-        # Build recipe text in our standard format for _save_to_recipe_glass
+        # Build a clean text representation to feed the LLM for section tagging
         lines = []
         lines.append(jsonld["title"])
         lines.append("")
@@ -349,10 +349,13 @@ def convert_blog_to_recipe(url: str, job_id: str = "") -> str:
             lines.append("## Tips")
             lines.append(f"- {jsonld['tips']}")
 
-        recipe_text = "\n".join(lines)
+        structured_text = "\n".join(lines)
 
-        # Still run through LLM for section tagging (ingredient aisle tags)
-        # but only if we have time — for now, use _save_to_recipe_glass parser
+        # Run through LLM for proper [section] aisle tags on ingredients
+        t0 = time.time()
+        recipe_text = format_recipe_combined(structured_text, "", "")
+        timings["format"] = time.time() - t0
+
         _report_progress(job_id, "saving", "Saving recipe…")
         _save_to_recipe_glass(recipe_text, url, "Web")
         timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
