@@ -53,6 +53,8 @@ def _check_ig_age_gate(stderr: str) -> bool:
     return (
         "not granting access" in lower
         or "empty media response" in lower
+        or "isn't available to everyone" in lower
+        or "can't be seen by certain audiences" in lower
         or "login" in lower and "instagram" in lower
     )
 
@@ -1324,6 +1326,11 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
 
 def format_recipe_combined(caption: str, transcript: str, ocr_text: str) -> str:
     """Send all three sources to LLM for comprehensive recipe formatting."""
+    # Guard: refuse to send all-empty input to LLM (garbage in → garbage out)
+    total_content = len((caption or "").strip()) + len((transcript or "").strip()) + len((ocr_text or "").strip())
+    if total_content < 20:
+        raise RuntimeError("Not enough content to extract a recipe (caption, transcript, and OCR are all empty or too short)")
+
     prompt = f"""You are a recipe formatter. Extract and structure a recipe from the sources below.
 
 ## SOURCES (in priority order for ingredients/quantities):
@@ -1376,7 +1383,15 @@ Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
     )
     if result.returncode != 0:
         raise RuntimeError(f"Hermes failed: {result.stderr}")
-    return _strip_hermes_chrome(result.stdout)
+
+    output = _strip_hermes_chrome(result.stdout)
+
+    # Validate: LLM must produce a recipe with ingredients, not a refusal
+    if "## Ingredients" not in output and "## ingredients" not in output.lower():
+        # LLM refused or couldn't extract — don't save garbage
+        raise RuntimeError("Could not extract a recipe from this content. The video may not contain recipe information.")
+
+    return output
 
 
 @mcp.tool()
