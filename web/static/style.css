@@ -2759,3 +2759,52 @@ html.theme-transitioning *::after {
 [data-theme="dark"] .discard-dialog-btn.save-btn:hover {
     background: #0070e0;
 }
+
+/* Ko-fi Footer */
+.app-footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 16px 0 24px;
+    margin-top: 20px;
+    opacity: 0.7;
+    transition: opacity 0.3s ease;
+}
+
+.app-footer:hover {
+    opacity: 1;
+}
+
+.kofi-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 16px;
+    border-radius: 12px;
+    background: rgba(255, 94, 91, 0.08);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 94, 91, 0.15);
+    transition: all 0.3s ease;
+    text-decoration: none;
+}
+
+.kofi-link:hover {
+    background: rgba(255, 94, 91, 0.15);
+    border-color: rgba(255, 94, 91, 0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 94, 91, 0.2);
+}
+
+.kofi-link img {
+    display: block;
+}
+
+[data-theme="dark"] .kofi-link {
+    background: rgba(255, 94, 91, 0.1);
+    border-color: rgba(255, 94, 91, 0.2);
+}
+
+[data-theme="dark"] .kofi-link:hover {
+    background: rgba(255, 94, 91, 0.2);
+    border-color: rgba(255, 94, 91, 0.35);
+}

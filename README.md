@@ -5,6 +5,7 @@
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)
 ![Docker](https://img.shields.io/badge/docker-compose-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/M4M31KYZ9Y)
 
 ## Architecture
 
@@ -496,6 +497,14 @@ meal_plan (
 - **One review per user** — UNIQUE(recipe_id, user_id) constraint. Users edit their existing review rather than stacking multiple.
 - **Shared meal planner** — A single calendar visible to all household members (not per-user isolation). Radial day selector uses Apple-inspired arc segments with frosted glass, staggered entrance animations, and counter-rotated text for readability. Grocery list auto-categorizes ingredients by keyword matching into standard grocery sections.
 - **100% local** — No cloud APIs, no subscriptions. Whisper runs on CPU, Tesseract is local, LLM formatting goes through your own Hermes Agent.
+
+---
+
+## ☕ Support
+
+If you find OnlyPans useful, consider buying me a coffee!
+
+[![Buy me a coffee](https://storage.ko-fi.com/cdn/kofi6.png?v=6)](https://ko-fi.com/M4M31KYZ9Y)
 
 ---
 

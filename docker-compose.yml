@@ -11,6 +11,7 @@ services:
       - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:-}
       - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI:-http://YOUR_HOST_IP:5100/auth/callback}
       - SECRET_KEY=${SECRET_KEY:-onlypans-change-me-in-prod}
+      - SHOW_KOFI=${SHOW_KOFI:-true}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

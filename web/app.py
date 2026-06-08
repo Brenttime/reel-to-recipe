@@ -26,6 +26,7 @@ app.register_blueprint(auth_bp)
 
 DB_PATH = os.environ.get("DB_PATH", "/data/recipes.db")
 MCP_URL = os.environ.get("MCP_URL", "http://host.docker.internal:8002/convert")
+SHOW_KOFI = os.environ.get("SHOW_KOFI", "true").lower() in ("1", "true", "yes")
 
 # ─── Conversion Queue ─────────────────────────────────────
 # In-memory job queue processed by a background thread
@@ -332,14 +333,14 @@ def api_delete_review(recipe_id):
 @app.route("/")
 def index():
     """Main page — recipe gallery."""
-    return render_template("index.html")
+    return render_template("index.html", show_kofi=SHOW_KOFI)
 
 
 @app.route("/recipe/<int:recipe_id>")
 @app.route("/recipe/<int:recipe_id>/<path:slug>")
 def recipe_permalink(recipe_id, slug=None):
     """Permalink — serves same SPA, JS picks up the path and opens the modal."""
-    return render_template("index.html")
+    return render_template("index.html", show_kofi=SHOW_KOFI)
 
 
 @app.route("/api/recipes")
