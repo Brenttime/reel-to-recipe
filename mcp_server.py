@@ -772,35 +772,52 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
 
 
 def format_recipe_combined(caption: str, transcript: str, ocr_text: str) -> str:
-    """Send all three sources to Hermes for comprehensive recipe formatting."""
-    prompt = f"""Format this cooking video into a clean recipe. You have three sources:
+    """Send all three sources to LLM for comprehensive recipe formatting."""
+    prompt = f"""You are a recipe formatter. Extract and structure a recipe from the sources below.
 
-1. CAPTION (most authoritative — human-written, trust for ingredients and quantities):
+## SOURCES (in priority order for ingredients/quantities):
+1. CAPTION (most authoritative):
 {caption}
 
-2. TRANSCRIPT (audio — technique tips, verbal instructions, context):
+2. TRANSCRIPT (spoken audio):
 {transcript}
 
-3. OCR TEXT (text overlays from video frames — may have ingredients/steps shown on screen):
+3. OCR TEXT (on-screen text overlays):
 {ocr_text}
 
-Priority: Caption > OCR > Transcript for ingredients and quantities.
-Use all three to build the most complete recipe possible.
+## OUTPUT FORMAT (follow exactly):
 
-Return a structured recipe with:
-- Recipe title
-- Macros/nutrition info (calories, protein, carbs, fat — if mentioned anywhere in any source). For cocktails/drinks, include ABV or calories per serving if available.
-- Ingredients list with exact quantities — each ingredient MUST have a grocery section tag at the end in brackets. Use ONLY these sections: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [bar], [other]
-  Example: "2 cups spinach [produce]", "1 lb chicken breast [meat]", "½ cup parmesan [dairy]", "2 tbsp soy sauce [condiments]", "1 tsp cumin [spices]", "2 cups flour [pantry]", "2 oz vodka [bar]", "1 oz simple syrup [bar]", "club soda [beverages]"
-  Use [bar] for spirits, liqueurs, bitters, vermouths, and cocktail-specific ingredients (e.g. vodka, gin, rum, tequila, whiskey, bourbon, triple sec, Campari, Angostura bitters, maraschino liqueur). Use [beverages] for non-alcoholic mixers (club soda, tonic water, juice as a mixer). Use [produce] for fresh garnishes (lime, lemon, mint, cucumber).
-- Numbered step-by-step instructions
-- Tips section
+Recipe Title Here
 
-NOTE: This may be a cocktail, drink, or beverage recipe — not just food. Adapt accordingly: use "Ingredients" not "Grocery List", steps might be "shake", "stir", "muddle", "strain", "garnish" etc. If it's a drink, include glassware and garnish in the tips.
+Source: @creatorhandle
 
-IMPORTANT: Start your response with the recipe title on the FIRST line. Do NOT write any preamble like "Here's the recipe" or "Sure!". Output the recipe content only. The ingredients section is REQUIRED — always include it, even if you have to infer ingredients from the instructions.
+Servings: X
+Prep Time: Xm
+Cook Time: Xm
 
-If a source is empty or unhelpful, just ignore it and work with what you have."""
+## Macros
+Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
+
+## Ingredients
+- quantity ingredient [section]
+- quantity ingredient [section]
+
+## Instructions
+1. Step one
+2. Step two
+
+## Tips
+- Tip one
+- Tip two
+
+## RULES:
+- Every ingredient line MUST end with a section tag in brackets. Valid tags: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [bar], [other]
+- [bar] = spirits, liqueurs, bitters, cocktail ingredients. [beverages] = non-alcoholic mixers. [produce] = fresh garnishes. [pantry] = flour, sugar, oil, canned goods. [spices] = dried herbs and spices. [condiments] = sauces and dressings.
+- If the recipe is a cocktail/drink: steps may be shake/stir/muddle/strain/garnish. Include glassware in Tips.
+- Omit any section (Macros, Prep Time, etc.) if the data isn't available — do NOT guess or fabricate numbers.
+- Start response with the recipe title. NO preamble ("Here's the recipe", "Sure!", etc.).
+- If a source is empty, ignore it. Combine all non-empty sources for the most complete recipe.
+- Ingredients section is REQUIRED even if you must infer from instructions."""
 
     result = subprocess.run(
         ["hermes", "chat", "-q", prompt, "-m", LLM_MODEL, "-t", ""],
