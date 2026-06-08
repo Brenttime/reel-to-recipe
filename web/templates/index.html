@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="OnlyPans">
     <meta name="theme-color" content="#FF9500">
-    <link rel="stylesheet" href="/static/style.css?v=30">
+    <link rel="stylesheet" href="/static/style.css?v=31">
     <link rel="stylesheet" href="/static/meal-plan.css?v=11">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,10 +19,13 @@
 </head>
 <body>
     <div class="convert-queue-bar" id="convertQueueBar" style="display:none;">
-        <div class="queue-bar-inner">
-            <div class="queue-bar-progress"></div>
+        <div class="queue-bar-island-glow"></div>
+        <div class="queue-bar-content">
+            <div class="queue-bar-inner">
+                <div class="queue-bar-progress"></div>
+            </div>
+            <span class="queue-bar-text" id="queueBarText"></span>
         </div>
-        <span class="queue-bar-text" id="queueBarText"></span>
     </div>
     <div class="bg-mesh"></div>
     <div class="app-container">
