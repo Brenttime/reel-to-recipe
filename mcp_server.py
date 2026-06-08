@@ -32,6 +32,9 @@ VENV_PYTHON = str(Path(__file__).parent / ".venv" / "bin" / "python")
 # Recipe Glass integration — save converted recipes to the web viewer
 RECIPE_GLASS_URL = os.environ.get("RECIPE_GLASS_URL", "http://localhost:5100")
 
+# LLM model for recipe formatting (passed to hermes chat -m)
+LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+
 _whisper_model = None
 WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
 
@@ -800,7 +803,7 @@ IMPORTANT: Start your response with the recipe title on the FIRST line. Do NOT w
 If a source is empty or unhelpful, just ignore it and work with what you have."""
 
     result = subprocess.run(
-        ["hermes", "chat", "-q", prompt, "-t", ""],
+        ["hermes", "chat", "-q", prompt, "-m", LLM_MODEL, "-t", ""],
         capture_output=True, text=True, timeout=120
     )
     if result.returncode != 0:
