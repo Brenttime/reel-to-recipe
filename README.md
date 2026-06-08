@@ -323,8 +323,6 @@ All endpoints except `POST /api/recipes` require Discord authentication (session
 | `/api/recipes/<id>/reviews` | POST | ✅ | Create/update your review (1-5 stars + optional comment) |
 | `/api/recipes/<id>/reviews` | PUT | ✅ | Update your existing review |
 | `/api/recipes/<id>/reviews` | DELETE | ✅ | Delete your review |
-| `/api/creators` | GET | ✅ | Unique creator names for filtering |
-| `/api/users` | GET | ✅ | All registered users (for "Added by" dropdown) |
 | `/api/categories` | GET | ✅ | Tags with counts for category chips |
 | `/api/convert` | POST | ✅ | Queue a reel URL for conversion (returns job_id, 202) |
 | `/api/convert/<job_id>` | GET | ✅ | Poll conversion job status (queued/processing/done/error) |
@@ -401,13 +399,23 @@ reel-to-recipe/
 ```sql
 -- Recipes (FTS5-indexed)
 recipes (
-    id INTEGER PRIMARY KEY,
-    title TEXT, creator TEXT, source_url TEXT UNIQUE,
-    thumbnail_url TEXT, ingredients TEXT, instructions TEXT,
-    tips TEXT, servings TEXT, prep_time TEXT, cook_time TEXT,
-    tags TEXT,  -- JSON array
-    user_id INTEGER REFERENCES users(id),
-    added_by TEXT DEFAULT '',  -- display name of who added it (empty = MCP)
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    creator TEXT DEFAULT '',
+    source_url TEXT DEFAULT '',
+    platform TEXT DEFAULT '',
+    servings TEXT DEFAULT '',
+    prep_time TEXT DEFAULT '',
+    cook_time TEXT DEFAULT '',
+    total_time TEXT DEFAULT '',
+    ingredients TEXT NOT NULL DEFAULT '[]',  -- JSON array
+    instructions TEXT NOT NULL DEFAULT '[]', -- JSON array
+    tips TEXT DEFAULT '',
+    macros TEXT DEFAULT '',
+    tags TEXT DEFAULT '[]',    -- JSON array
+    image_url TEXT DEFAULT '',
+    user_id INTEGER DEFAULT NULL,
+    added_by TEXT DEFAULT '',  -- display name of who added it
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 

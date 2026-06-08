@@ -99,7 +99,14 @@ def _conversion_worker(job_id, url, method, added_by):
 # --- Gate the entire app behind Discord login ---
 # Exceptions: auth flow itself, static files, and the MCP save endpoint
 AUTH_EXEMPT_PREFIXES = ('/auth/', '/static/')
-AUTH_EXEMPT_ENDPOINTS = ('api_add_recipe',)  # MCP server pushes recipes without login
+AUTH_EXEMPT_ENDPOINTS = (
+    'api_add_recipe',       # MCP server pushes recipes without login
+    'get_meal_plan',        # MCP meal plan read
+    'add_to_meal_plan',     # MCP meal plan write
+    'move_meal_plan_entry', # MCP meal plan update
+    'remove_from_meal_plan',# MCP meal plan delete
+    'get_grocery_list',     # MCP grocery list read
+)
 
 
 @app.before_request
@@ -517,16 +524,6 @@ def api_add_recipe():
     return jsonify({"status": "ok", "id": db.execute("SELECT last_insert_rowid()").fetchone()[0]}), 201
 
 
-@app.route("/api/creators")
-def api_creators():
-    """Get unique creators for filtering."""
-    db = get_db()
-    rows = db.execute(
-        "SELECT DISTINCT creator FROM recipes WHERE creator != '' ORDER BY creator"
-    ).fetchall()
-    return jsonify([row["creator"] for row in rows])
-
-
 @app.route("/api/users")
 def api_users():
     """Get all registered users (for 'Added by' dropdown)."""
@@ -560,8 +557,7 @@ def api_categories():
             continue
         # tags is stored as JSON array or comma-separated string
         try:
-            import json as _json
-            tag_list = _json.loads(tags)
+            tag_list = json.loads(tags)
         except Exception:
             tag_list = [t.strip() for t in tags.split(",") if t.strip()]
         for t in tag_list:

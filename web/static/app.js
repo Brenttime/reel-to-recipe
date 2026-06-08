@@ -159,11 +159,6 @@ function updateCartBadge() {
 }
 
 // ─── Fraction Utilities ──────────────────────────
-const FRACTION_MAP = {
-    '1/8': 0.125, '1/4': 0.25, '1/3': 0.333333, '3/8': 0.375,
-    '1/2': 0.5, '5/8': 0.625, '2/3': 0.666667, '3/4': 0.75, '7/8': 0.875
-};
-
 const DECIMAL_TO_FRACTION = [
     [0.125, '⅛'], [0.25, '¼'], [0.333, '⅓'], [0.375, '⅜'],
     [0.5, '½'], [0.625, '⅝'], [0.667, '⅔'], [0.75, '¾'], [0.875, '⅞']
@@ -1391,7 +1386,6 @@ function openSpotlight() {
 function closeSpotlight() {
     spotlightOverlay.classList.remove('active');
     document.body.style.overflow = '';
-    clearTimeout(window._spotlightNudgeTimer);
 }
 
 function toggleSpotlight() {
@@ -1422,7 +1416,6 @@ async function convertReel() {
     }
 
     // Show loading state
-    clearTimeout(window._spotlightNudgeTimer);
     hint.style.display = 'none';
     spinner.style.display = 'inline-block';
     input.disabled = true;

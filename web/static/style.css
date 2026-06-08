@@ -165,11 +165,7 @@ body {
     margin-bottom: 4px;
 }
 
-.logo-icon {
-    width: 36px;
-    height: 36px;
-    color: var(--text-primary);
-}
+
 
 .logo h1 {
     font-size: 1.75rem;
@@ -1364,17 +1360,6 @@ body {
     color: #4CD964;
 }
 
-.spotlight-status.spotlight-nudge {
-    color: rgba(255, 255, 255, 0.45);
-    font-style: italic;
-    animation: nudge-fade-in 0.6s ease;
-}
-
-@keyframes nudge-fade-in {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
 /* ============ Card Add-to-Cart Button ============ */
 
 .card-cart-btn {
@@ -2190,14 +2175,6 @@ body {
     background: rgba(255, 255, 255, 0.08);
 }
 
-[data-theme="dark"] .search-input {
-    color: var(--text-primary);
-}
-
-[data-theme="dark"] .search-input::placeholder {
-    color: rgba(255, 255, 255, 0.35);
-}
-
 /* Filter chips */
 [data-theme="dark"] .chip {
     background: rgba(255, 255, 255, 0.08);
@@ -2256,24 +2233,6 @@ body {
 [data-theme="dark"] .new-badge {
     background: rgba(10, 132, 255, 0.2);
     color: #0A84FF;
-}
-
-/* Servings scaler */
-[data-theme="dark"] .serving-btn {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.12);
-    color: var(--text-secondary);
-}
-
-[data-theme="dark"] .serving-btn:hover {
-    border-color: rgba(10, 132, 255, 0.4);
-    color: var(--accent);
-}
-
-[data-theme="dark"] .serving-btn.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: white;
 }
 
 /* Reviews section */
@@ -2355,14 +2314,6 @@ body {
     border-color: rgba(255, 255, 255, 0.1);
 }
 
-[data-theme="dark"] .spotlight-input {
-    color: rgba(255, 255, 255, 0.92);
-}
-
-[data-theme="dark"] .spotlight-input::placeholder {
-    color: rgba(255, 255, 255, 0.35);
-}
-
 /* Shopping list panel */
 [data-theme="dark"] .shopping-panel {
     background: rgba(30, 30, 30, 0.92);
@@ -2375,11 +2326,6 @@ body {
 
 [data-theme="dark"] .shopping-item {
     border-bottom-color: rgba(255, 255, 255, 0.06);
-}
-
-/* Cook mode */
-[data-theme="dark"] .cook-mode-overlay {
-    background: rgba(10, 10, 12, 0.96);
 }
 
 /* ─── Conversion Queue Bar ─── */
@@ -2505,12 +2451,6 @@ body {
 [data-theme="dark"] .action-btn:hover {
     background: rgba(255, 255, 255, 0.1);
     color: var(--text-primary);
-}
-
-/* Meta bar */
-[data-theme="dark"] .meta-bar {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.08);
 }
 
 /* Ingredients/instructions sections */

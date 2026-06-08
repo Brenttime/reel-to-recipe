@@ -27,10 +27,8 @@ This multi-source approach compensates for Whisper's tendency to mishear ingredi
 
 ## Dependencies (managed by uv)
 - openai-whisper (includes torch, numpy, etc.)
-- fastapi + uvicorn (web UI in app.py)
-- mcp (MCP SDK >= 1.27.2)
+- mcp (MCP SDK >= 1.27.2, includes FastMCP HTTP transport)
 - yt-dlp (video/audio download for Instagram)
 - httpx (TikWM API calls)
 - pytesseract + Pillow (OCR)
 - curl-cffi <0.15 (yt-dlp browser impersonation)
-- jinja2, python-multipart
