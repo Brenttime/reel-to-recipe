@@ -87,6 +87,41 @@ def _check_duplicate(url: str) -> dict | None:
     return None
 
 
+def _extract_recipe_url_from_caption(caption: str) -> str | None:
+    """Extract a recipe URL from a reel caption, if present.
+
+    Creators often link to their full recipe page in the caption. These links
+    have proper measurements, nutrition, and structured data — much better than
+    trying to piece things together from OCR fragments.
+
+    Returns the URL if found and it looks like a recipe link, else None.
+    """
+    if not caption:
+        return None
+
+    # Find all URLs in caption
+    urls = re.findall(r'https?://[^\s\]\)\"\']+', caption)
+    if not urls:
+        return None
+
+    # Filter: skip social media links (other reels, profiles, etc.)
+    skip_domains = {
+        'instagram.com', 'tiktok.com', 'youtube.com', 'youtu.be',
+        'twitter.com', 'x.com', 'facebook.com', 'linktr.ee',
+        'bit.ly', 'amzn.to', 'amazon.com',  # affiliate links
+    }
+
+    for url in urls:
+        # Clean trailing punctuation
+        url = url.rstrip('.,;:!?')
+        domain = re.search(r'https?://(?:www\.)?([^/]+)', url)
+        if domain and not any(skip in domain.group(1) for skip in skip_domains):
+            # Looks like an external recipe link
+            return url
+
+    return None
+
+
 def _caption_has_recipe_signals(caption: str) -> bool:
     """Check if caption contains clear recipe content (quantities + ingredients).
 
@@ -291,7 +326,7 @@ def _extract_page_text(html: str) -> str:
     return text.strip()[:8000]  # Cap at 8K chars for LLM
 
 
-def convert_blog_to_recipe(url: str, job_id: str = "") -> str:
+def convert_blog_to_recipe(url: str, job_id: str = "", source_url: str = "", platform: str = "Web") -> str:
     """Convert a blog/web URL into a structured recipe.
 
     Strategy:
@@ -299,8 +334,16 @@ def convert_blog_to_recipe(url: str, job_id: str = "") -> str:
     2. Try JSON-LD extraction (most recipe blogs have this) — instant, no LLM needed
     3. Fall back to LLM formatting of page text (same prompt as reel pipeline)
 
+    Args:
+        url: The blog/recipe page URL to fetch
+        job_id: For progress tracking
+        source_url: Override source URL for saving (e.g., original reel URL when following caption links)
+        platform: Override platform tag (default "Web", set to "Instagram"/"TikTok" for caption-link conversions)
+
     Returns formatted recipe text.
     """
+    save_url = source_url or url
+    save_platform = platform
     timings = {}
 
     _report_progress(job_id, "downloading", "Fetching page…")
@@ -389,7 +432,7 @@ def convert_blog_to_recipe(url: str, job_id: str = "") -> str:
         timings["format"] = time.time() - t0
 
         _report_progress(job_id, "saving", "Saving recipe…")
-        _save_to_recipe_glass(recipe_text, url, "Web")
+        _save_to_recipe_glass(recipe_text, save_url, save_platform)
         timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
         return f"{recipe_text}\n\n---\n⏱️ {timing_str}"
 
@@ -405,7 +448,7 @@ def convert_blog_to_recipe(url: str, job_id: str = "") -> str:
     timings["format"] = time.time() - t0
 
     _report_progress(job_id, "saving", "Saving recipe…")
-    _save_to_recipe_glass(recipe_text, url, "Web")
+    _save_to_recipe_glass(recipe_text, save_url, save_platform)
 
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe_text}\n\n---\n⏱️ {timing_str}"
@@ -1194,6 +1237,21 @@ def convert_reel_to_recipe(url: str) -> str:
     timings["download"] = time.time() - t0
 
     caption = dl["caption"]
+
+    # Check if caption has a link to the full recipe — follow it for accurate data
+    recipe_link = _extract_recipe_url_from_caption(caption)
+    if recipe_link:
+        try:
+            # Clean up downloaded files before switching to blog pipeline
+            if dl.get("audio_path"):
+                os.unlink(dl["audio_path"])
+            if dl.get("video_path"):
+                os.unlink(dl["video_path"])
+            platform = "TikTok" if is_tiktok_url(url) else "Instagram"
+            return convert_blog_to_recipe(recipe_link, source_url=url, platform=platform)
+        except Exception:
+            pass  # Link failed — fall through to normal pipeline
+
     audio_path = dl.get("audio_path")  # None if video has no audio stream
     video_path = dl["video_path"]
 
@@ -1272,6 +1330,20 @@ if __name__ == "__main__":
             # ── Smart detection: skip OCR if caption is rich enough ──
             _report_progress(job_id, "analyzing", "Fetching caption…")
             caption = smart_get_caption(url)
+
+            # ── Check if caption contains a link to the full recipe ──
+            recipe_link = _extract_recipe_url_from_caption(caption)
+            if recipe_link:
+                _report_progress(job_id, "analyzing", "Found recipe link in caption — following it…")
+                try:
+                    platform = "TikTok" if is_tiktok_url(url) else "Instagram"
+                    result = convert_blog_to_recipe(recipe_link, job_id, source_url=url, platform=platform)
+                    self._json_response({"status": "ok", "result": result})
+                    return
+                except Exception:
+                    # Link failed (404, Cloudflare, etc.) — fall through to normal pipeline
+                    _report_progress(job_id, "analyzing", "Recipe link failed — using video pipeline…")
+
             skip_ocr = _caption_has_recipe_signals(caption)
 
             if skip_ocr:
