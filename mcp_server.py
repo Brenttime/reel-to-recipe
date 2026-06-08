@@ -1098,6 +1098,7 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
             "gin and tonic": "cocktail", "long island": "cocktail",
             "mimosa": "cocktail", "bellini": "cocktail", "sangria": "cocktail",
             "highball": "cocktail", "sour": "cocktail",
+            "caipirinha": "cocktail", "gimlet": "cocktail", "julep": "cocktail",
             "vodka": "spirits", "gin": "spirits", "rum": "spirits",
             "tequila": "spirits", "mezcal": "spirits",
             "whiskey": "spirits", "whisky": "spirits", "bourbon": "spirits",
@@ -1126,9 +1127,18 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
             'smoothie', 'milkshake', 'lemonade', 'latte', 'matcha', 'coffee',
             'drink', 'beverage', 'soju', 'chu-hai', 'chuhai', 'highball',
             'shot', 'toddy', 'fizz', 'mule', 'bellini', 'colada',
+            'caipirinha', 'paloma', 'aperol', 'sangria', 'gimlet', 'julep',
+            'cosmopolitan', 'manhattan', 'mai tai', 'old fashioned',
+            'gin and tonic', 'tom collins', 'long island', 'bloody mary',
+            'espresso martini', 'moscow mule', 'whiskey sour',
         ]
         title_lower = title.lower()
         title_is_drink = any(s in title_lower for s in _drink_title_signals)
+
+        # Also treat as drink if majority of ingredients are [bar] section
+        bar_count = sum(1 for i in ingredients if isinstance(i, dict) and i.get("section") == "bar")
+        if bar_count >= 2 and bar_count >= len(ingredients) * 0.4:
+            title_is_drink = True
 
         if title_is_drink:
             for keyword, tag in _drink_tags.items():
