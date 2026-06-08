@@ -51,6 +51,56 @@ When a reel's caption contains a URL to an external recipe page (e.g., thefoodie
 - **No-audio detection** — ffprobe checks for audio stream; skips transcription for silent videos
 - **Two-tier HTTP fetching** — httpx first, curl_cffi (Chrome TLS impersonation) fallback for bot-protected sites
 
+## GPU Acceleration (Optional)
+
+Hardware acceleration is **auto-detected** by default — no configuration needed. The server probes for available hardware at startup and uses the best option:
+
+1. **NVIDIA CUDA** (nvdec) — checked first via `nvidia-smi`
+2. **VAAPI** (AMD/Intel) — probes `/dev/dri/renderD128` with a test decode
+3. **Intel QSV** — tested as fallback
+4. **CPU** — if nothing is available or accessible
+
+Set `FFMPEG_HWACCEL=off` to explicitly disable auto-detection.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WHISPER_DEVICE` | `auto` | Whisper inference: tries CUDA first, falls back to CPU. Set `cpu` or `cuda` to force |
+| `WHISPER_COMPUTE_TYPE` | auto | `float16` for CUDA, `int8` for CPU. Set explicitly to override |
+| `WHISPER_MODEL` | `base` | Model size: `tiny`, `base`, `small`, `medium`, `large-v3`. Larger = more accurate, more VRAM |
+| `FFMPEG_HWACCEL` | `auto` | Auto-detects best backend. Set `cuda`/`vaapi`/`qsv`/`videotoolbox` to force, `off` to disable |
+| `FFMPEG_HWACCEL_DEVICE` | auto | Auto-detected. Override with `/dev/dri/renderD128` (VAAPI) or `0` (CUDA device index) |
+
+### Startup Output
+
+The server logs what it detected:
+```
+[GPU] ffmpeg hardware decode: vaapi (/dev/dri/renderD128)
+[GPU] Whisper device: cpu
+```
+
+### Forcing a Specific Backend
+
+```bash
+# Force NVIDIA CUDA for everything
+WHISPER_DEVICE=cuda
+FFMPEG_HWACCEL=cuda
+FFMPEG_HWACCEL_DEVICE=0
+
+# Force VAAPI only (AMD iGPU)
+FFMPEG_HWACCEL=vaapi
+FFMPEG_HWACCEL_DEVICE=/dev/dri/renderD128
+
+# Disable all GPU (pure CPU)
+WHISPER_DEVICE=cpu
+FFMPEG_HWACCEL=off
+```
+
+### Requirements
+
+- **NVIDIA CUDA:** NVIDIA drivers + CUDA toolkit. `faster-whisper` automatically uses CUDA when available via CTranslate2.
+- **VAAPI:** User must be in the `render` group (`sudo usermod -aG render $USER`). Mesa VA-API drivers installed.
+- **No setup needed for CPU-only** — auto-detection gracefully falls back.
+
 ## Dependencies (managed by uv)
 - faster-whisper (CTranslate2, int8 quantization — 4x faster than openai-whisper)
 - mcp (MCP SDK >= 1.27.2, includes FastMCP HTTP transport)

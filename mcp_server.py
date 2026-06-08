@@ -29,6 +29,16 @@ NETRC_FILE = Path.home() / ".netrc"
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 VENV_PYTHON = str(Path(__file__).parent / ".venv" / "bin" / "python")
 
+# GPU acceleration (auto-detected by default, override via environment variables)
+# WHISPER_DEVICE: "auto" (default — tries CUDA, falls back to CPU), "cpu", or "cuda"
+# WHISPER_COMPUTE_TYPE: "" (auto — float16 for CUDA, int8 for CPU), or explicit value
+# FFMPEG_HWACCEL: "auto" (default — probes for available hardware), "vaapi", "cuda", "qsv", "videotoolbox", "off"
+# FFMPEG_HWACCEL_DEVICE: "" (auto-detected), or explicit path (e.g. "/dev/dri/renderD128", "0")
+WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "auto")
+WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "")  # auto-selected at model load
+FFMPEG_HWACCEL = os.environ.get("FFMPEG_HWACCEL", "auto")
+FFMPEG_HWACCEL_DEVICE = os.environ.get("FFMPEG_HWACCEL_DEVICE", "")
+
 # Age-restricted content error message (links to setup docs)
 AGE_RESTRICTED_MSG = (
     "Instagram is not granting access to this content. This reel may be age-restricted "
@@ -132,27 +142,134 @@ def _caption_has_recipe_signals(caption: str) -> bool:
         return False
 
     # Look for quantity patterns: "2 cups", "1/2 tsp", "500g", "3 tbsp", etc.
-    qty_pattern = r'\b(\d+[\s/½⅓¼⅔¾⅛]*(cups?|tbsp|tsp|oz|lb|g|kg|ml|liter|cloves?|slices?|pieces?|stalks?|cans?|packets?|sticks?))\b'
+    qty_pattern = r'\b(\d+[\s/½⅓¼⅔¾⅛]*(cups?|tbsp|tsp|oz|lb|g|kg|ml|liter|cloves?|slices?|pieces?|stalks?|cans?|packets?|sticks?))\\b'
     qty_matches = re.findall(qty_pattern, caption, re.IGNORECASE)
 
     # Look for ingredient-like lines (bullet points, hyphens, numbered lists)
-    list_pattern = r'^[\s]*[-•*]\s*\d|^\s*\d+[\.\)]\s'
+    list_pattern = r'^[\s]*[-•*]\s*\d|^\s*\d+[\.\\)]\s'
     list_lines = re.findall(list_pattern, caption, re.MULTILINE)
 
     # If we have 3+ quantity mentions OR 3+ list items, caption has recipe data
     return len(qty_matches) >= 3 or len(list_lines) >= 3
 
 
+_whisper_model = None
+
+
 def get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
         from faster_whisper import WhisperModel
+
+        device = WHISPER_DEVICE
+        if device == "auto":
+            try:
+                import torch
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            except ImportError:
+                device = "cpu"
+
+        # Auto-select compute type based on device if not explicitly set
+        compute_type = WHISPER_COMPUTE_TYPE
+        if not compute_type:
+            compute_type = "float16" if device == "cuda" else "int8"
+
         _whisper_model = WhisperModel(
             WHISPER_MODEL,
-            device="cpu",
-            compute_type=WHISPER_COMPUTE_TYPE
+            device=device,
+            compute_type=compute_type
         )
     return _whisper_model
+
+
+_detected_hwaccel = None  # cached result of auto-detection
+
+
+def _detect_ffmpeg_hwaccel() -> tuple:
+    """Auto-detect best available ffmpeg hardware acceleration.
+
+    Returns (hwaccel_type, device_path) or ("", "") if none available.
+    Probes in order: cuda > vaapi > qsv. Caches result after first call.
+    """
+    global _detected_hwaccel
+    if _detected_hwaccel is not None:
+        return _detected_hwaccel
+
+    import shutil
+
+    # 1. Check for NVIDIA CUDA (nvdec)
+    if shutil.which("nvidia-smi"):
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                _detected_hwaccel = ("cuda", "0")
+                return _detected_hwaccel
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    # 2. Check for VAAPI (AMD/Intel)
+    render_device = "/dev/dri/renderD128"
+    if os.path.exists(render_device) and os.access(render_device, os.R_OK | os.W_OK):
+        # Verify ffmpeg can actually init the device
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-hwaccel", "vaapi", "-vaapi_device", render_device,
+                 "-f", "lavfi", "-i", "nullsrc=s=64x64:d=0.1",
+                 "-vf", "format=nv12,hwupload", "-frames:v", "1", "-f", "null", "-"],
+                capture_output=True, timeout=5
+            )
+            if result.returncode == 0:
+                _detected_hwaccel = ("vaapi", render_device)
+                return _detected_hwaccel
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    # 3. Check for Intel QSV
+    if os.path.exists("/dev/dri/renderD128"):
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-hwaccel", "qsv", "-f", "lavfi", "-i", "nullsrc=s=64x64:d=0.1",
+                 "-frames:v", "1", "-f", "null", "-"],
+                capture_output=True, timeout=5
+            )
+            if result.returncode == 0:
+                _detected_hwaccel = ("qsv", "")
+                return _detected_hwaccel
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    _detected_hwaccel = ("", "")
+    return _detected_hwaccel
+
+
+def _ffmpeg_hwaccel_args() -> list:
+    """Build ffmpeg hardware acceleration input args based on env config.
+
+    When FFMPEG_HWACCEL is 'auto' (default), probes system for best available.
+    Set to 'off' to explicitly disable. Set to a specific backend to force it.
+    """
+    hwaccel = FFMPEG_HWACCEL
+    device = FFMPEG_HWACCEL_DEVICE
+
+    if hwaccel == "off":
+        return []
+
+    if hwaccel == "auto":
+        hwaccel, auto_device = _detect_ffmpeg_hwaccel()
+        if not device:
+            device = auto_device
+
+    args = []
+    if hwaccel:
+        args.extend(["-hwaccel", hwaccel])
+        if device:
+            args.extend(["-hwaccel_device", device])
+        # Output decoded frames in system memory for software filters (fps, etc.)
+        args.extend(["-hwaccel_output_format", "cpu"])
+    return args
 
 
 def is_blog_url(url: str) -> bool:
@@ -579,8 +696,11 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
             if has_audio:
                 # Extract audio from the already-downloaded video via ffmpeg (~1-2s local)
                 tmp_audio = tempfile.mktemp(suffix=".mp3")
+                ffmpeg_cmd = ["ffmpeg", "-y"] + _ffmpeg_hwaccel_args() + [
+                    "-i", tmp_video, "-vn", "-acodec", "libmp3lame", "-q:a", "2", tmp_audio
+                ]
                 ffmpeg_result = subprocess.run(
-                    ["ffmpeg", "-y", "-i", tmp_video, "-vn", "-acodec", "libmp3lame", "-q:a", "2", tmp_audio],
+                    ffmpeg_cmd,
                     capture_output=True, timeout=30
                 )
                 if ffmpeg_result.returncode != 0:
@@ -668,8 +788,11 @@ def tiktok_download_audio(url: str) -> str:
     with open(tmp_video, 'wb') as f:
         f.write(video_resp.content)
     # Extract audio with ffmpeg
+    ffmpeg_cmd = ['ffmpeg', '-y'] + _ffmpeg_hwaccel_args() + [
+        '-i', tmp_video, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', tmp_audio
+    ]
     subprocess.run(
-        ['ffmpeg', '-y', '-i', tmp_video, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', tmp_audio],
+        ffmpeg_cmd,
         capture_output=True, timeout=30
     )
     os.unlink(tmp_video)
@@ -722,9 +845,12 @@ def extract_text_from_video(video_path: str) -> str:
 
     try:
         # Extract at 1fps (was 2fps — recipe text holds 3-10s, no need for more)
+        ffmpeg_cmd = ["ffmpeg", "-y"] + _ffmpeg_hwaccel_args() + [
+            "-i", video_path, "-vf", "fps=1",
+            os.path.join(frames_dir, "frame_%04d.png")
+        ]
         subprocess.run(
-            ["ffmpeg", "-y", "-i", video_path, "-vf", "fps=1",
-             os.path.join(frames_dir, "frame_%04d.png")],
+            ffmpeg_cmd,
             capture_output=True, timeout=120
         )
 
@@ -1707,6 +1833,28 @@ if __name__ == "__main__":
     # Start convert API in background thread
     api_thread = threading.Thread(target=run_convert_api, daemon=True)
     api_thread.start()
+
+    # Log detected hardware acceleration
+    import logging
+    log = logging.getLogger("reel-to-recipe")
+    log.setLevel(logging.INFO)
+    if not log.handlers:
+        log.addHandler(logging.StreamHandler())
+
+    hwaccel, hw_device = _detect_ffmpeg_hwaccel()
+    if hwaccel:
+        log.info(f"[GPU] ffmpeg hardware decode: {hwaccel} ({hw_device})")
+    else:
+        log.info("[GPU] ffmpeg hardware decode: none (CPU only)")
+
+    whisper_dev = WHISPER_DEVICE
+    if whisper_dev == "auto":
+        try:
+            import torch
+            whisper_dev = "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            whisper_dev = "cpu"
+    log.info(f"[GPU] Whisper device: {whisper_dev}")
 
     if "--stdio" in sys.argv:
         mcp.run(transport="stdio")
