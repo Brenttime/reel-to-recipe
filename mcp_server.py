@@ -1835,11 +1835,17 @@ if __name__ == "__main__":
     api_thread.start()
 
     # Log detected hardware acceleration
+    import logging
+    log = logging.getLogger("reel-to-recipe")
+    log.setLevel(logging.INFO)
+    if not log.handlers:
+        log.addHandler(logging.StreamHandler())
+
     hwaccel, hw_device = _detect_ffmpeg_hwaccel()
     if hwaccel:
-        print(f"[GPU] ffmpeg hardware decode: {hwaccel} ({hw_device})")
+        log.info(f"[GPU] ffmpeg hardware decode: {hwaccel} ({hw_device})")
     else:
-        print("[GPU] ffmpeg hardware decode: none (CPU only)")
+        log.info("[GPU] ffmpeg hardware decode: none (CPU only)")
 
     whisper_dev = WHISPER_DEVICE
     if whisper_dev == "auto":
@@ -1848,7 +1854,7 @@ if __name__ == "__main__":
             whisper_dev = "cuda" if torch.cuda.is_available() else "cpu"
         except ImportError:
             whisper_dev = "cpu"
-    print(f"[GPU] Whisper device: {whisper_dev}")
+    log.info(f"[GPU] Whisper device: {whisper_dev}")
 
     if "--stdio" in sys.argv:
         mcp.run(transport="stdio")
