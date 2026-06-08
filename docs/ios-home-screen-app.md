@@ -7,16 +7,17 @@ OnlyPans is a Progressive Web App (PWA) — add it to your iPhone home screen an
 ## Prerequisites
 
 - iPhone/iPad with Safari
-- [Tailscale](https://tailscale.com/download) installed and signed in on the iOS device (same tailnet as the server)
-- OnlyPans running with HTTPS enabled (see [https-deployment.md](./https-deployment.md))
+- OnlyPans accessible over HTTPS (required for PWA standalone mode)
+
+> **Note:** Any HTTPS method works — Tailscale Serve, a reverse proxy with Let's Encrypt, Cloudflare Tunnel, etc. See [https-deployment.md](./https-deployment.md) for one approach.
 
 ---
 
 ## Add to Home Screen
 
-1. Open Safari and navigate to your OnlyPans URL:
+1. Open **Safari** and navigate to your OnlyPans URL:
    ```
-   https://YOUR_HOSTNAME.tail______.ts.net
+   https://your-onlypans-host
    ```
 
 2. Tap the **Share** button (square with arrow pointing up) in the bottom toolbar
@@ -61,17 +62,17 @@ When launched from the home screen, iOS creates a separate app context that:
 
 | Symptom | Fix |
 |---------|-----|
-| "Add to Home Screen" not showing | You must use **Safari** — this option doesn't appear in Chrome/Firefox on iOS |
+| "Add to Home Screen" not showing | You must use **Safari** — this option doesn't appear in Chrome/Firefox/Brave on iOS |
 | Opens in Safari instead of standalone | Delete the home screen shortcut and re-add it. Ensure you're loading via HTTPS (PWA requires secure context) |
-| Login redirect fails after adding | This should work on first attempt now — the server uses a server-side state store that doesn't depend on cookies surviving the OAuth redirect. If it still fails, check `DISCORD_REDIRECT_URI` matches the hostname you're visiting |
+| Login redirect fails after adding | This should work on first attempt — the server uses a server-side state store that doesn't depend on cookies surviving the OAuth redirect. If it still fails, check `DISCORD_REDIRECT_URI` matches the hostname you're visiting |
 | Icon is a generic screenshot | Clear Safari cache, re-visit the site, then re-add to home screen |
-| "Cannot connect" on launch | Ensure Tailscale is connected on the phone (check Tailscale app → toggle on) |
+| "Cannot connect" on launch | Make sure your device can reach the server (same network, VPN connected, etc.) |
 | App reloads from scratch every time | iOS can evict PWA storage under memory pressure — this is normal; login session is cookie-based so it persists |
 
 ---
 
 ## Notes
 
-- **HTTPS is required** — iOS will not offer "Add to Home Screen" PWA behavior over plain HTTP. Use the Tailscale Serve setup described in [https-deployment.md](./https-deployment.md).
+- **HTTPS is required** — iOS will not offer full PWA standalone behavior over plain HTTP.
 - **Updates are automatic** — when you redeploy the container, the PWA picks up changes on next launch (iOS checks the manifest on open).
 - **No App Store needed** — this is a direct-to-device install with zero Apple review or signing.
