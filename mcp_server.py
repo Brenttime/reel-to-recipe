@@ -514,18 +514,36 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
             raise RuntimeError(f"Download failed: {stderr[-300:]}")
 
         caption = proc.stdout.strip()
+
+        # Verify video file actually downloaded (yt-dlp can exit 0 with --print but no video)
+        if not Path(tmp_video).exists() or Path(tmp_video).stat().st_size < 1000:
+            raise RuntimeError(
+                "Video download failed — yt-dlp exited successfully but produced no video file. "
+                "This usually means your Instagram session cookie has expired. "
+                "Re-export cookies with: ./export-ig-cookie.sh"
+            )
+
         result = {"caption": caption, "video_path": tmp_video}
 
         if need_audio:
-            # Extract audio from the already-downloaded video via ffmpeg (~1-2s local)
-            tmp_audio = tempfile.mktemp(suffix=".mp3")
-            ffmpeg_result = subprocess.run(
-                ["ffmpeg", "-y", "-i", tmp_video, "-vn", "-acodec", "libmp3lame", "-q:a", "2", tmp_audio],
-                capture_output=True, timeout=30
+            # Check if video has an audio stream before attempting extraction
+            probe = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-select_streams", "a", "-show_entries", "stream=index", tmp_video],
+                capture_output=True, text=True, timeout=10
             )
-            if ffmpeg_result.returncode != 0:
-                raise RuntimeError(f"Audio extraction failed: {ffmpeg_result.stderr}")
-            result["audio_path"] = tmp_audio
+            has_audio = "index=" in (probe.stdout or "")
+
+            if has_audio:
+                # Extract audio from the already-downloaded video via ffmpeg (~1-2s local)
+                tmp_audio = tempfile.mktemp(suffix=".mp3")
+                ffmpeg_result = subprocess.run(
+                    ["ffmpeg", "-y", "-i", tmp_video, "-vn", "-acodec", "libmp3lame", "-q:a", "2", tmp_audio],
+                    capture_output=True, timeout=30
+                )
+                if ffmpeg_result.returncode != 0:
+                    raise RuntimeError(f"Audio extraction failed: {ffmpeg_result.stderr}")
+                result["audio_path"] = tmp_audio
+            # else: no audio stream — skip transcription, rely on OCR + caption
 
         return result
     else:
@@ -1176,14 +1194,17 @@ def convert_reel_to_recipe(url: str) -> str:
     timings["download"] = time.time() - t0
 
     caption = dl["caption"]
-    audio_path = dl["audio_path"]
+    audio_path = dl.get("audio_path")  # None if video has no audio stream
     video_path = dl["video_path"]
 
-    # Transcribe audio
+    # Transcribe audio (skip if no audio stream in video)
     t0 = time.time()
-    transcript = transcribe(audio_path)
+    if audio_path:
+        transcript = transcribe(audio_path)
+        os.unlink(audio_path)
+    else:
+        transcript = ""
     timings["transcribe"] = time.time() - t0
-    os.unlink(audio_path)
 
     # OCR video frames
     t0 = time.time()
@@ -1275,13 +1296,16 @@ if __name__ == "__main__":
                 dl = combined_download(url, need_audio=True, need_video=False)
                 timings["download"] = time.time() - t0
 
-                audio_path = dl["audio_path"]
+                audio_path = dl.get("audio_path")
 
                 _report_progress(job_id, "transcribing", "Transcribing audio…")
                 t0 = time.time()
-                transcript = transcribe(audio_path)
+                if audio_path:
+                    transcript = transcribe(audio_path)
+                    os.unlink(audio_path)
+                else:
+                    transcript = ""
                 timings["transcribe"] = time.time() - t0
-                os.unlink(audio_path)
 
                 _report_progress(job_id, "formatting", "Formatting recipe…")
                 t0 = time.time()
@@ -1294,14 +1318,17 @@ if __name__ == "__main__":
                 dl = combined_download(url, need_audio=True, need_video=True)
                 timings["download"] = time.time() - t0
 
-                audio_path = dl["audio_path"]
+                audio_path = dl.get("audio_path")
                 video_path = dl["video_path"]
 
                 _report_progress(job_id, "transcribing", "Transcribing audio…")
                 t0 = time.time()
-                transcript = transcribe(audio_path)
+                if audio_path:
+                    transcript = transcribe(audio_path)
+                    os.unlink(audio_path)
+                else:
+                    transcript = ""
                 timings["transcribe"] = time.time() - t0
-                os.unlink(audio_path)
 
                 _report_progress(job_id, "ocr", "Extracting text from frames…")
                 t0 = time.time()
