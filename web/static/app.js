@@ -1234,33 +1234,62 @@ function releaseWakeLock() {
 
 // ─── Actions ────────────────────────────────────
 async function deleteRecipe(recipe) {
-    if (!confirm(`Delete "${recipe.title}"? This can't be undone.`)) return;
+    // Use custom confirm dialog instead of window.confirm (blocked on some mobile browsers)
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'mp-confirm-overlay';
+        overlay.style.zIndex = '10001';
+        overlay.innerHTML = `
+            <div class="mp-confirm-dialog">
+                <div class="mp-confirm-title">Delete Recipe?</div>
+                <div class="mp-confirm-message">Delete <strong>${escapeHtml(recipe.title)}</strong>? This can't be undone.</div>
+                <div class="mp-confirm-actions">
+                    <button class="mp-confirm-btn cancel" id="delConfirmCancel">Cancel</button>
+                    <button class="mp-confirm-btn remove" id="delConfirmDelete">Delete</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
 
-    try {
-        const res = await fetch(`/api/recipes/${recipe.id}`, {
-            method: 'DELETE',
-            credentials: 'same-origin',
-            headers: { 'Accept': 'application/json' }
+        document.getElementById('delConfirmCancel').addEventListener('click', () => {
+            overlay.remove();
+            resolve();
         });
-        if (res.ok) {
-            // Also remove from cart if present
-            removeFromCart(recipe.id);
-            localStorage.removeItem(`reel-cookbook-scaled-${recipe.id}`);
-            closeModal();
-            await loadRecipes(searchInput.value);
-            await loadCategories();
-        } else {
-            const data = await res.json().catch(() => ({}));
-            if (data.login_url) {
-                window.location.href = data.login_url;
-            } else {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) { overlay.remove(); resolve(); }
+        });
+
+        document.getElementById('delConfirmDelete').addEventListener('click', async () => {
+            overlay.remove();
+            try {
+                const res = await fetch(`/api/recipes/${recipe.id}`, {
+                    method: 'DELETE',
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (res.ok) {
+                    removeFromCart(recipe.id);
+                    localStorage.removeItem(`reel-cookbook-scaled-${recipe.id}`);
+                    doCloseModal();
+                    await loadRecipes(searchInput.value);
+                    await loadCategories();
+                    if (window.refreshTodaysMeals) window.refreshTodaysMeals();
+                    if (window.refreshMealPlanBadge) window.refreshMealPlanBadge();
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    if (data.login_url) {
+                        window.location.href = data.login_url;
+                    } else {
+                        alert('Failed to delete recipe.');
+                    }
+                }
+            } catch (err) {
+                console.error('Delete failed:', err);
                 alert('Failed to delete recipe.');
             }
-        }
-    } catch (err) {
-        console.error('Delete failed:', err);
-        alert('Failed to delete recipe.');
-    }
+            resolve();
+        });
+    });
 }
 
 function getEditFormSnapshot() {
