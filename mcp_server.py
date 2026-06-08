@@ -29,14 +29,14 @@ NETRC_FILE = Path.home() / ".netrc"
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
 VENV_PYTHON = str(Path(__file__).parent / ".venv" / "bin" / "python")
 
-# GPU acceleration (opt-in via environment variables)
-# WHISPER_DEVICE: "cpu" (default), "cuda" (NVIDIA), or "auto" (try CUDA, fall back to CPU)
-# WHISPER_COMPUTE_TYPE: "int8" (CPU default), "float16" (GPU default), "int8_float16", etc.
-# FFMPEG_HWACCEL: "" (disabled, default), "vaapi", "cuda", "qsv", "videotoolbox"
-# FFMPEG_HWACCEL_DEVICE: device path (e.g. "/dev/dri/renderD128" for VAAPI, "0" for CUDA)
-WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "cpu")
-WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "")  # auto-selected below
-FFMPEG_HWACCEL = os.environ.get("FFMPEG_HWACCEL", "")
+# GPU acceleration (auto-detected by default, override via environment variables)
+# WHISPER_DEVICE: "auto" (default — tries CUDA, falls back to CPU), "cpu", or "cuda"
+# WHISPER_COMPUTE_TYPE: "" (auto — float16 for CUDA, int8 for CPU), or explicit value
+# FFMPEG_HWACCEL: "auto" (default — probes for available hardware), "vaapi", "cuda", "qsv", "videotoolbox", "off"
+# FFMPEG_HWACCEL_DEVICE: "" (auto-detected), or explicit path (e.g. "/dev/dri/renderD128", "0")
+WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "auto")
+WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "")  # auto-selected at model load
+FFMPEG_HWACCEL = os.environ.get("FFMPEG_HWACCEL", "auto")
 FFMPEG_HWACCEL_DEVICE = os.environ.get("FFMPEG_HWACCEL_DEVICE", "")
 
 # Age-restricted content error message (links to setup docs)
@@ -182,13 +182,91 @@ def get_whisper_model():
     return _whisper_model
 
 
+_detected_hwaccel = None  # cached result of auto-detection
+
+
+def _detect_ffmpeg_hwaccel() -> tuple:
+    """Auto-detect best available ffmpeg hardware acceleration.
+
+    Returns (hwaccel_type, device_path) or ("", "") if none available.
+    Probes in order: cuda > vaapi > qsv. Caches result after first call.
+    """
+    global _detected_hwaccel
+    if _detected_hwaccel is not None:
+        return _detected_hwaccel
+
+    import shutil
+
+    # 1. Check for NVIDIA CUDA (nvdec)
+    if shutil.which("nvidia-smi"):
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                _detected_hwaccel = ("cuda", "0")
+                return _detected_hwaccel
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    # 2. Check for VAAPI (AMD/Intel)
+    render_device = "/dev/dri/renderD128"
+    if os.path.exists(render_device) and os.access(render_device, os.R_OK | os.W_OK):
+        # Verify ffmpeg can actually init the device
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-hwaccel", "vaapi", "-vaapi_device", render_device,
+                 "-f", "lavfi", "-i", "nullsrc=s=64x64:d=0.1",
+                 "-vf", "format=nv12,hwupload", "-frames:v", "1", "-f", "null", "-"],
+                capture_output=True, timeout=5
+            )
+            if result.returncode == 0:
+                _detected_hwaccel = ("vaapi", render_device)
+                return _detected_hwaccel
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    # 3. Check for Intel QSV
+    if os.path.exists("/dev/dri/renderD128"):
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-hwaccel", "qsv", "-f", "lavfi", "-i", "nullsrc=s=64x64:d=0.1",
+                 "-frames:v", "1", "-f", "null", "-"],
+                capture_output=True, timeout=5
+            )
+            if result.returncode == 0:
+                _detected_hwaccel = ("qsv", "")
+                return _detected_hwaccel
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    _detected_hwaccel = ("", "")
+    return _detected_hwaccel
+
+
 def _ffmpeg_hwaccel_args() -> list:
-    """Build ffmpeg hardware acceleration input args based on env config."""
+    """Build ffmpeg hardware acceleration input args based on env config.
+
+    When FFMPEG_HWACCEL is 'auto' (default), probes system for best available.
+    Set to 'off' to explicitly disable. Set to a specific backend to force it.
+    """
+    hwaccel = FFMPEG_HWACCEL
+    device = FFMPEG_HWACCEL_DEVICE
+
+    if hwaccel == "off":
+        return []
+
+    if hwaccel == "auto":
+        hwaccel, auto_device = _detect_ffmpeg_hwaccel()
+        if not device:
+            device = auto_device
+
     args = []
-    if FFMPEG_HWACCEL:
-        args.extend(["-hwaccel", FFMPEG_HWACCEL])
-        if FFMPEG_HWACCEL_DEVICE:
-            args.extend(["-hwaccel_device", FFMPEG_HWACCEL_DEVICE])
+    if hwaccel:
+        args.extend(["-hwaccel", hwaccel])
+        if device:
+            args.extend(["-hwaccel_device", device])
         # Output decoded frames in system memory for software filters (fps, etc.)
         args.extend(["-hwaccel_output_format", "cpu"])
     return args
@@ -1755,6 +1833,22 @@ if __name__ == "__main__":
     # Start convert API in background thread
     api_thread = threading.Thread(target=run_convert_api, daemon=True)
     api_thread.start()
+
+    # Log detected hardware acceleration
+    hwaccel, hw_device = _detect_ffmpeg_hwaccel()
+    if hwaccel:
+        print(f"[GPU] ffmpeg hardware decode: {hwaccel} ({hw_device})")
+    else:
+        print("[GPU] ffmpeg hardware decode: none (CPU only)")
+
+    whisper_dev = WHISPER_DEVICE
+    if whisper_dev == "auto":
+        try:
+            import torch
+            whisper_dev = "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            whisper_dev = "cpu"
+    print(f"[GPU] Whisper device: {whisper_dev}")
 
     if "--stdio" in sys.argv:
         mcp.run(transport="stdio")

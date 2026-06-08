@@ -53,45 +53,53 @@ When a reel's caption contains a URL to an external recipe page (e.g., thefoodie
 
 ## GPU Acceleration (Optional)
 
-All GPU features are opt-in via environment variables. The server runs fine on CPU-only systems with no configuration needed.
+Hardware acceleration is **auto-detected** by default — no configuration needed. The server probes for available hardware at startup and uses the best option:
+
+1. **NVIDIA CUDA** (nvdec) — checked first via `nvidia-smi`
+2. **VAAPI** (AMD/Intel) — probes `/dev/dri/renderD128` with a test decode
+3. **Intel QSV** — tested as fallback
+4. **CPU** — if nothing is available or accessible
+
+Set `FFMPEG_HWACCEL=off` to explicitly disable auto-detection.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WHISPER_DEVICE` | `cpu` | Whisper inference device: `cpu`, `cuda` (NVIDIA), or `auto` (try CUDA, fall back to CPU) |
-| `WHISPER_COMPUTE_TYPE` | auto | Quantization: `int8` (CPU), `float16` (CUDA), `int8_float16`, `float32`. Auto-selected if empty |
+| `WHISPER_DEVICE` | `auto` | Whisper inference: tries CUDA first, falls back to CPU. Set `cpu` or `cuda` to force |
+| `WHISPER_COMPUTE_TYPE` | auto | `float16` for CUDA, `int8` for CPU. Set explicitly to override |
 | `WHISPER_MODEL` | `base` | Model size: `tiny`, `base`, `small`, `medium`, `large-v3`. Larger = more accurate, more VRAM |
-| `FFMPEG_HWACCEL` | *(disabled)* | Hardware decode: `cuda` (NVIDIA), `vaapi` (AMD/Intel), `qsv` (Intel), `videotoolbox` (macOS) |
-| `FFMPEG_HWACCEL_DEVICE` | *(auto)* | Device path: `/dev/dri/renderD128` (VAAPI), `0` (CUDA device index) |
+| `FFMPEG_HWACCEL` | `auto` | Auto-detects best backend. Set `cuda`/`vaapi`/`qsv`/`videotoolbox` to force, `off` to disable |
+| `FFMPEG_HWACCEL_DEVICE` | auto | Auto-detected. Override with `/dev/dri/renderD128` (VAAPI) or `0` (CUDA device index) |
 
-### Example: NVIDIA GPU
+### Startup Output
+
+The server logs what it detected:
+```
+[GPU] ffmpeg hardware decode: vaapi (/dev/dri/renderD128)
+[GPU] Whisper device: cpu
+```
+
+### Forcing a Specific Backend
 
 ```bash
-# .env or systemd Environment=
+# Force NVIDIA CUDA for everything
 WHISPER_DEVICE=cuda
-WHISPER_MODEL=small
-# WHISPER_COMPUTE_TYPE auto-selects float16 for CUDA
 FFMPEG_HWACCEL=cuda
 FFMPEG_HWACCEL_DEVICE=0
-```
 
-**Expected speedup:** Whisper transcription 5-10x faster (3-5s → <1s for a 60s reel). Frame extraction for OCR marginally faster (GPU video decode).
-
-### Example: AMD/Intel VAAPI
-
-```bash
+# Force VAAPI only (AMD iGPU)
 FFMPEG_HWACCEL=vaapi
 FFMPEG_HWACCEL_DEVICE=/dev/dri/renderD128
-# Note: Whisper (faster-whisper/CTranslate2) only supports CUDA — no ROCm/OpenCL path exists
-# WHISPER_DEVICE stays "cpu" for AMD GPUs
-```
 
-**Expected speedup:** Faster video decode for frame extraction only (~1-2s savings). Whisper stays on CPU.
+# Disable all GPU (pure CPU)
+WHISPER_DEVICE=cpu
+FFMPEG_HWACCEL=off
+```
 
 ### Requirements
 
-- **NVIDIA CUDA:** `pip install faster-whisper[cuda]` or install CTranslate2 with CUDA support. NVIDIA drivers + CUDA toolkit required.
+- **NVIDIA CUDA:** NVIDIA drivers + CUDA toolkit. `faster-whisper` automatically uses CUDA when available via CTranslate2.
 - **VAAPI:** User must be in the `render` group (`sudo usermod -aG render $USER`). Mesa VA-API drivers installed.
-- **No changes needed for CPU-only** — all defaults work without any GPU hardware.
+- **No setup needed for CPU-only** — auto-detection gracefully falls back.
 
 ## Dependencies (managed by uv)
 - faster-whisper (CTranslate2, int8 quantization — 4x faster than openai-whisper)
