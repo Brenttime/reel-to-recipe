@@ -1149,6 +1149,19 @@ body {
     }
 }
 
+/* Standalone PWA — push content below Dynamic Island / notch */
+@media all and (display-mode: standalone) {
+    .glass-header {
+        padding-top: calc(28px + env(safe-area-inset-top, 59px));
+    }
+    .header-left {
+        top: calc(12px + env(safe-area-inset-top, 59px));
+    }
+    .header-actions {
+        top: calc(12px + env(safe-area-inset-top, 59px));
+    }
+}
+
 /* ============ Scrollbar ============ */
 
 ::-webkit-scrollbar {
