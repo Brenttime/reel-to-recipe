@@ -121,6 +121,9 @@ def require_login():
     # Skip for exempt endpoints (MCP save)
     if request.endpoint in AUTH_EXEMPT_ENDPOINTS:
         return None
+    # Allow duplicate-check queries from MCP (source_url lookup only)
+    if path == '/api/recipes' and request.method == 'GET' and request.args.get('source_url'):
+        return None
     # Check if logged in
     if not session.get('user_id'):
         # API calls get 401, browser navigation gets redirected
