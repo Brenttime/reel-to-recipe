@@ -33,6 +33,7 @@ Everything saves to a self-hosted cookbook with search, ratings, meal planning, 
 - 🌙 **Dark mode** — system/light/dark with Apple-inspired deep purple gradients
 - 🔗 **Share** — native share sheet (iOS/Android) or clipboard copy
 - 🔐 **Discord auth** — login with Discord, user profiles, "Added by Me" filter
+- 📱 **PWA** — install on iPhone home screen, standalone mode with Dynamic Island support
 - ⚡ **Async conversion** — paste URLs and keep browsing; recipes appear when ready
 
 ---
@@ -137,6 +138,7 @@ Real Let's Encrypt cert, auto-renews, zero maintenance.
 | [MCP Client Integration](docs/agent-onboarding.md) | Quick reference for connecting MCP clients |
 | [Discord Auth Setup](docs/discord-auth-setup.md) | Step-by-step Discord OAuth2 configuration |
 | [HTTPS Deployment](docs/https-deployment.md) | Deploy with Tailscale Serve + auto HTTPS (Let's Encrypt) |
+| [iOS Home Screen App](docs/ios-home-screen-app.md) | Install as PWA on iPhone — standalone, no browser chrome |
 | [Instagram Auth](docs/instagram-age-restricted.md) | Cookie export for age-restricted reels |
 
 ---

@@ -45,8 +45,7 @@ All endpoints except `POST /api/recipes` require Discord authentication (session
 | `/api/recipes/<id>` | PUT | ✅ | Update a recipe |
 | `/api/recipes/<id>` | DELETE | ✅ | Delete a recipe |
 | `/api/recipes/<id>/reviews` | GET | ✅ | Get all reviews for a recipe |
-| `/api/recipes/<id>/reviews` | POST | ✅ | Create/update your review (1-5 stars + optional comment) |
-| `/api/recipes/<id>/reviews` | PUT | ✅ | Update your existing review |
+| `/api/recipes/<id>/reviews` | POST | ✅ | Create or update your review (upsert — 1-5 stars + optional comment) |
 | `/api/recipes/<id>/reviews` | DELETE | ✅ | Delete your review |
 | `/api/categories` | GET | ✅ | Tags with counts for category chips |
 | `/api/convert` | POST | ✅ | Queue a URL for conversion (returns job_id, 202) |
@@ -88,7 +87,7 @@ All endpoints except `POST /api/recipes` require Discord authentication (session
 
 ```
 reel-to-recipe/
-├── mcp_server.py               # MCP server + HTTP API + auto-tagger + conversion pipelines (~1400 lines)
+├── mcp_server.py               # MCP server + HTTP API + auto-tagger + conversion pipelines (~1700 lines)
 ├── export-ig-cookie.sh         # Helper script to set up Instagram session cookie
 ├── reel-to-recipe.service      # systemd user service file (uses %h for portability)
 ├── docker-compose.yml          # OnlyPans container (requires .env — fails fast if missing)
@@ -101,11 +100,12 @@ reel-to-recipe/
 ├── web/                        # OnlyPans web app
 │   ├── Dockerfile
 │   ├── app.py                  # Flask backend — REST API, FTS5, reviews, auth gate, conversion queue, meal planner
-│   ├── auth.py                 # Discord OAuth2 module (login, callback, logout, me)
+│   ├── auth.py                 # Discord OAuth2 module (login, callback, logout, me, server-side CSRF state)
 │   ├── seed.py                 # Database seeder (sample recipes)
 │   ├── requirements.txt        # Flask, Gunicorn, Requests
 │   ├── templates/
-│   │   └── index.html          # SPA shell — Spotlight overlay, modal, shopping panel, meal plan panel, radial menu
+│   │   ├── index.html          # SPA shell — Spotlight overlay, modal, shopping panel, meal plan panel, radial menu
+│   │   └── login.html          # Discord sign-in page (glass card, no white-flash redirect)
 │   └── static/
 │       ├── app.js              # Frontend — gallery, search, cook mode, reviews, queue tracker, dark mode, share
 │       ├── meal-plan.js        # Meal planner — radial menu, calendar panel, grocery list, week navigation
@@ -117,6 +117,8 @@ reel-to-recipe/
     ├── agent-onboarding.md     # Quick MCP client connection reference
     ├── development.md          # This file — APIs, schema, architecture details
     ├── discord-auth-setup.md   # Discord OAuth2 setup guide
+    ├── https-deployment.md     # HTTPS via Tailscale Serve (opt-in)
+    ├── ios-home-screen-app.md  # PWA home screen install guide
     ├── instagram-age-restricted.md  # Cookie export guide for age-gated reels
     ├── mcp-server.md           # MCP server technical notes (tools, performance, optimizations)
     └── tiktok-download-research.md  # TikTok download method research
@@ -155,7 +157,7 @@ users (
     id INTEGER PRIMARY KEY,
     discord_id TEXT UNIQUE,
     username TEXT, display_name TEXT, avatar TEXT,
-    created_at TIMESTAMP, updated_at TIMESTAMP
+    created_at TIMESTAMP, last_login TIMESTAMP
 )
 
 -- Reviews (one per user per recipe)
@@ -201,10 +203,9 @@ meal_plan (
 
 | Package | Purpose |
 |---------|---------|
-| `flask` | Web framework |
+| `flask` | Web framework (built-in signed cookie sessions) |
 | `gunicorn` | Production WSGI server |
 | `requests` | MCP server communication |
-| `flask-session` | Server-side session management |
 
 ---
 
@@ -225,6 +226,9 @@ meal_plan (
 - **Environment variables required** — `docker-compose.yml` uses `${VAR:?error}` syntax for critical secrets; app fails fast with a clear message rather than running with empty defaults.
 - **Creator names from domains** — Blog recipes show site name (e.g., "Food Network") via a lookup table; domain-name fallback for unknown sites.
 - **Perceptual frame dedup (pHash)** — Consecutive identical frames during OCR are detected via imagehash and skipped, typically eliminating 60-70% of redundant tesseract calls.
+- **Login page over redirect** — Unauthenticated users see a styled login.html (matching the glass aesthetic) instead of an immediate 302 chain that shows a white flash while Discord loads.
+- **Server-side OAuth state** — CSRF state tokens are stored in-memory on the server (with 5-minute TTL) rather than relying solely on session cookies. Fixes the iOS standalone PWA issue where SFSafariViewController doesn't share cookies with the webview.
+- **PWA standalone mode** — `manifest.json` + `apple-mobile-web-app-capable` meta; safe-area padding via `env(safe-area-inset-top)` respects iPhone Dynamic Island. Standalone media query placed after responsive block to win CSS cascade on mobile.
 
 ---
 

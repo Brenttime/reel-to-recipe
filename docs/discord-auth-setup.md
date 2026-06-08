@@ -64,19 +64,23 @@ Docker Compose automatically reads the `.env` file and injects the variables int
 ## 6. Verify It Works
 
 1. Open `http://<YOUR_HOST>:5100` in a browser
-2. You should be redirected to Discord's authorization page
-3. Click **Authorize** — Discord only asks for the `identify` scope (username + avatar, no server access)
-4. You'll be redirected back to the cookbook, now logged in
+2. You should see a styled login page with a "Sign in with Discord" button
+3. Click the button — you'll be taken to Discord's authorization page
+4. Click **Authorize** — Discord only asks for the `identify` scope (username + avatar, no server access)
+5. You'll be redirected back to the cookbook, now logged in
 
 ---
 
 ## How It Works
 
-- **Entire app is gated** — unauthenticated users are redirected to `/auth/login`
+- **Entire app is gated** — unauthenticated users see a styled login page (no white-flash redirect)
 - **Exemptions:**
   - `/auth/*` routes (the OAuth flow itself)
   - `/static/*` (CSS/JS assets)
   - `POST /api/recipes` (so the MCP server can push recipes without a login)
+  - `GET /api/recipes` with `?source_url=`, `?q=`, or `?tag=` params (MCP search)
+  - Meal plan and grocery list endpoints (MCP tools)
+- **Server-side CSRF state** — OAuth state tokens are stored in-memory on the server (not just in session cookies), so the flow works reliably on iOS standalone PWA where cookies don't survive the redirect chain
 - **Session-based** — login persists via a signed cookie until you hit `/auth/logout`
 - **User data stored** — Discord ID, username, display name, and avatar hash in a local `users` SQLite table
 - **One scope: `identify`** — the app never reads your servers, messages, or anything else
@@ -89,8 +93,9 @@ Docker Compose automatically reads the `.env` file and injects the variables int
 |---------|-----|
 | Redirect loop after clicking Authorize | `DISCORD_REDIRECT_URI` in `.env` doesn't match what's registered in the Developer Portal |
 | "Discord OAuth not configured" (503) | `DISCORD_CLIENT_SECRET` is empty or not set |
-| Login redirects back to login (state mismatch) | Session cookie lost — make sure `SESSION_COOKIE_SAMESITE=Lax` and `SECURE=False` if using HTTP |
+| Login redirects back to login (state mismatch) | Rare with server-side state store. If it happens, ensure `HTTPS_ENABLED=true` when using Tailscale Serve (otherwise `SESSION_COOKIE_SECURE` mismatch) |
 | Works on localhost but not LAN IP | Add the LAN URI (`http://192.168.x.x:5100/auth/callback`) as a redirect in the Developer Portal |
+| `invalid_client` error on callback | `DISCORD_CLIENT_SECRET` is truncated or wrong — regenerate in the Developer Portal |
 
 ---
 

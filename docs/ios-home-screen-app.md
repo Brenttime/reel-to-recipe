@@ -1,6 +1,6 @@
 # iOS Home Screen App
 
-OnlyPans is a Progressive Web App (PWA) — add it to your iPhone home screen and it runs like a native app with no browser chrome, a custom splash screen, and full-screen Zelda-inspired UI.
+OnlyPans is a Progressive Web App (PWA) — add it to your iPhone home screen and it runs like a native app with no browser chrome, a custom splash screen, and the full Apple Liquid Glass UI.
 
 ---
 
@@ -63,7 +63,7 @@ When launched from the home screen, iOS creates a separate app context that:
 |---------|-----|
 | "Add to Home Screen" not showing | You must use **Safari** — this option doesn't appear in Chrome/Firefox on iOS |
 | Opens in Safari instead of standalone | Delete the home screen shortcut and re-add it. Ensure you're loading via HTTPS (PWA requires secure context) |
-| Login redirect fails after adding | Make sure `DISCORD_REDIRECT_URI` in `.env` uses the same hostname you're visiting |
+| Login redirect fails after adding | This should work on first attempt now — the server uses a server-side state store that doesn't depend on cookies surviving the OAuth redirect. If it still fails, check `DISCORD_REDIRECT_URI` matches the hostname you're visiting |
 | Icon is a generic screenshot | Clear Safari cache, re-visit the site, then re-add to home screen |
 | "Cannot connect" on launch | Ensure Tailscale is connected on the phone (check Tailscale app → toggle on) |
 | App reloads from scratch every time | iOS can evict PWA storage under memory pressure — this is normal; login session is cookie-based so it persists |
