@@ -1,5 +1,6 @@
 """Discord OAuth2 authentication for OnlyPans."""
 import os
+import time
 import secrets
 import requests
 from functools import wraps
@@ -22,6 +23,11 @@ REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "")
 
 # Scopes: identify gives us user ID, username, avatar
 SCOPES = "identify"
+
+# Server-side state store — avoids relying on session cookies surviving
+# the redirect chain (iOS standalone PWA drops cookies during OAuth redirects)
+_oauth_states = {}  # {state_token: expiry_timestamp}
+_STATE_TTL = 300  # 5 minutes
 
 
 def init_auth_db(db_path):
@@ -84,8 +90,16 @@ def login():
             'hint': 'Set DISCORD_CLIENT_SECRET environment variable'
         }), 503
 
-    # Generate state for CSRF protection
+    # Purge expired states
+    now = time.time()
+    expired = [k for k, v in _oauth_states.items() if v < now]
+    for k in expired:
+        del _oauth_states[k]
+
+    # Generate state — stored server-side so it survives cookie loss
     state = secrets.token_urlsafe(32)
+    _oauth_states[state] = now + _STATE_TTL
+    # Also save in session as backup
     session['oauth_state'] = state
 
     params = {
@@ -109,11 +123,17 @@ def callback():
     code = request.args.get('code')
     state = request.args.get('state')
 
-    # Verify state
-    stored_state = session.pop('oauth_state', None)
-    if state != stored_state:
-        # State mismatch — session cookie likely lost in redirect.
-        # Restart the flow instead of showing a raw error.
+    # Verify state — check server-side store first (survives cookie loss),
+    # fall back to session cookie
+    valid = False
+    if state and state in _oauth_states:
+        del _oauth_states[state]
+        valid = True
+    elif state and state == session.pop('oauth_state', None):
+        valid = True
+
+    if not valid:
+        # State mismatch — restart flow
         return redirect(url_for('auth.login'))
 
     if not code:
