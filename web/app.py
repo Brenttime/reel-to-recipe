@@ -100,6 +100,7 @@ def _conversion_worker(job_id, url, method, added_by):
 # Exceptions: auth flow itself, static files, and the MCP save endpoint
 AUTH_EXEMPT_PREFIXES = ('/auth/', '/static/')
 AUTH_EXEMPT_ENDPOINTS = ('api_add_recipe',)  # MCP server pushes recipes without login
+INTERNAL_API_KEY = os.environ.get('INTERNAL_API_KEY', 'onlypans-internal-local')
 
 
 @app.before_request
@@ -111,6 +112,9 @@ def require_login():
         return None
     # Skip for exempt endpoints (MCP save)
     if request.endpoint in AUTH_EXEMPT_ENDPOINTS:
+        return None
+    # Internal API key (for local services like meal planner)
+    if request.headers.get('X-Internal-Key') == INTERNAL_API_KEY:
         return None
     # Check if logged in
     if not session.get('user_id'):
