@@ -51,11 +51,12 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    animation: mealPlanIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    position: relative;
+    animation: mealPlanIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 @keyframes mealPlanIn {
-    from { opacity: 0; transform: scale(0.9) translateY(20px); }
+    from { opacity: 0; transform: scale(0.96) translateY(12px); }
     to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
@@ -72,9 +73,62 @@
     letter-spacing: -0.02em;
 }
 
-.meal-plan-header-actions {
+/* Close button — top right corner of panel */
+.mp-close-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: rgba(0, 0, 0, 0.06);
+    border: none;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: var(--transition);
+    z-index: 10;
+}
+
+.mp-close-btn svg { width: 14px; height: 14px; }
+
+.mp-close-btn:hover {
+    background: rgba(0, 0, 0, 0.12);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .mp-close-btn {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .mp-close-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* Grocery list button — inline in header */
+.mp-grocery-btn {
     display: flex;
-    gap: 8px;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 122, 255, 0.08);
+    border: 1px solid rgba(0, 122, 255, 0.15);
+    border-radius: 10px;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-family: inherit;
+    color: var(--accent);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.mp-grocery-btn:hover {
+    background: rgba(0, 122, 255, 0.14);
+    border-color: rgba(0, 122, 255, 0.3);
+}
+
+[data-theme="dark"] .mp-grocery-btn {
+    background: rgba(10, 132, 255, 0.12);
+    border-color: rgba(10, 132, 255, 0.2);
 }
 
 /* ─── Week Navigator ─── */
