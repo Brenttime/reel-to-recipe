@@ -2026,5 +2026,16 @@ function bindReviewForm(container, recipeId, myReview) {
     }
 }
 
+// ─── Expose openRecipeById for meal-plan.js ─────
+window.openRecipeById = async function(id) {
+    try {
+        const res = await fetch(`/api/recipes/${id}`);
+        if (!res.ok) return;
+        const recipe = await res.json();
+        renderModal(recipe);
+        openModal();
+    } catch (e) { /* recipe not found */ }
+};
+
 // ─── Boot ───────────────────────────────────────
 document.addEventListener('DOMContentLoaded', init);

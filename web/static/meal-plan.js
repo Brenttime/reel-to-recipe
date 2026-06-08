@@ -179,6 +179,7 @@ function showRemoveConfirm(entryId, title) {
         overlay.remove();
         await removeEntry(entryId);
         await refreshMealPlan();
+        renderTodaysMeals();
     });
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 }
@@ -266,6 +267,7 @@ async function renderRadialRing() {
                 setTimeout(() => {
                     closeRadialMenu();
                     updateBadge();
+                    renderTodaysMeals();
                 }, 300);
             } else {
                 dayEl.style.transform = `rotate(${rotation}deg) scale(1)`;
@@ -376,6 +378,117 @@ function escapeHtml(str) {
     return d.innerHTML;
 }
 
+// ─── Long-Press on Meal Chips (opens recipe detail) ───
+let longPressTimer = null;
+let longPressTriggered = false;
+
+function initLongPress(container) {
+    container.addEventListener('pointerdown', (e) => {
+        const chip = e.target.closest('.mp-meal-chip');
+        if (!chip || e.target.closest('.mp-chip-remove')) return;
+
+        longPressTriggered = false;
+        chip.classList.add('long-pressing');
+        chip.setPointerCapture(e.pointerId);
+
+        longPressTimer = setTimeout(async () => {
+            longPressTriggered = true;
+            chip.classList.remove('long-pressing');
+
+            // Haptic feedback if available
+            if (navigator.vibrate) navigator.vibrate(30);
+
+            // Open recipe detail
+            const recipeId = chip.dataset.recipeId;
+            if (recipeId && window.openRecipeById) {
+                window.openRecipeById(Number(recipeId));
+            }
+        }, 500); // 500ms long-press threshold
+    });
+
+    container.addEventListener('pointerup', (e) => {
+        clearTimeout(longPressTimer);
+        const chip = e.target.closest('.mp-meal-chip');
+        if (chip) chip.classList.remove('long-pressing');
+    });
+
+    container.addEventListener('pointercancel', (e) => {
+        clearTimeout(longPressTimer);
+        const chip = e.target.closest('.mp-meal-chip');
+        if (chip) chip.classList.remove('long-pressing');
+    });
+
+    container.addEventListener('pointermove', (e) => {
+        // Cancel if finger moves too much
+        if (longPressTimer && e.pointerType === 'touch') {
+            // Let small movements pass
+        }
+    });
+}
+
+// ─── Today's Meals Card ─────────────────────────────
+const MEAL_EMOJI_MAP = {
+    'chicken': '🍗', 'beef': '🥩', 'pork': '🥓', 'seafood': '🦐',
+    'fish': '🐟', 'salmon': '🍣', 'shrimp': '🦐', 'pasta': '🍝',
+    'pizza': '🍕', 'soup': '🍲', 'salad': '🥗', 'sandwich': '🥪',
+    'burger': '🍔', 'taco': '🌮', 'sushi': '🍣', 'rice': '🍚',
+    'noodle': '🍜', 'dessert': '🍰', 'cake': '🎂', 'cookie': '🍪',
+    'breakfast': '🍳', 'pancake': '🥞', 'waffle': '🧇', 'smoothie': '🥤',
+    'cocktail': '🍸', 'drink': '🥤', 'steak': '🥩', 'curry': '🍛',
+    'ramen': '🍜', 'bbq': '🔥', 'grill': '🔥', 'bread': '🍞',
+    'wing': '🍗', 'fry': '🍟', 'wrap': '🌯', 'bowl': '🥣',
+};
+
+function getMealEmoji(title, tags) {
+    const searchText = `${title} ${(tags || []).join(' ')}`.toLowerCase();
+    for (const [key, emoji] of Object.entries(MEAL_EMOJI_MAP)) {
+        if (searchText.includes(key)) return emoji;
+    }
+    return '🍽️';
+}
+
+async function renderTodaysMeals() {
+    const card = document.getElementById('todaysMealsCard');
+    const list = document.getElementById('tmMealsList');
+    const subtitle = document.getElementById('tmSubtitle');
+
+    // Fetch today's plan
+    const today = new Date();
+    const monday = getMonday(today);
+    const plan = await fetchPlan(monday);
+    const todayStr = formatDate(today);
+    const todayMeals = plan.filter(e => e.date === todayStr);
+
+    if (todayMeals.length === 0) {
+        card.style.display = 'none';
+        return;
+    }
+
+    card.style.display = 'block';
+    subtitle.textContent = `${todayMeals.length} meal${todayMeals.length !== 1 ? 's' : ''} planned`;
+
+    list.innerHTML = todayMeals.map(meal => `
+        <div class="tm-meal-row" data-recipe-id="${meal.recipe_id}">
+            <div class="tm-meal-emoji">${getMealEmoji(meal.title, meal.tags)}</div>
+            <div class="tm-meal-info">
+                <div class="tm-meal-name">${escapeHtml(meal.title)}</div>
+                ${meal.creator ? `<div class="tm-meal-creator">by ${escapeHtml(meal.creator)}</div>` : ''}
+            </div>
+            <div class="tm-meal-arrow">›</div>
+        </div>
+    `).join('');
+
+    // Click handler — open recipe detail
+    list.querySelectorAll('.tm-meal-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const recipeId = Number(row.dataset.recipeId);
+            if (window.openRecipeById) {
+                window.openRecipeById(recipeId);
+            }
+        });
+    });
+}
+
 // ─── Event Wiring ──────────────────────────────────
 function init() {
     // Meal plan button (left of title)
@@ -429,10 +542,14 @@ function init() {
             return;
         }
 
-        // Chip click → start reassign
+        // Chip click → start reassign (but NOT if long-press just fired)
         const chip = e.target.closest('.mp-meal-chip');
         if (chip) {
             e.stopPropagation();
+            if (longPressTriggered) {
+                longPressTriggered = false;
+                return;
+            }
             const entryId = chip.dataset.entryId;
             if (reassigningEntry == entryId) {
                 cancelReassign();
@@ -468,11 +585,21 @@ function init() {
 
     // Initial badge update
     updateBadge();
+
+    // Initialize long-press on meal plan grid
+    initLongPress(document.getElementById('mpWeekGrid'));
+
+    // Render today's meals card on homepage
+    renderTodaysMeals();
+
+    // "View Plan" button on today card
+    document.getElementById('tmViewAll').addEventListener('click', openMealPlan);
 }
 
 // Expose the radial menu opener for recipe cards
 window.openMealPlanRadial = openRadialMenu;
 window.refreshMealPlanBadge = updateBadge;
+window.refreshTodaysMeals = renderTodaysMeals;
 
 // Boot
 if (document.readyState === 'loading') {

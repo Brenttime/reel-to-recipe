@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>OnlyPans</title>
     <link rel="stylesheet" href="/static/style.css?v=12">
-    <link rel="stylesheet" href="/static/meal-plan.css?v=9">
+    <link rel="stylesheet" href="/static/meal-plan.css?v=10">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -105,6 +105,21 @@
                 </button>
             </div>
             <div class="filter-chips" id="filterChips"></div>
+        </div>
+
+        <!-- Today's Meal Plan Card (DoorDash-style) -->
+        <div class="todays-meals-card" id="todaysMealsCard" style="display:none;">
+            <div class="tm-header">
+                <div class="tm-header-left">
+                    <div class="tm-icon">🍽️</div>
+                    <div class="tm-header-text">
+                        <h3 class="tm-title">Today's Meals</h3>
+                        <p class="tm-subtitle" id="tmSubtitle">Loading...</p>
+                    </div>
+                </div>
+                <button class="tm-view-all" id="tmViewAll">View Plan →</button>
+            </div>
+            <div class="tm-meals" id="tmMealsList"></div>
         </div>
 
         <!-- Recipe Grid -->
@@ -220,7 +235,7 @@
         {% endif %}
     </footer>
 
-    <script src="/static/app.js?v=10"></script>
-    <script src="/static/meal-plan.js?v=4"></script>
+    <script src="/static/app.js?v=11"></script>
+    <script src="/static/meal-plan.js?v=5"></script>
 </body>
 </html>
