@@ -22,6 +22,10 @@
 │  │ Ratings & Reviews   │  │ Discord Auth + User Profiles   │   │
 │  │ ★ Per-user 1-5 star │  │ OAuth2 login, avatars, session │   │
 │  └─────────────────────┘  └────────────────────────────────┘   │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ Meal Planner — Radial Day Selector + Shared Calendar      │  │
+│  │ Kanban week view, grocery list, auto-category grouping    │  │
+│  └───────────────────────────────────────────────────────────┘  │
 │        ▲                          ▲                             │
 │        │ REST API                 │ /api/convert                │
 └────────┼──────────────────────────┼────────────────────────────┘
@@ -127,6 +131,35 @@ All pipelines auto-save to OnlyPans with duplicate detection (by source URL) and
 - Checkbox state tracking per item
 - Copy entire list to clipboard
 - Clear checked items or clear all
+
+#### 📅 Meal Planner
+A shared weekly meal planner with an Apple-inspired radial day selector.
+
+**Radial Day Selector:**
+- Full-screen frosted glass overlay with Apple Liquid Glass design
+- 7 arc-shaped day segments arranged in a radial ring around a center hub
+- Each segment shows the day abbreviation + date number, rotated to face outward with counter-rotated text
+- Center hub displays the recipe being assigned and current week label
+- Staggered entrance animation with Apple's `cubic-bezier(0.2, 0, 0, 1)` easing
+- Week navigation arrows to browse past/future weeks
+- Blue dot indicators on days that already have meals
+- Today's segment highlighted with accent border and glow
+- Takes up 92vw (nearly full viewport) for an immersive selection experience
+
+**Calendar Panel (Kanban View):**
+- Week-at-a-glance with 7 day columns
+- Recipe chips showing title, creator, and remove button
+- Week navigation with previous/next arrows
+- Scrollable day columns for weeks with many meals
+- Tap a chip to reassign it to a different day
+- Shared between all household users (not per-user isolation)
+
+**Grocery List (Meal Plan):**
+- Auto-aggregates ingredients from all recipes planned for the current week
+- Categorizes by section: 🥬 Produce, 🥩 Meat & Seafood, 🧈 Dairy, 🍞 Bakery, 🥫 Pantry, 🍸 Bar, 📦 Other
+- Copy entire categorized list to clipboard
+- Shows count of recipes contributing to the list
+- Accessible via pill button next to the close button in panel header
 
 #### 🔗 Share & Permalinks
 - **Native share sheet** — `navigator.share({ url, title })` like YouTube
@@ -296,6 +329,11 @@ All endpoints except `POST /api/recipes` require Discord authentication (session
 | `/api/convert` | POST | ✅ | Queue a reel URL for conversion (returns job_id, 202) |
 | `/api/convert/<job_id>` | GET | ✅ | Poll conversion job status (queued/processing/done/error) |
 | `/api/convert/queue` | GET | ✅ | List all active conversion jobs |
+| `/api/meal-plan` | GET | ✅ | Get meal plan for a week (`?week=YYYY-MM-DD`, defaults to current week) |
+| `/api/meal-plan` | POST | ✅ | Add a recipe to a day (`{recipe_id, date}`) |
+| `/api/meal-plan/<id>` | PUT | ✅ | Move a meal plan entry to a different date (`{date}`) |
+| `/api/meal-plan/<id>` | DELETE | ✅ | Remove a meal plan entry |
+| `/api/meal-plan/grocery-list` | GET | ✅ | Aggregated grocery list for a week (`?week=YYYY-MM-DD`) |
 | `/api/thumbnail/<id>` | GET | ✅ | Proxy and cache recipe thumbnail images |
 | `/api/rebuild-index` | POST | ✅ | Rebuild FTS5 full-text search index |
 | `/auth/login` | GET | ❌ | Initiate Discord OAuth2 flow |
@@ -335,14 +373,16 @@ reel-to-recipe/
 │
 ├── web/                        # OnlyPans web app
 │   ├── Dockerfile
-│   ├── app.py                  # Flask backend — REST API, FTS5, reviews, auth gate, conversion queue
+│   ├── app.py                  # Flask backend — REST API, FTS5, reviews, auth gate, conversion queue, meal planner
 │   ├── auth.py                 # Discord OAuth2 module (login, callback, logout, me)
 │   ├── seed.py                 # Database seeder (sample recipes)
 │   ├── requirements.txt        # Flask, Gunicorn, Requests, Flask-Session
 │   ├── templates/
-│   │   └── index.html          # SPA shell — Spotlight overlay, modal, shopping panel
+│   │   └── index.html          # SPA shell — Spotlight overlay, modal, shopping panel, meal plan panel, radial menu
 │   └── static/
 │       ├── app.js              # Frontend — gallery, search, cook mode, reviews, queue tracker, dark mode, share
+│       ├── meal-plan.js        # Meal planner — radial menu, calendar panel, grocery list, week navigation
+│       ├── meal-plan.css       # Meal planner styles — radial segments, Apple glass, panel layout, dark mode
 │       └── style.css           # Apple Liquid Glass design system (light + dark themes)
 │
 └── docs/
@@ -388,6 +428,15 @@ reviews (
     comment TEXT,
     created_at TIMESTAMP, updated_at TIMESTAMP,
     UNIQUE(recipe_id, user_id)
+)
+
+-- Meal Plan (shared weekly planner)
+meal_plan (
+    id INTEGER PRIMARY KEY,
+    recipe_id INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
+    date TEXT NOT NULL,         -- ISO date (YYYY-MM-DD)
+    added_by_name TEXT DEFAULT '',  -- display name of who added it
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 ```
 
@@ -437,6 +486,7 @@ reviews (
 - **Client-side shopping list** — localStorage for zero-server-dependency persistence. Smart quantity merging handles "2 cups" + "1 cup" = "3 cups".
 - **YouTube-style share** — Simple link sharing via `navigator.share({ url })` rather than image card generation. Works on HTTP.
 - **One review per user** — UNIQUE(recipe_id, user_id) constraint. Users edit their existing review rather than stacking multiple.
+- **Shared meal planner** — A single calendar visible to all household members (not per-user isolation). Radial day selector uses Apple-inspired arc segments with frosted glass, staggered entrance animations, and counter-rotated text for readability. Grocery list auto-categorizes ingredients by keyword matching into standard grocery sections.
 - **100% local** — No cloud APIs, no subscriptions. Whisper runs on CPU, Tesseract is local, LLM formatting goes through your own Hermes Agent.
 
 ---

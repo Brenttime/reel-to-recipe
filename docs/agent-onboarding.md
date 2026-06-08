@@ -30,6 +30,12 @@ Structured recipe text with:
 - Tips
 - Timing breakdown
 
+Recipes are auto-saved to the OnlyPans web app where users can:
+- Browse, search, and filter the cookbook
+- Rate and review recipes
+- Plan meals for the week (shared calendar with radial day selector)
+- Generate grocery lists from planned meals
+
 ## Timing
 
 Each call takes 60–150 seconds depending on pipeline (local CPU transcription + OCR). First call after service restart adds ~30s for Whisper model loading.
