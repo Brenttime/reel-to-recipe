@@ -52,6 +52,8 @@
     flex-direction: column;
     overflow: hidden;
     position: relative;
+    /* Override .glass-modal base transform that causes shrink */
+    transform: scale(1) translateY(0);
     animation: mealPlanIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
@@ -104,8 +106,21 @@
     background: rgba(255, 255, 255, 0.15);
 }
 
-/* Grocery list button — inline in header */
+/* ─── Week Navigator ─── */
+.week-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 10px 0;
+    position: relative;
+}
+
+/* Grocery button slides to the left */
 .mp-grocery-btn {
+    position: absolute;
+    left: 0;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -129,16 +144,6 @@
 [data-theme="dark"] .mp-grocery-btn {
     background: rgba(10, 132, 255, 0.12);
     border-color: rgba(10, 132, 255, 0.2);
-}
-
-/* ─── Week Navigator ─── */
-.week-nav {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    margin-bottom: 16px;
-    padding: 10px 0;
 }
 
 .week-title {
