@@ -209,9 +209,13 @@ async function renderRadialRing() {
     const plan = await fetchPlan(radialWeekStart);
 
     ring.innerHTML = '';
-    const radius = 125; // distance from center
-    const centerX = 170; // half of 340px
-    const centerY = 170;
+    // Dynamic radius based on actual menu size
+    const menu = document.getElementById('radialMenu');
+    const menuSize = menu.offsetWidth || 680;
+    const radius = (menuSize / 2) - 56; // distance from center to segment midpoint
+    const centerX = menuSize / 2;
+    const centerY = menuSize / 2;
+    const segW = 88, segH = 72; // match CSS dimensions
 
     for (let i = 0; i < 7; i++) {
         const day = addDays(radialWeekStart, i);
@@ -220,9 +224,13 @@ async function renderRadialRing() {
         const hasMeals = plan.some(e => e.date === dateStr);
 
         // Distribute in a circle starting from top (-90deg)
-        const angle = ((i / 7) * 360 - 90) * (Math.PI / 180);
-        const x = centerX + radius * Math.cos(angle) - 28; // subtract half width (56/2)
-        const y = centerY + radius * Math.sin(angle) - 28;
+        const angleDeg = (i / 7) * 360 - 90;
+        const angleRad = angleDeg * (Math.PI / 180);
+        const x = centerX + radius * Math.cos(angleRad) - (segW / 2);
+        const y = centerY + radius * Math.sin(angleRad) - (segH / 2);
+
+        // Rotate so the rounded bottom (inner edge) faces the center
+        const rotation = angleDeg + 90; // +90 because bottom of element points down by default
 
         const dayEl = document.createElement('div');
         dayEl.className = `radial-day${today ? ' is-today' : ''}${hasMeals ? ' has-meals' : ''}`;
@@ -231,22 +239,24 @@ async function renderRadialRing() {
         dayEl.dataset.date = dateStr;
 
         dayEl.innerHTML = `
-            <div class="radial-day-name">${DAYS[i]}</div>
-            <div class="radial-day-num">${day.getDate()}</div>
+            <div class="radial-day-inner" style="transform: rotate(${-rotation}deg)">
+                <div class="radial-day-name">${DAYS[i]}</div>
+                <div class="radial-day-num">${day.getDate()}</div>
+            </div>
         `;
 
-        // Staggered entrance animation
+        // Staggered entrance animation — Apple ease, include rotation
         dayEl.style.opacity = '0';
-        dayEl.style.transform = 'scale(0.3)';
+        dayEl.style.transform = `rotate(${rotation}deg) scale(0.6)`;
         setTimeout(() => {
-            dayEl.style.transition = '0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+            dayEl.style.transition = '0.4s cubic-bezier(0.2, 0, 0, 1)';
             dayEl.style.opacity = '1';
-            dayEl.style.transform = 'scale(1)';
-        }, 50 + i * 40);
+            dayEl.style.transform = `rotate(${rotation}deg) scale(1)`;
+        }, 60 + i * 50);
 
         dayEl.addEventListener('click', async () => {
             // Visual feedback
-            dayEl.style.transform = 'scale(1.3)';
+            dayEl.style.transform = `rotate(${rotation}deg) scale(1.1)`;
             dayEl.style.background = 'var(--accent)';
             dayEl.style.color = 'white';
             dayEl.style.borderColor = 'var(--accent)';
@@ -258,7 +268,7 @@ async function renderRadialRing() {
                     updateBadge();
                 }, 300);
             } else {
-                dayEl.style.transform = 'scale(1)';
+                dayEl.style.transform = `rotate(${rotation}deg) scale(1)`;
                 dayEl.style.background = '';
                 dayEl.style.color = '';
                 dayEl.style.borderColor = '';
