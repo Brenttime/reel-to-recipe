@@ -29,7 +29,7 @@ MCP_URL = os.environ.get("MCP_URL", "http://host.docker.internal:8002/convert")
 
 # ─── Conversion Queue ─────────────────────────────────────
 # In-memory job queue processed by a background thread
-convert_jobs = {}  # job_id -> {status, url, added_by, recipe, error, created_at}
+convert_jobs = {}  # job_id -> {status, url, added_by, recipe, error, created_at, step, step_detail}
 convert_lock = threading.Lock()
 
 
@@ -39,7 +39,7 @@ def _conversion_worker(job_id, url, method, added_by):
         with convert_lock:
             convert_jobs[job_id]["status"] = "processing"
 
-        resp = requests.post(MCP_URL, json={"url": url, "method": method}, timeout=300)
+        resp = requests.post(MCP_URL, json={"url": url, "method": method, "job_id": job_id}, timeout=300)
         if resp.status_code != 200:
             result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
             with convert_lock:
@@ -101,6 +101,7 @@ def _conversion_worker(job_id, url, method, added_by):
 AUTH_EXEMPT_PREFIXES = ('/auth/', '/static/')
 AUTH_EXEMPT_ENDPOINTS = (
     'api_add_recipe',       # MCP server pushes recipes without login
+    'api_convert_progress', # MCP server reports conversion progress
     'get_meal_plan',        # MCP meal plan read
     'add_to_meal_plan',     # MCP meal plan write
     'move_meal_plan_entry', # MCP meal plan update
@@ -661,6 +662,8 @@ def api_convert():
             "recipe": None,
             "error": None,
             "created_at": time.time(),
+            "step": "",
+            "step_detail": "",
         }
 
     thread = threading.Thread(target=_conversion_worker, args=(job_id, url, method, added_by), daemon=True)
@@ -683,6 +686,11 @@ def api_convert_status(job_id):
     elif job["status"] == "error":
         response["error"] = job["error"]
 
+    # Include progress step info for active jobs
+    if job.get("step"):
+        response["step"] = job["step"]
+        response["step_detail"] = job.get("step_detail", "")
+
     return jsonify(response)
 
 
@@ -701,6 +709,28 @@ def api_convert_queue():
                     "elapsed": round(time.time() - job["created_at"]),
                 })
     return jsonify(active)
+
+
+@app.route("/api/convert/progress", methods=["POST"])
+def api_convert_progress():
+    """Webhook endpoint called by MCP server to report conversion step progress.
+
+    Unauthenticated (internal service call). Updates the job's step/detail fields
+    which the frontend can poll via /api/convert/<job_id>.
+    """
+    data = request.get_json()
+    job_id = data.get("job_id", "")
+    step = data.get("step", "")
+    detail = data.get("detail", "")
+
+    if not job_id:
+        return jsonify({"error": "job_id required"}), 400
+
+    with convert_lock:
+        if job_id in convert_jobs:
+            convert_jobs[job_id]["step"] = step
+            convert_jobs[job_id]["step_detail"] = detail
+    return jsonify({"ok": True})
 
 
 # ─── Meal Plan API (shared calendar) ─────────────────────────────

@@ -35,6 +35,58 @@ RECIPE_GLASS_URL = os.environ.get("RECIPE_GLASS_URL", "http://localhost:5100")
 _whisper_model = None
 
 
+def _report_progress(job_id: str, step: str, detail: str = ""):
+    """Report conversion progress back to OnlyPans (best-effort, non-blocking)."""
+    if not job_id:
+        return
+    try:
+        httpx.post(
+            f"{RECIPE_GLASS_URL}/api/convert/progress",
+            json={"job_id": job_id, "step": step, "detail": detail},
+            timeout=2
+        )
+    except Exception:
+        pass  # Fire-and-forget — never block conversion on progress reporting
+
+
+def _check_duplicate(url: str) -> dict | None:
+    """Early duplicate check against OnlyPans DB. Returns existing recipe dict or None."""
+    try:
+        resp = httpx.get(
+            f"{RECIPE_GLASS_URL}/api/recipes",
+            params={"source_url": url},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data:
+                return data[0]
+    except Exception:
+        pass
+    return None
+
+
+def _caption_has_recipe_signals(caption: str) -> bool:
+    """Check if caption contains clear recipe content (quantities + ingredients).
+
+    If the caption already has structured recipe data, we can skip OCR entirely
+    and just use the audio pipeline — saving 90-120s per conversion.
+    """
+    if not caption or len(caption) < 50:
+        return False
+
+    # Look for quantity patterns: "2 cups", "1/2 tsp", "500g", "3 tbsp", etc.
+    qty_pattern = r'\b(\d+[\s/½⅓¼⅔¾⅛]*(cups?|tbsp|tsp|oz|lb|g|kg|ml|liter|cloves?|slices?|pieces?|stalks?|cans?|packets?|sticks?))\b'
+    qty_matches = re.findall(qty_pattern, caption, re.IGNORECASE)
+
+    # Look for ingredient-like lines (bullet points, hyphens, numbered lists)
+    list_pattern = r'^[\s]*[-•*]\s*\d|^\s*\d+[\.\)]\s'
+    list_lines = re.findall(list_pattern, caption, re.MULTILINE)
+
+    # If we have 3+ quantity mentions OR 3+ list items, caption has recipe data
+    return len(qty_matches) >= 3 or len(list_lines) >= 3
+
+
 def get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
@@ -941,17 +993,151 @@ if __name__ == "__main__":
                 self._json_response({"error": "URL is required"}, 400)
                 return
 
+            job_id = body.get("job_id", "")  # Passed by web app for progress tracking
             method = body.get("method", "full")
-            try:
-                if method == "audio":
-                    result = convert_reel_to_recipe_audio(url)
-                elif method == "ocr":
-                    result = convert_reel_to_recipe_ocr(url)
+            caption = None  # May be preloaded by smart detection
+
+            # ── Early duplicate check (before expensive processing) ──
+            _report_progress(job_id, "checking", "Checking for duplicates…")
+            existing = _check_duplicate(url)
+            if existing:
+                self._json_response({
+                    "error": f"Already converted: {existing.get('title', 'Unknown')}",
+                    "duplicate": True,
+                    "existing_id": existing.get("id")
+                }, 409)
+                return
+
+            # ── Smart method selection ──
+            # If method is "full", check if caption has enough recipe data to skip OCR
+            if method == "full":
+                _report_progress(job_id, "analyzing", "Fetching caption…")
+                caption = smart_get_caption(url)
+                if _caption_has_recipe_signals(caption):
+                    # Caption is rich — audio pipeline is sufficient, skip OCR (saves 90-120s)
+                    _report_progress(job_id, "downloading", "Caption has recipe data — using audio pipeline")
+                    method = "audio_with_caption"
                 else:
-                    result = convert_reel_to_recipe(url)
+                    _report_progress(job_id, "downloading", "Downloading video + audio…")
+
+            try:
+                if method == "audio" or method == "audio_with_caption":
+                    result = self._run_audio_pipeline(url, job_id,
+                        preloaded_caption=caption if method == "audio_with_caption" else None)
+                elif method == "ocr":
+                    result = self._run_ocr_pipeline(url, job_id)
+                else:
+                    result = self._run_full_pipeline(url, job_id)
                 self._json_response({"status": "ok", "result": result})
             except Exception as e:
                 self._json_response({"error": str(e)}, 500)
+
+        def _run_audio_pipeline(self, url, job_id, preloaded_caption=None):
+            """Audio pipeline with progress reporting."""
+            timings = {}
+
+            if preloaded_caption is not None:
+                caption = preloaded_caption
+            else:
+                _report_progress(job_id, "caption", "Fetching caption…")
+                t0 = time.time()
+                caption = smart_get_caption(url)
+                timings["caption"] = time.time() - t0
+
+            _report_progress(job_id, "downloading", "Downloading audio…")
+            t0 = time.time()
+            audio_path = smart_download_audio(url)
+            timings["download"] = time.time() - t0
+
+            _report_progress(job_id, "transcribing", "Transcribing audio…")
+            t0 = time.time()
+            transcript = transcribe(audio_path)
+            timings["transcribe"] = time.time() - t0
+            os.unlink(audio_path)
+
+            _report_progress(job_id, "formatting", "Formatting recipe…")
+            t0 = time.time()
+            recipe = format_recipe(caption, transcript)
+            timings["format"] = time.time() - t0
+
+            _report_progress(job_id, "saving", "Saving recipe…")
+            _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
+
+            timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
+            return f"{recipe}\n\n---\n⏱️ {timing_str}"
+
+        def _run_ocr_pipeline(self, url, job_id):
+            """OCR pipeline with progress reporting."""
+            timings = {}
+
+            _report_progress(job_id, "caption", "Fetching caption…")
+            t0 = time.time()
+            caption = smart_get_caption(url)
+            timings["caption"] = time.time() - t0
+
+            _report_progress(job_id, "downloading", "Downloading video…")
+            t0 = time.time()
+            video_path = smart_download_video(url)
+            timings["download"] = time.time() - t0
+
+            _report_progress(job_id, "ocr", "Extracting text from frames…")
+            t0 = time.time()
+            ocr_text = extract_text_from_video(video_path)
+            timings["ocr"] = time.time() - t0
+            os.unlink(video_path)
+
+            _report_progress(job_id, "formatting", "Formatting recipe…")
+            t0 = time.time()
+            recipe = format_recipe_from_ocr(caption, ocr_text)
+            timings["format"] = time.time() - t0
+
+            _report_progress(job_id, "saving", "Saving recipe…")
+            _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
+
+            timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
+            return f"{recipe}\n\n---\n⏱️ {timing_str}"
+
+        def _run_full_pipeline(self, url, job_id):
+            """Full pipeline (audio + OCR) with progress reporting."""
+            timings = {}
+
+            _report_progress(job_id, "caption", "Fetching caption…")
+            t0 = time.time()
+            caption = smart_get_caption(url)
+            timings["caption"] = time.time() - t0
+
+            _report_progress(job_id, "downloading", "Downloading audio…")
+            t0 = time.time()
+            audio_path = smart_download_audio(url)
+            timings["download_audio"] = time.time() - t0
+
+            _report_progress(job_id, "transcribing", "Transcribing audio…")
+            t0 = time.time()
+            transcript = transcribe(audio_path)
+            timings["transcribe"] = time.time() - t0
+            os.unlink(audio_path)
+
+            _report_progress(job_id, "downloading", "Downloading video for OCR…")
+            t0 = time.time()
+            video_path = smart_download_video(url)
+            timings["download_video"] = time.time() - t0
+
+            _report_progress(job_id, "ocr", "Extracting text from frames…")
+            t0 = time.time()
+            ocr_text = extract_text_from_video(video_path)
+            timings["ocr"] = time.time() - t0
+            os.unlink(video_path)
+
+            _report_progress(job_id, "formatting", "Formatting recipe…")
+            t0 = time.time()
+            recipe = format_recipe_combined(caption, transcript, ocr_text)
+            timings["format"] = time.time() - t0
+
+            _report_progress(job_id, "saving", "Saving recipe…")
+            _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
+
+            timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
+            return f"{recipe}\n\n---\n⏱️ {timing_str}"
 
         def _json_response(self, data, status=200):
             body = json.dumps(data).encode()

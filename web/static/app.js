@@ -1487,6 +1487,11 @@ async function pollJob(jobId) {
                 return; // stop polling
             }
 
+            // Show step detail if available
+            if (data.step_detail) {
+                updateQueueBarDetail(data.step_detail);
+            }
+
             // Still processing — poll again in 2s
             setTimeout(poll, 2000);
         } catch (e) {
@@ -1507,6 +1512,15 @@ function updateQueueBar() {
     } else {
         bar.style.display = 'flex';
         text.textContent = count === 1 ? 'Converting 1 recipe…' : `Converting ${count} recipes…`;
+    }
+}
+
+function updateQueueBarDetail(detail) {
+    const bar = document.getElementById('convertQueueBar');
+    const text = document.getElementById('queueBarText');
+    if (activeJobs.size > 0) {
+        bar.style.display = 'flex';
+        text.textContent = detail;
     }
 }
 
