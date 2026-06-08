@@ -1389,7 +1389,7 @@ Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
     # Validate: LLM must produce a recipe with ingredients, not a refusal
     if "## Ingredients" not in output and "## ingredients" not in output.lower():
         # LLM refused or couldn't extract — don't save garbage
-        raise RuntimeError("Could not extract a recipe from this content. The video may not contain recipe information.")
+        raise RuntimeError("Couldn't extract a clear recipe — video may use music/visual-only format without spoken or written ingredients")
 
     return output
 
