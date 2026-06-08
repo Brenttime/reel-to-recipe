@@ -116,11 +116,11 @@ Most reels work without this. Only needed for age-restricted content (cocktails,
 
 | Doc | Description |
 |-----|-------------|
+| [Agent Setup Guide](docs/agent-setup.md) | Full install instructions for AI agents (clone to running in 5 steps) |
 | [Development Guide](docs/development.md) | REST API, database schema, project structure, design decisions |
+| [MCP Client Integration](docs/agent-onboarding.md) | Quick reference for connecting MCP clients |
 | [Discord Auth Setup](docs/discord-auth-setup.md) | Step-by-step Discord OAuth2 configuration |
 | [Instagram Auth](docs/instagram-age-restricted.md) | Cookie export for age-restricted reels |
-| [MCP Server](docs/mcp-server.md) | MCP protocol integration details |
-| [Agent Onboarding](docs/agent-onboarding.md) | Architecture overview for AI agents |
 
 ---
 

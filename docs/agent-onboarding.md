@@ -1,58 +1,106 @@
-# Onboarding Another MCP Client
+# MCP Client Integration
 
-## Quick Setup (Hermes Agent — one command)
+Quick reference for connecting an MCP client to the reel-to-recipe server.
+
+> **Full setup from scratch?** See [agent-setup.md](agent-setup.md) for complete install instructions.
+
+---
+
+## Connect Your Client
+
+### Hermes Agent
 
 ```bash
 hermes mcp add reel-to-recipe --url http://<host-ip>:8001/mcp
-```
-
-Verify with:
-```bash
 hermes mcp test reel-to-recipe
 ```
 
-**Important:** The transport is `streamable-http` (current MCP standard), NOT legacy SSE. The endpoint is `/mcp`, not `/sse`.
-
-## Tool Selection Guide
-
-1. Call `get_reel_caption` first to check if the caption contains recipe info.
-2. If caption has ingredients/quantities → use `convert_reel_to_recipe_audio` (faster, caption is authoritative).
-3. If caption is just promo/hashtags → use `convert_reel_to_recipe_ocr` (text is on-screen only).
-4. When unsure → use `convert_reel_to_recipe` (runs all pipelines, merges everything).
-
-## What You Get Back
-
-Structured recipe text with:
-- Title
-- Macros (if mentioned in video)
-- Ingredients with quantities
-- Numbered instructions
-- Tips
-- Timing breakdown
-
-Recipes are auto-saved to the OnlyPans web app where users can:
-- Browse, search, and filter the cookbook
-- Rate and review recipes
-- Plan meals for the week (shared calendar with radial day selector)
-- Generate grocery lists from planned meals
-
-## Timing
-
-Each call takes 60–150 seconds depending on pipeline (local CPU transcription + OCR). First call after service restart adds ~30s for Whisper model loading.
-
-## Stdio Mode (same machine, no network)
+### Claude Desktop / Cursor / other (stdio)
 
 ```json
 {
   "mcpServers": {
     "reel-to-recipe": {
-      "command": "/path/to/project/.venv/bin/python",
-      "args": ["/path/to/project/mcp_server.py", "--stdio"]
+      "command": "/path/to/reel-to-recipe/.venv/bin/python",
+      "args": ["/path/to/reel-to-recipe/mcp_server.py", "--stdio"]
     }
   }
 }
 ```
 
-## Pitfall: Legacy SSE transport
+### Remote (network)
 
-Do NOT use `transport: sse` or URL `/sse` — the server uses MCP SDK 1.27+ which requires `streamable-http`. Using SSE will give 405 Method Not Allowed errors. Hermes's `mcp add --url` auto-detects the transport.
+```json
+{
+  "mcpServers": {
+    "reel-to-recipe": {
+      "url": "http://HOST_IP:8001/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+---
+
+## Tool
+
+One tool handles everything:
+
+```
+convert_reel_to_recipe(url: str) -> str
+```
+
+Pass any Instagram Reel, TikTok, or recipe blog URL. Returns formatted recipe text. Auto-saves to OnlyPans.
+
+---
+
+## What You Get Back
+
+```
+Recipe Title
+
+Source: @creator
+
+Servings: 4
+Prep Time: 10m
+Cook Time: 15m
+
+Macros
+Calories: 450 | Protein: 30g | Carbs: 40g | Fat: 15g
+
+Ingredients
+- 2 cups rice [pantry]
+- 1 lb chicken thigh [meat]
+- 3 cloves garlic [produce]
+
+Instructions
+1. Step one
+2. Step two
+
+Tips
+- Helpful tip here
+
+---
+⏱️ download: 1.2s | transcribe: 3.5s | ocr: 16.1s | format: 12.9s
+```
+
+---
+
+## Timing
+
+| Source | Speed |
+|--------|-------|
+| Blog (JSON-LD) | ~10s |
+| Blog (LLM fallback) | ~15s |
+| Instagram/TikTok | ~35-50s |
+| First call after restart | +10s |
+
+---
+
+## Pitfalls
+
+- **Transport:** `streamable-http` only. Not SSE. Not REST. Endpoint is `/mcp`.
+- **First call is slow:** Whisper model loads on first audio transcription.
+- **Instagram auth:** Optional. Only needed for age-restricted reels. Most work without cookies.
+- **Timeouts:** Set MCP client timeout to at least 120s for video conversions.
