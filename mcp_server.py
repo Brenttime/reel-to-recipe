@@ -103,6 +103,279 @@ def get_whisper_model():
     return _whisper_model
 
 
+def is_blog_url(url: str) -> bool:
+    """Check if URL is a blog/web recipe (not Instagram/TikTok)."""
+    if is_tiktok_url(url):
+        return False
+    if re.search(r'instagram\.com', url):
+        return False
+    # Must be http/https
+    return url.startswith("http://") or url.startswith("https://")
+
+
+def _extract_jsonld_recipe(html: str) -> dict | None:
+    """Extract structured recipe from JSON-LD schema (Schema.org Recipe type).
+
+    Most recipe blogs embed this — it's the gold standard for structured data.
+    Returns a dict with keys matching our recipe format, or None if not found.
+    """
+    # Find all JSON-LD blocks
+    jsonld_blocks = re.findall(
+        r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+        html, re.DOTALL | re.IGNORECASE
+    )
+
+    for block in jsonld_blocks:
+        try:
+            data = json.loads(block.strip())
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+        # Handle @graph wrapper
+        recipes = []
+        if isinstance(data, list):
+            recipes = data
+        elif isinstance(data, dict):
+            if data.get("@type") == "Recipe" or (isinstance(data.get("@type"), list) and "Recipe" in data["@type"]):
+                recipes = [data]
+            elif "@graph" in data:
+                recipes = data["@graph"]
+
+        for item in recipes:
+            if not isinstance(item, dict):
+                continue
+            item_type = item.get("@type", "")
+            if isinstance(item_type, list):
+                if "Recipe" not in item_type:
+                    continue
+            elif item_type != "Recipe":
+                continue
+
+            # Found a Recipe! Extract fields
+            recipe = {}
+            recipe["title"] = item.get("name", "")
+            servings_raw = item.get("recipeYield", "")
+            if isinstance(servings_raw, list):
+                recipe["servings"] = str(servings_raw[0]) if servings_raw else ""
+            else:
+                recipe["servings"] = str(servings_raw) if servings_raw else ""
+
+            # Parse ISO duration (PT30M, PT1H30M, etc.)
+            def parse_duration(d):
+                if not d:
+                    return ""
+                m = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?', str(d))
+                if not m:
+                    return str(d)
+                hours, mins = int(m.group(1) or 0), int(m.group(2) or 0)
+                if hours and mins:
+                    return f"{hours}h {mins}m"
+                elif hours:
+                    return f"{hours}h"
+                elif mins:
+                    return f"{mins}m"
+                return str(d)
+
+            recipe["prep_time"] = parse_duration(item.get("prepTime", ""))
+            recipe["cook_time"] = parse_duration(item.get("cookTime", ""))
+            recipe["total_time"] = parse_duration(item.get("totalTime", ""))
+
+            # Ingredients
+            ingredients_raw = item.get("recipeIngredient", [])
+            recipe["ingredients"] = []
+            for ing in ingredients_raw:
+                if isinstance(ing, str) and ing.strip():
+                    recipe["ingredients"].append(ing.strip())
+
+            # Instructions
+            instructions_raw = item.get("recipeInstructions", [])
+            recipe["instructions"] = []
+            for step in instructions_raw:
+                if isinstance(step, str):
+                    recipe["instructions"].append(step.strip())
+                elif isinstance(step, dict):
+                    text = step.get("text", "")
+                    if text:
+                        recipe["instructions"].append(text.strip())
+                    # Handle HowToSection with itemListElement
+                    elif "itemListElement" in step:
+                        for sub in step["itemListElement"]:
+                            if isinstance(sub, dict) and sub.get("text"):
+                                recipe["instructions"].append(sub["text"].strip())
+                            elif isinstance(sub, str):
+                                recipe["instructions"].append(sub.strip())
+
+            # Nutrition
+            nutrition = item.get("nutrition", {})
+            if isinstance(nutrition, dict):
+                macros_parts = []
+                if nutrition.get("calories"):
+                    macros_parts.append(f"Calories: {nutrition['calories']}")
+                if nutrition.get("proteinContent"):
+                    macros_parts.append(f"Protein: {nutrition['proteinContent']}")
+                if nutrition.get("carbohydrateContent"):
+                    macros_parts.append(f"Carbs: {nutrition['carbohydrateContent']}")
+                if nutrition.get("fatContent"):
+                    macros_parts.append(f"Fat: {nutrition['fatContent']}")
+                recipe["macros"] = " | ".join(macros_parts)
+            else:
+                recipe["macros"] = ""
+
+            # Author/creator
+            author = item.get("author", {})
+            if isinstance(author, list):
+                author = author[0] if author else {}
+            if isinstance(author, dict):
+                recipe["creator"] = author.get("name", "")
+            elif isinstance(author, str):
+                recipe["creator"] = author
+            else:
+                recipe["creator"] = ""
+
+            # Description as tips
+            recipe["tips"] = item.get("description", "")
+
+            # Category/keywords for tags
+            recipe["keywords"] = ""
+            kw = item.get("keywords", "")
+            if isinstance(kw, list):
+                recipe["keywords"] = ", ".join(kw)
+            elif isinstance(kw, str):
+                recipe["keywords"] = kw
+
+            category = item.get("recipeCategory", "")
+            if isinstance(category, list):
+                recipe["keywords"] += ", " + ", ".join(category)
+            elif category:
+                recipe["keywords"] += ", " + category
+
+            return recipe
+
+    return None
+
+
+def _extract_page_text(html: str) -> str:
+    """Extract readable text from HTML (simple tag-stripping approach)."""
+    # Remove script/style blocks
+    text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<nav[^>]*>.*?</nav>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<footer[^>]*>.*?</footer>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    # Convert common block elements to newlines
+    text = re.sub(r'<(br|hr|/p|/div|/li|/h[1-6])[^>]*>', '\n', text, flags=re.IGNORECASE)
+    # Strip all remaining tags
+    text = re.sub(r'<[^>]+>', ' ', text)
+    # Decode HTML entities
+    import html as html_mod
+    text = html_mod.unescape(text)
+    # Collapse whitespace
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()[:8000]  # Cap at 8K chars for LLM
+
+
+def convert_blog_to_recipe(url: str, job_id: str = "") -> str:
+    """Convert a blog/web URL into a structured recipe.
+
+    Strategy:
+    1. Fetch the page HTML
+    2. Try JSON-LD extraction (most recipe blogs have this) — instant, no LLM needed
+    3. Fall back to LLM formatting of page text (same prompt as reel pipeline)
+
+    Returns formatted recipe text.
+    """
+    timings = {}
+
+    _report_progress(job_id, "downloading", "Fetching page…")
+    t0 = time.time()
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
+    try:
+        resp = httpx.get(url, headers=headers, timeout=20, follow_redirects=True)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise RuntimeError(f"Failed to fetch page: HTTP {e.response.status_code}")
+    except Exception as e:
+        raise RuntimeError(f"Failed to fetch page: {e}")
+
+    html = resp.text
+    timings["fetch"] = time.time() - t0
+
+    # Try JSON-LD first (instant, structured)
+    _report_progress(job_id, "analyzing", "Looking for structured recipe data…")
+    t0 = time.time()
+    jsonld = _extract_jsonld_recipe(html)
+    timings["parse"] = time.time() - t0
+
+    if jsonld and jsonld.get("title") and jsonld.get("ingredients"):
+        _report_progress(job_id, "formatting", "Found structured recipe — formatting…")
+
+        # Build recipe text in our standard format for _save_to_recipe_glass
+        lines = []
+        lines.append(jsonld["title"])
+        lines.append("")
+        if jsonld.get("creator"):
+            lines.append(f"Source: {jsonld['creator']}")
+            lines.append("")
+        if jsonld.get("servings"):
+            lines.append(f"Servings: {jsonld['servings']}")
+        if jsonld.get("prep_time"):
+            lines.append(f"Prep Time: {jsonld['prep_time']}")
+        if jsonld.get("cook_time"):
+            lines.append(f"Cook Time: {jsonld['cook_time']}")
+        if jsonld.get("total_time"):
+            lines.append(f"Total Time: {jsonld['total_time']}")
+        if jsonld.get("macros"):
+            lines.append("")
+            lines.append("## Macros")
+            lines.append(jsonld["macros"])
+
+        lines.append("")
+        lines.append("## Ingredients")
+        for ing in jsonld["ingredients"]:
+            lines.append(f"- {ing}")
+
+        lines.append("")
+        lines.append("## Instructions")
+        for i, step in enumerate(jsonld["instructions"], 1):
+            lines.append(f"{i}. {step}")
+
+        if jsonld.get("tips"):
+            lines.append("")
+            lines.append("## Tips")
+            lines.append(f"- {jsonld['tips']}")
+
+        recipe_text = "\n".join(lines)
+
+        # Still run through LLM for section tagging (ingredient aisle tags)
+        # but only if we have time — for now, use _save_to_recipe_glass parser
+        _report_progress(job_id, "saving", "Saving recipe…")
+        _save_to_recipe_glass(recipe_text, url, "Web")
+        timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
+        return f"{recipe_text}\n\n---\n⏱️ {timing_str}"
+
+    # No JSON-LD — fall back to LLM extraction from page text
+    _report_progress(job_id, "formatting", "No structured data found — using AI to extract recipe…")
+    t0 = time.time()
+    page_text = _extract_page_text(html)
+
+    if len(page_text.strip()) < 100:
+        raise RuntimeError("Could not extract enough text from the page. The site may require JavaScript.")
+
+    recipe_text = format_recipe_combined(page_text, "", "")
+    timings["format"] = time.time() - t0
+
+    _report_progress(job_id, "saving", "Saving recipe…")
+    _save_to_recipe_glass(recipe_text, url, "Web")
+
+    timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
+    return f"{recipe_text}\n\n---\n⏱️ {timing_str}"
+
+
 def download_audio(url: str) -> str:
     """Download audio from Instagram Reel, return path to mp3."""
     tmp = tempfile.mktemp(suffix=".mp3")
@@ -836,22 +1109,25 @@ Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
 
 @mcp.tool()
 def convert_reel_to_recipe(url: str) -> str:
-    """Convert an Instagram Reel or TikTok URL into a structured recipe using all available methods.
+    """Convert an Instagram Reel, TikTok, or recipe blog URL into a structured recipe.
 
-    Runs all extraction pipelines (caption, audio transcription, and OCR) to get the
-    most complete recipe possible. Caption is treated as most authoritative (human input),
-    OCR captures on-screen text, and audio transcript captures spoken instructions.
+    For reels/TikToks: Runs all extraction pipelines (caption, audio transcription, and OCR)
+    to get the most complete recipe possible.
 
-    Use this when you don't know where the recipe info is — it checks everywhere.
-    For individual pipelines, use transcribe_reel or ocr_reel instead.
+    For blog/web URLs: Extracts structured recipe data from JSON-LD schema (instant) or
+    falls back to AI extraction from page text.
 
     Args:
-        url: Full Instagram Reel or TikTok URL
+        url: Full Instagram Reel, TikTok, or recipe blog URL
 
     Returns:
         Formatted recipe text with title, ingredients, instructions, and tips.
     """
     timings = {}
+
+    # Route blog/web URLs to the blog pipeline
+    if is_blog_url(url):
+        return convert_blog_to_recipe(url)
 
     # Combined download: caption + audio + video in one network session
     t0 = time.time()
@@ -920,6 +1196,15 @@ if __name__ == "__main__":
                     "duplicate": True,
                     "existing_id": existing.get("id")
                 }, 409)
+                return
+
+            # ── Blog/web URL → JSON-LD or LLM extraction (no video pipeline) ──
+            if is_blog_url(url):
+                try:
+                    result = convert_blog_to_recipe(url, job_id)
+                    self._json_response({"status": "ok", "result": result})
+                except Exception as e:
+                    self._json_response({"error": str(e)}, 500)
                 return
 
             # ── Smart detection: skip OCR if caption is rich enough ──

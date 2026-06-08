@@ -1408,8 +1408,8 @@ async function convertReel() {
     if (!url) return;
 
     // Validate URL
-    if (!url.includes('instagram.com') && !url.includes('tiktok.com')) {
-        status.textContent = 'Paste an Instagram or TikTok URL';
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        status.textContent = 'Paste a valid URL (https://...)';
         status.className = 'spotlight-status error';
         status.style.display = 'block';
         return;

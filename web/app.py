@@ -629,9 +629,9 @@ def api_convert():
     if not url:
         return jsonify({"error": "URL is required"}), 400
 
-    # Validate URL looks like Instagram or TikTok
-    if "instagram.com" not in url and "tiktok.com" not in url:
-        return jsonify({"error": "URL must be an Instagram or TikTok link"}), 400
+    # Validate URL looks like Instagram, TikTok, or a blog/recipe URL
+    if not url.startswith("http://") and not url.startswith("https://"):
+        return jsonify({"error": "URL must start with http:// or https://"}), 400
 
     # Check for duplicates first
     db = get_db()
