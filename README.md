@@ -89,18 +89,19 @@ Most reels work without this. Only needed for age-restricted content (cocktails,
 ./export-ig-cookie.sh
 ```
 
-### 5. HTTPS with a Domain (optional)
+### 5. HTTPS with Tailscale (optional)
 
-Want to access OnlyPans from outside your LAN with automatic HTTPS?
+Access OnlyPans over HTTPS with a valid cert from any device on your tailnet — no ports to open, no cert renewal.
 
 👉 **[HTTPS Deployment Guide](docs/https-deployment.md)**
 
 ```bash
-# Add to .env: DOMAIN=onlypans.example.com, HTTPS_ENABLED=true
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# One command (after Tailscale is installed):
+tailscale serve --bg --https 443 http://localhost:5100
+# Add to .env: HTTPS_ENABLED=true, update DISCORD_REDIRECT_URI to https://
 ```
 
-Caddy handles Let's Encrypt certs automatically — zero maintenance.
+Real Let's Encrypt cert, auto-renews, zero maintenance.
 
 ---
 
@@ -135,7 +136,7 @@ Caddy handles Let's Encrypt certs automatically — zero maintenance.
 | [MCP Server](docs/mcp-server.md) | MCP tools reference, performance profile, optimizations |
 | [MCP Client Integration](docs/agent-onboarding.md) | Quick reference for connecting MCP clients |
 | [Discord Auth Setup](docs/discord-auth-setup.md) | Step-by-step Discord OAuth2 configuration |
-| [HTTPS Deployment](docs/https-deployment.md) | Deploy with Caddy + auto HTTPS (Let's Encrypt) |
+| [HTTPS Deployment](docs/https-deployment.md) | Deploy with Tailscale Serve + auto HTTPS (Let's Encrypt) |
 | [Instagram Auth](docs/instagram-age-restricted.md) | Cookie export for age-restricted reels |
 
 ---
