@@ -182,6 +182,7 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
             yt_dlp,
             "-o", tmp_video,
             "--no-playlist",
+            "--no-simulate",
             "--print", "description",
         ]
         if COOKIES_FILE.exists():
@@ -217,6 +218,7 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
             "-x", "--audio-format", "mp3",
             "-o", tmp_audio,
             "--no-playlist",
+            "--no-simulate",
             "--print", "description",
         ]
         if COOKIES_FILE.exists():
