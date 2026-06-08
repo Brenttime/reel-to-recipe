@@ -1387,9 +1387,26 @@ Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
     output = _strip_hermes_chrome(result.stdout)
 
     # Validate: LLM must produce a recipe with ingredients, not a refusal
-    if "## Ingredients" not in output and "## ingredients" not in output.lower():
+    # Check for various heading formats: "## Ingredients", "Ingredients", "**Ingredients**"
+    has_ingredients = (
+        "ingredients" in output.lower()
+        and any(line.strip().lower().startswith(("## ingredient", "ingredient", "**ingredient"))
+                for line in output.split("\n"))
+    )
+    if not has_ingredients:
         # LLM refused or couldn't extract — don't save garbage
         raise RuntimeError("Couldn't extract a clear recipe — video may use music/visual-only format without spoken or written ingredients")
+
+    # Normalize section headers — LLM sometimes drops the ## prefix
+    section_names = ["Macros", "Ingredients", "Instructions", "Tips"]
+    for name in section_names:
+        # Match lines that are just the section name (with optional ** bold)
+        output = re.sub(
+            rf'^(\*?\*?){name}(\*?\*?)\s*$',
+            f'## {name}',
+            output,
+            flags=re.MULTILINE | re.IGNORECASE
+        )
 
     return output
 
