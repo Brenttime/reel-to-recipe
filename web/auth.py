@@ -115,7 +115,7 @@ def login():
 
 @auth_bp.route('/callback')
 def callback():
-    """Handle Discord OAuth2 callback."""
+    """Show instant loading page, then exchange code via fetch."""
     error = request.args.get('error')
     if error:
         return jsonify({'error': f'Discord auth failed: {error}'}), 400
@@ -123,8 +123,75 @@ def callback():
     code = request.args.get('code')
     state = request.args.get('state')
 
-    # Verify state — check server-side store first (survives cookie loss),
-    # fall back to session cookie
+    if not code or not state:
+        return jsonify({'error': 'Missing code or state'}), 400
+
+    # Return loading page immediately — no white screen
+    return f'''<!DOCTYPE html>
+<html><head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);
+         font-family:-apple-system,BlinkMacSystemFont,sans-serif; color:#fff; }}
+  .card {{ text-align:center; padding:48px 32px; }}
+  .spinner {{ width:48px; height:48px; border:3px solid rgba(255,255,255,.15);
+              border-top-color:#5865F2; border-radius:50%;
+              animation:spin .8s linear infinite; margin:0 auto 24px; }}
+  @keyframes spin {{ to {{ transform:rotate(360deg); }} }}
+  h2 {{ font-size:1.2rem; font-weight:500; opacity:.9; margin-bottom:8px; }}
+  .sub {{ font-size:.85rem; opacity:.5; }}
+  .error {{ color:#ff6b6b; margin-top:16px; display:none; }}
+  .retry {{ display:inline-block; margin-top:12px; padding:10px 24px;
+            background:#5865F2; border:none; border-radius:8px; color:#fff;
+            text-decoration:none; font-size:.9rem; cursor:pointer; }}
+</style>
+</head><body>
+<div class="card">
+  <div class="spinner" id="spinner"></div>
+  <h2 id="msg">Logging you in...</h2>
+  <p class="sub" id="sub">Talking to Discord</p>
+  <p class="error" id="err"></p>
+  <a class="retry" id="retry" href="/auth/login" style="display:none">Try Again</a>
+</div>
+<script>
+fetch("/auth/callback/exchange", {{
+  method: "POST",
+  headers: {{ "Content-Type": "application/json" }},
+  body: JSON.stringify({{ code: "{code}", state: "{state}" }})
+}})
+.then(r => r.json().then(d => ({{ ok: r.ok, data: d }})))
+.then(({{ ok, data }}) => {{
+  if (ok && data.redirect) {{
+    window.location.replace(data.redirect);
+  }} else {{
+    document.getElementById("spinner").style.display = "none";
+    document.getElementById("msg").textContent = "Login failed";
+    document.getElementById("sub").style.display = "none";
+    document.getElementById("err").style.display = "block";
+    document.getElementById("err").textContent = data.error || "Unknown error";
+    document.getElementById("retry").style.display = "inline-block";
+  }}
+}})
+.catch(() => {{
+  document.getElementById("spinner").style.display = "none";
+  document.getElementById("msg").textContent = "Connection error";
+  document.getElementById("sub").style.display = "none";
+  document.getElementById("retry").style.display = "inline-block";
+}});
+</script>
+</body></html>'''
+
+
+@auth_bp.route('/callback/exchange', methods=['POST'])
+def callback_exchange():
+    """Actually exchange code for token + set session (called via fetch)."""
+    data = request.get_json(force=True)
+    code = data.get('code')
+    state = data.get('state')
+
+    # Verify state
     valid = False
     if state and state in _oauth_states:
         del _oauth_states[state]
@@ -133,13 +200,12 @@ def callback():
         valid = True
 
     if not valid:
-        # State mismatch — restart flow
-        return redirect(url_for('auth.login'))
+        return jsonify({'error': 'Session expired — please try again', 'redirect': None}), 401
 
     if not code:
         return jsonify({'error': 'No authorization code'}), 400
 
-    # Exchange code for access token
+    # Exchange code for access token (with timeout)
     token_data = {
         'client_id': CLIENT_ID,
         'client_secret': CLIENT_SECRET,
@@ -148,20 +214,26 @@ def callback():
         'redirect_uri': REDIRECT_URI,
     }
 
-    token_resp = requests.post(TOKEN_URL, data=token_data, headers={
-        'Content-Type': 'application/x-www-form-urlencoded'
-    })
+    try:
+        token_resp = requests.post(TOKEN_URL, data=token_data, headers={
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }, timeout=10)
+    except requests.Timeout:
+        return jsonify({'error': 'Discord took too long — try again'}), 504
 
     if token_resp.status_code != 200:
-        return jsonify({'error': 'Token exchange failed', 'detail': token_resp.text}), 502
+        return jsonify({'error': 'Token exchange failed'}), 502
 
     tokens = token_resp.json()
     access_token = tokens['access_token']
 
-    # Fetch user info from Discord
-    user_resp = requests.get(f"{DISCORD_API}/users/@me", headers={
-        'Authorization': f'Bearer {access_token}'
-    })
+    # Fetch user info from Discord (with timeout)
+    try:
+        user_resp = requests.get(f"{DISCORD_API}/users/@me", headers={
+            'Authorization': f'Bearer {access_token}'
+        }, timeout=10)
+    except requests.Timeout:
+        return jsonify({'error': 'Discord user fetch timed out'}), 504
 
     if user_resp.status_code != 200:
         return jsonify({'error': 'Failed to fetch user info'}), 502
@@ -199,8 +271,7 @@ def callback():
     session['display_name'] = display_name
     session['avatar'] = avatar
 
-    # Redirect back to app
-    return redirect('/')
+    return jsonify({'redirect': '/'})
 
 
 @auth_bp.route('/logout')
