@@ -757,7 +757,7 @@ function renderGrid(recipes) {
                 ${r.servings ? `
                     <span class="meta-item">
                         <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/></svg>
-                        ${escapeHtml(r.servings)}
+                        ${r.servings === '1' && r.serving_size ? escapeHtml(r.serving_size) : `Makes ${escapeHtml(r.servings)}${r.serving_size ? ` (${escapeHtml(r.serving_size)} each)` : ''}`}
                     </span>
                 ` : ''}
                 <span class="meta-item">
@@ -827,15 +827,15 @@ function renderModal(recipe) {
             <div class="modal-meta-bar">
                 ${recipe.servings ? `
                     <div class="modal-meta-item">
-                        <strong>Servings:</strong>
+                        <strong>Makes:</strong>
                         ${parseServingsNumber(recipe.servings) && recipeIsScalable(recipe) ? `
                             <span class="scaler-widget">
                                 <button class="scaler-btn" id="scalerMinus">−</button>
-                                <span class="scaler-value" id="scalerValue">×1</span>
+                                <span class="scaler-value" id="scalerValue">${parseServingsNumber(recipe.servings)}</span>
                                 <button class="scaler-btn" id="scalerPlus">+</button>
                             </span>
                         ` : `${escapeHtml(recipe.servings)}`}
-                        ${recipe.serving_size ? `<span class="serving-size-sub">(${escapeHtml(recipe.serving_size)} each)</span>` : ''}
+                        ${recipe.serving_size ? `<span class="serving-size-sub">${parseServingsNumber(recipe.servings) === 1 ? escapeHtml(recipe.serving_size) : '(' + escapeHtml(recipe.serving_size) + ' each)'}</span>` : ''}
                     </div>
                 ` : ''}
                 ${recipe.prep_time ? `<div class="modal-meta-item"><strong>Prep:</strong> ${escapeHtml(recipe.prep_time)}</div>` : ''}
@@ -949,7 +949,8 @@ function updateScale(delta) {
 
     const scalerValue = document.getElementById('scalerValue');
     if (scalerValue) {
-        scalerValue.textContent = currentMultiplier === 0.5 ? '×½' : `×${currentMultiplier}`;
+        const scaled = Math.round(originalServings * currentMultiplier * 10) / 10;
+        scalerValue.textContent = String(scaled);
     }
 
     // Update ingredients display
@@ -984,12 +985,12 @@ function renderEditModal(recipe) {
 
             <div class="edit-row">
                 <div class="edit-col">
-                    <label class="edit-label">Servings</label>
-                    <input type="text" class="edit-input" id="edit-servings" value="${escapeAttr(recipe.servings)}">
+                    <label class="edit-label">Makes (portions)</label>
+                    <input type="text" class="edit-input" id="edit-servings" value="${escapeAttr(recipe.servings)}" placeholder="e.g. 4">
                 </div>
                 <div class="edit-col">
-                    <label class="edit-label">Serving Size</label>
-                    <input type="text" class="edit-input" id="edit-serving_size" value="${escapeAttr(recipe.serving_size || '')}" placeholder="e.g. ½ sandwich, 1 cup">
+                    <label class="edit-label">Portion Description</label>
+                    <input type="text" class="edit-input" id="edit-serving_size" value="${escapeAttr(recipe.serving_size || '')}" placeholder="e.g. 1 bowl, 1 sandwich">
                 </div>
             </div>
 
