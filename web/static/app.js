@@ -2057,6 +2057,9 @@ let scrollLockPos = 0;
 
 function openModal() {
     modalOverlay.classList.add('active');
+    // Reset modal scroll to top for fresh recipe view
+    const modal = modalOverlay.querySelector('.glass-modal');
+    if (modal) modal.scrollTop = 0;
     // iOS PWA: overflow:hidden doesn't prevent background scroll in standalone mode.
     // position:fixed + width:100% locks the body; save scroll pos to restore on close.
     scrollLockPos = window.scrollY;
