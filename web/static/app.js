@@ -845,13 +845,13 @@ function renderModal(recipe) {
                         <span class="meta-value">${escapeHtml(recipe.serving_size)}</span>
                     </div>
                 ` : ''}
-                ${recipe.prep_time ? `
+                ${recipe.prep_time && recipe.prep_time !== '0m' && recipe.prep_time !== '0' ? `
                     <div class="modal-meta-item">
                         <span class="meta-label">Prep</span>
                         <span class="meta-value">${escapeHtml(recipe.prep_time)}</span>
                     </div>
                 ` : ''}
-                ${recipe.cook_time ? `
+                ${recipe.cook_time && recipe.cook_time !== '0m' && recipe.cook_time !== '0' ? `
                     <div class="modal-meta-item">
                         <span class="meta-label">Cook</span>
                         <span class="meta-value">${escapeHtml(recipe.cook_time)}</span>
