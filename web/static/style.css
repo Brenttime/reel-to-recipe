@@ -1766,7 +1766,7 @@ body {
 
 /* Give the servings column more room when it has the scaler */
 .modal-meta-item:has(.scaler-widget) {
-    min-width: 100px;
+    min-width: 120px;
 }
 
 .scaler-btn {
