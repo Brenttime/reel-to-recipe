@@ -1245,4 +1245,37 @@
     font-size: 0.9rem;
 }
 
+/* ─── Quick Plan add pill (inside day meals scroll) ─── */
+.mp-day-add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 5px 0;
+    margin-top: auto;
+    border: 1.5px dashed rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 0.6rem;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+    flex-shrink: 0;
+}
+
+.mp-day-add:active { opacity: 0.6; }
+
+.mp-day-add:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+[data-theme="dark"] .mp-day-add {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .mp-day-add:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
 
