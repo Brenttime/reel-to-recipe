@@ -571,6 +571,7 @@ const SMART_EMOJI_MAP = {
 
 let quickAddDate = null;
 let quickAddEmoji = '🍽️';
+let mpScrollBeforeQuickAdd = 0;
 
 function detectEmoji(text) {
     const lower = text.toLowerCase();
@@ -585,6 +586,10 @@ function openQuickAdd(dateStr) {
     const date = new Date(dateStr + 'T12:00:00');
     const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()];
     const monthDay = `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+
+    // Save scroll positions before keyboard disrupts them
+    const panel = document.querySelector('.meal-plan-panel');
+    mpScrollBeforeQuickAdd = panel ? panel.scrollTop : 0;
 
     document.getElementById('quickAddDayLabel').textContent = `${dayName}, ${monthDay}`;
     document.getElementById('quickAddInput').value = '';
@@ -603,12 +608,21 @@ function openQuickAdd(dateStr) {
 }
 
 function closeQuickAdd() {
+    // Blur input first to dismiss keyboard before restoring scroll
+    document.getElementById('quickAddInput').blur();
     document.getElementById('quickAddOverlay').classList.remove('active');
     quickAddDate = null;
     // Keep body scroll locked if meal plan panel is still open
     if (!document.getElementById('mealPlanOverlay').classList.contains('active')) {
         document.body.style.overflow = '';
     }
+    // Restore meal plan panel scroll after keyboard dismissed
+    requestAnimationFrame(() => {
+        const panel = document.querySelector('.meal-plan-panel');
+        if (panel) panel.scrollTop = mpScrollBeforeQuickAdd;
+        // iOS sometimes needs extra time after keyboard animation
+        setTimeout(() => { if (panel) panel.scrollTop = mpScrollBeforeQuickAdd; }, 350);
+    });
 }
 
 async function loadRecentPills() {
