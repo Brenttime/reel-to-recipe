@@ -841,7 +841,7 @@ function renderModal(recipe) {
                 ` : ''}
                 ${recipe.serving_size ? `
                     <div class="modal-meta-item">
-                        <span class="meta-label">Serving Size</span>
+                        <span class="meta-label">Size</span>
                         <span class="meta-value">${escapeHtml(recipe.serving_size)}</span>
                     </div>
                 ` : ''}
