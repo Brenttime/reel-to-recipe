@@ -60,6 +60,25 @@ async function addToPlan(recipeId, date) {
     } catch (e) { return false; }
 }
 
+async function addQuickPlan(text, date, emoji) {
+    try {
+        const res = await fetch('/api/meal-plan/quick', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, date, emoji })
+        });
+        return res.ok;
+    } catch (e) { return false; }
+}
+
+async function fetchRecentQuickPlans() {
+    try {
+        const res = await fetch('/api/meal-plan/recent-quick');
+        if (res.ok) return await res.json();
+    } catch (e) {}
+    return [];
+}
+
 async function moveEntry(entryId, newDate) {
     try {
         const res = await fetch(`/api/meal-plan/${entryId}`, {
@@ -122,13 +141,25 @@ function renderWeekGrid() {
                 <div class="mp-day-num">${day.getDate()}</div>
             </div>
             <div class="mp-day-meals">
-                ${dayEntries.map(entry => `
-                    <div class="mp-meal-chip" data-entry-id="${entry.id}" data-recipe-id="${entry.recipe_id}">
-                        <span class="mp-chip-title">${escapeHtml(entry.title)}</span>
-                        <button class="mp-chip-remove" data-entry-id="${entry.id}" title="Remove">✕</button>
-                    </div>
-                `).join('')}
+                ${dayEntries.map(entry => {
+                    if (entry.type === 'quick_plan') {
+                        return `
+                            <div class="mp-meal-chip quick-plan" data-entry-id="${entry.id}">
+                                <span class="mp-chip-emoji">${escapeHtml(entry.emoji || '🍽️')}</span>
+                                <span class="mp-chip-title">${escapeHtml(entry.title)}</span>
+                                <button class="mp-chip-remove" data-entry-id="${entry.id}" title="Remove">✕</button>
+                            </div>
+                        `;
+                    }
+                    return `
+                        <div class="mp-meal-chip" data-entry-id="${entry.id}" data-recipe-id="${entry.recipe_id}">
+                            <span class="mp-chip-title">${escapeHtml(entry.title)}</span>
+                            <button class="mp-chip-remove" data-entry-id="${entry.id}" title="Remove">✕</button>
+                        </div>
+                    `;
+                }).join('')}
             </div>
+            <button class="mp-day-add" data-date="${dateStr}">+ Quick Plan</button>
         `;
         grid.appendChild(col);
     }
@@ -467,19 +498,31 @@ async function renderTodaysMeals() {
     card.style.display = 'block';
     subtitle.textContent = `${todayMeals.length} meal${todayMeals.length !== 1 ? 's' : ''} planned`;
 
-    list.innerHTML = todayMeals.map(meal => `
-        <div class="tm-meal-row" data-recipe-id="${meal.recipe_id}">
-            <div class="tm-meal-emoji">${getMealEmoji(meal.title, meal.tags)}</div>
-            <div class="tm-meal-info">
-                <div class="tm-meal-name">${escapeHtml(meal.title)}</div>
-                ${meal.creator ? `<div class="tm-meal-creator">by ${escapeHtml(meal.creator)}</div>` : ''}
+    list.innerHTML = todayMeals.map(meal => {
+        if (meal.type === 'quick_plan') {
+            return `
+                <div class="tm-meal-row quick-plan-row">
+                    <div class="tm-meal-emoji">${meal.emoji || '🍽️'}</div>
+                    <div class="tm-meal-info">
+                        <div class="tm-meal-name" style="font-style:italic">${escapeHtml(meal.title)}</div>
+                    </div>
+                </div>
+            `;
+        }
+        return `
+            <div class="tm-meal-row" data-recipe-id="${meal.recipe_id}">
+                <div class="tm-meal-emoji">${getMealEmoji(meal.title, meal.tags)}</div>
+                <div class="tm-meal-info">
+                    <div class="tm-meal-name">${escapeHtml(meal.title)}</div>
+                    ${meal.creator ? `<div class="tm-meal-creator">by ${escapeHtml(meal.creator)}</div>` : ''}
+                </div>
+                <div class="tm-meal-arrow">›</div>
             </div>
-            <div class="tm-meal-arrow">›</div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 
-    // Click handler — open recipe detail
-    list.querySelectorAll('.tm-meal-row').forEach(row => {
+    // Click handler — open recipe detail (only for recipe rows)
+    list.querySelectorAll('.tm-meal-row[data-recipe-id]').forEach(row => {
         row.addEventListener('click', () => {
             const recipeId = Number(row.dataset.recipeId);
             if (window.openRecipeById) {
@@ -487,6 +530,106 @@ async function renderTodaysMeals() {
             }
         });
     });
+}
+
+// ─── Quick Add Sheet ────────────────────────────────
+const SMART_EMOJI_MAP = {
+    'pizza': '🍕', 'taco': '🌮', 'sushi': '🍣', 'burger': '🍔',
+    'pasta': '🍝', 'noodle': '🍜', 'ramen': '🍜', 'salad': '🥗',
+    'soup': '🍲', 'steak': '🥩', 'chicken': '🍗', 'fish': '🐟',
+    'shrimp': '🦐', 'rice': '🍚', 'sandwich': '🥪', 'wrap': '🌯',
+    'egg': '🍳', 'pancake': '🥞', 'waffle': '🧇', 'bread': '🍞',
+    'cake': '🎂', 'cookie': '🍪', 'ice cream': '🍦', 'donut': '🍩',
+    'smoothie': '🥤', 'coffee': '☕', 'cocktail': '🍸', 'wine': '🍷',
+    'beer': '🍺', 'bbq': '🔥', 'grill': '🔥', 'curry': '🍛',
+    'chinese': '🥡', 'takeout': '🥡', 'delivery': '📦',
+    'leftovers': '🍳', 'date': '🎉', 'fancy': '✨', 'healthy': '🥬',
+    'breakfast': '🍳', 'brunch': '🥂', 'snack': '🍿', 'dessert': '🍰',
+    'mexican': '🌮', 'italian': '🇮🇹', 'thai': '🇹🇭', 'indian': '🇮🇳',
+    'japanese': '🇯🇵', 'korean': '🇰🇷', 'wing': '🍗', 'fry': '🍟',
+    'hotdog': '🌭', 'sub': '🥖', 'bowl': '🥣', 'poke': '🐟',
+};
+
+let quickAddDate = null;
+let quickAddEmoji = '🍽️';
+
+function detectEmoji(text) {
+    const lower = text.toLowerCase();
+    for (const [key, emoji] of Object.entries(SMART_EMOJI_MAP)) {
+        if (lower.includes(key)) return emoji;
+    }
+    return '🍽️';
+}
+
+function openQuickAdd(dateStr) {
+    quickAddDate = dateStr;
+    const date = new Date(dateStr + 'T12:00:00');
+    const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()];
+    const monthDay = `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+
+    document.getElementById('quickAddDayLabel').textContent = `${dayName}, ${monthDay}`;
+    document.getElementById('quickAddInput').value = '';
+    document.getElementById('quickAddSubmit').disabled = true;
+    quickAddEmoji = '🍽️';
+    document.getElementById('quickAddEmojiBtn').textContent = quickAddEmoji;
+
+    // Clear vibe tag selection
+    document.querySelectorAll('.vibe-tag').forEach(t => t.classList.remove('selected'));
+
+    // Load recent quick plans
+    loadRecentPills();
+
+    document.getElementById('quickAddOverlay').classList.add('active');
+    setTimeout(() => document.getElementById('quickAddInput').focus(), 350);
+}
+
+function closeQuickAdd() {
+    document.getElementById('quickAddOverlay').classList.remove('active');
+    quickAddDate = null;
+}
+
+async function loadRecentPills() {
+    const recent = await fetchRecentQuickPlans();
+    const container = document.getElementById('quickAddRecentPills');
+    const wrapper = document.getElementById('quickAddRecent');
+
+    if (recent.length === 0) {
+        wrapper.classList.remove('has-items');
+        return;
+    }
+
+    wrapper.classList.add('has-items');
+    container.innerHTML = recent.map(r => `
+        <button class="recent-pill" data-text="${escapeHtml(r.text)}" data-emoji="${r.emoji}">
+            ${r.emoji} ${escapeHtml(r.text)}
+        </button>
+    `).join('');
+}
+
+async function submitQuickPlan() {
+    const input = document.getElementById('quickAddInput');
+    const text = input.value.trim();
+    if (!text || !quickAddDate) return;
+
+    const btn = document.getElementById('quickAddSubmit');
+    btn.disabled = true;
+    btn.querySelector('span').textContent = 'Adding...';
+
+    const success = await addQuickPlan(text, quickAddDate, quickAddEmoji);
+
+    if (success) {
+        btn.querySelector('span').textContent = '✓ Added!';
+        setTimeout(() => {
+            closeQuickAdd();
+            refreshMealPlan();
+            renderTodaysMeals();
+            btn.querySelector('span').textContent = 'Add to Plan';
+        }, 400);
+    } else {
+        btn.querySelector('span').textContent = 'Failed — try again';
+        btn.disabled = false;
+        setTimeout(() => { btn.querySelector('span').textContent = 'Add to Plan'; }, 1500);
+    }
 }
 
 // ─── Event Wiring ──────────────────────────────────
@@ -529,8 +672,75 @@ function init() {
     });
     document.getElementById('groceryCopyBtn').addEventListener('click', copyGroceryList);
 
+    // Quick Add Sheet
+    document.getElementById('quickAddClose').addEventListener('click', closeQuickAdd);
+    document.getElementById('quickAddOverlay').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeQuickAdd();
+    });
+    document.getElementById('quickAddSubmit').addEventListener('click', submitQuickPlan);
+
+    // Smart emoji detection on input
+    const qaInput = document.getElementById('quickAddInput');
+    qaInput.addEventListener('input', () => {
+        const text = qaInput.value.trim();
+        document.getElementById('quickAddSubmit').disabled = !text;
+        // Auto-detect emoji unless user manually picked a vibe tag
+        if (!document.querySelector('.vibe-tag.selected')) {
+            quickAddEmoji = detectEmoji(text);
+            document.getElementById('quickAddEmojiBtn').textContent = quickAddEmoji;
+        }
+    });
+
+    // Enter to submit
+    qaInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && qaInput.value.trim()) {
+            e.preventDefault();
+            submitQuickPlan();
+        }
+    });
+
+    // Vibe tags
+    document.getElementById('quickAddVibeTags').addEventListener('click', (e) => {
+        const tag = e.target.closest('.vibe-tag');
+        if (!tag) return;
+
+        const wasSelected = tag.classList.contains('selected');
+        document.querySelectorAll('.vibe-tag').forEach(t => t.classList.remove('selected'));
+
+        if (wasSelected) {
+            // Deselect — revert to smart detection
+            quickAddEmoji = detectEmoji(qaInput.value);
+            document.getElementById('quickAddEmojiBtn').textContent = quickAddEmoji;
+        } else {
+            tag.classList.add('selected');
+            qaInput.value = tag.dataset.text;
+            quickAddEmoji = tag.dataset.emoji;
+            document.getElementById('quickAddEmojiBtn').textContent = quickAddEmoji;
+            document.getElementById('quickAddSubmit').disabled = false;
+        }
+    });
+
+    // Recent pills
+    document.getElementById('quickAddRecentPills').addEventListener('click', (e) => {
+        const pill = e.target.closest('.recent-pill');
+        if (!pill) return;
+        qaInput.value = pill.dataset.text;
+        quickAddEmoji = pill.dataset.emoji || detectEmoji(pill.dataset.text);
+        document.getElementById('quickAddEmojiBtn').textContent = quickAddEmoji;
+        document.getElementById('quickAddSubmit').disabled = false;
+        document.querySelectorAll('.vibe-tag').forEach(t => t.classList.remove('selected'));
+    });
+
     // Delegate clicks inside the meal plan grid
     document.getElementById('mpWeekGrid').addEventListener('click', (e) => {
+        // Quick Plan add button
+        const addBtn = e.target.closest('.mp-day-add');
+        if (addBtn) {
+            e.stopPropagation();
+            openQuickAdd(addBtn.dataset.date);
+            return;
+        }
+
         // Remove button
         const removeBtn = e.target.closest('.mp-chip-remove');
         if (removeBtn) {
@@ -573,7 +783,9 @@ function init() {
     // Escape key to close overlays
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (document.getElementById('radialOverlay').classList.contains('active')) {
+            if (document.getElementById('quickAddOverlay').classList.contains('active')) {
+                closeQuickAdd();
+            } else if (document.getElementById('radialOverlay').classList.contains('active')) {
                 closeRadialMenu();
             } else if (document.getElementById('groceryOverlay').classList.contains('active')) {
                 closeGroceryList();

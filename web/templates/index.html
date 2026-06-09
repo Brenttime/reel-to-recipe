@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-title" content="OnlyPans">
     <meta name="theme-color" content="#FF9500">
     <link rel="stylesheet" href="/static/style.css?v=34">
-    <link rel="stylesheet" href="/static/meal-plan.css?v=11">
+    <link rel="stylesheet" href="/static/meal-plan.css?v=12">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -221,6 +221,38 @@
             </div>
         </div>
 
+        <!-- Quick Add Sheet -->
+        <div class="quick-add-overlay" id="quickAddOverlay">
+            <div class="quick-add-sheet" id="quickAddSheet">
+                <div class="quick-add-handle"></div>
+                <div class="quick-add-header">
+                    <span class="quick-add-day-label" id="quickAddDayLabel">Monday</span>
+                    <button class="quick-add-close" id="quickAddClose">
+                        <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    </button>
+                </div>
+                <div class="quick-add-input-row">
+                    <span class="quick-add-emoji-btn" id="quickAddEmojiBtn">🍽️</span>
+                    <input type="text" class="quick-add-input" id="quickAddInput" placeholder="Chipotle date night, leftovers..." maxlength="80" autocomplete="off" />
+                </div>
+                <div class="quick-add-vibe-tags" id="quickAddVibeTags">
+                    <button class="vibe-tag" data-emoji="🥡" data-text="Takeout">🥡 Takeout</button>
+                    <button class="vibe-tag" data-emoji="🍳" data-text="Leftovers">🍳 Leftovers</button>
+                    <button class="vibe-tag" data-emoji="🎉" data-text="Date Night">🎉 Date Night</button>
+                    <button class="vibe-tag" data-emoji="🤷" data-text="Wing It">🤷 Wing It</button>
+                    <button class="vibe-tag" data-emoji="🥗" data-text="Meal Prep">🥗 Meal Prep</button>
+                    <button class="vibe-tag" data-emoji="🍕" data-text="Pizza Night">🍕 Pizza Night</button>
+                </div>
+                <div class="quick-add-recent" id="quickAddRecent">
+                    <div class="quick-add-recent-label">Recent</div>
+                    <div class="quick-add-recent-pills" id="quickAddRecentPills"></div>
+                </div>
+                <button class="quick-add-submit" id="quickAddSubmit" disabled>
+                    <span>Add to Plan</span>
+                </button>
+            </div>
+        </div>
+
         <!-- Grocery List Modal -->
         <div class="grocery-overlay" id="groceryOverlay">
             <div class="glass-modal grocery-panel">
@@ -246,6 +278,6 @@
     </footer>
 
     <script src="/static/app.js?v=15"></script>
-    <script src="/static/meal-plan.js?v=5"></script>
+    <script src="/static/meal-plan.js?v=6"></script>
 </body>
 </html>
