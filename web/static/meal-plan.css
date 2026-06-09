@@ -45,8 +45,8 @@
 .meal-plan-panel {
     width: 100%;
     max-width: 960px;
-    height: 80vh;
-    max-height: 700px;
+    height: 88vh;
+    max-height: 820px;
     padding: 28px;
     display: flex;
     flex-direction: column;
