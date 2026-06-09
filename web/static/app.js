@@ -470,6 +470,20 @@ async function init() {
             });
         }
     });
+
+    // iOS PWA first-tap fix: when the app resumes from background, WebKit
+    // sometimes requires a touch to "wake" the compositor before registering clicks.
+    // Force a reflow on pageshow to ensure the hit-test tree is ready immediately.
+    window.addEventListener('pageshow', (e) => {
+        if (e.persisted || hasLoadedOnce) {
+            // Force synchronous reflow — makes hit-test regions immediately active
+            void document.body.offsetHeight;
+            // Also ensure cards are not stuck in animation state
+            document.querySelectorAll('.recipe-card').forEach(card => {
+                card.classList.add('no-animate');
+            });
+        }
+    });
 }
 
 // ─── User Profile ────────────────────────────────
@@ -713,7 +727,7 @@ function renderGrid(recipes) {
     emptyState.style.display = 'none';
     const cart = getCart();
     recipeGrid.innerHTML = recipes.map((r, i) => `
-        <article class="recipe-card" data-id="${r.id}" style="animation-delay: ${i * 0.05}s">
+        <article class="recipe-card" data-id="${r.id}">
             ${isNewRecipe(r) ? '<span class="new-badge">NEW</span>' : ''}
             <div class="card-body">
                 <div class="card-platform">
@@ -834,7 +848,7 @@ function renderModal(recipe) {
         <div class="section-title-row">
             <h4 class="section-title">Ingredients</h4>
             <button class="unit-toggle-btn" id="unitToggleBtn" data-units="${unitSystem}" onclick="cycleUnits()" title="Convert units">
-                <svg class="unit-toggle-scale" viewBox="0 0 24 20" width="16" height="14">
+                <svg class="unit-toggle-scale" viewBox="0 0 24 20" width="18" height="15">
                     <line x1="12" y1="2" x2="12" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                     <line x1="6" y1="18" x2="18" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                     <g class="scale-beam">
@@ -1930,6 +1944,9 @@ function setupListeners() {
             }
         }
     });
+
+    // iOS: empty touchstart keeps hit-test tree warm after PWA resume
+    recipeGrid.addEventListener('touchstart', () => {}, { passive: true });
 
     // Card click → modal (but not if clicking the add button)
     recipeGrid.addEventListener('click', async (e) => {

@@ -816,15 +816,15 @@ body {
 .unit-toggle-btn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 5px 11px;
+    gap: 6px;
+    padding: 6px 12px;
     border: none;
     border-radius: 20px;
     background: rgba(120, 120, 128, 0.12);
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
     color: rgba(60, 60, 67, 0.7);
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     font-weight: 500;
     letter-spacing: 0.01em;
     cursor: pointer;
@@ -1241,34 +1241,37 @@ body {
 @keyframes cardAppear {
     from {
         opacity: 0;
-        transform: translateY(20px) scale(0.95);
+        transform: translateY(12px);
     }
     to {
         opacity: 1;
-        transform: translateY(0) scale(1);
+        transform: translateY(0);
     }
 }
 
 .recipe-card {
-    animation: cardAppear 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+    animation: cardAppear 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    opacity: 0;
 }
 
-/* Skip entrance animation on PWA resume / visibility restore */
+/* Cards that are already visible (PWA resume, poll refresh) skip animation */
 .recipe-card.no-animate {
     animation: none !important;
     opacity: 1;
     transform: none;
 }
 
-.recipe-card:nth-child(1) { animation-delay: 0.05s; }
-.recipe-card:nth-child(2) { animation-delay: 0.1s; }
-.recipe-card:nth-child(3) { animation-delay: 0.15s; }
-.recipe-card:nth-child(4) { animation-delay: 0.2s; }
-.recipe-card:nth-child(5) { animation-delay: 0.25s; }
-.recipe-card:nth-child(6) { animation-delay: 0.3s; }
-.recipe-card:nth-child(7) { animation-delay: 0.35s; }
-.recipe-card:nth-child(8) { animation-delay: 0.4s; }
-.recipe-card:nth-child(9) { animation-delay: 0.45s; }
+/* Cap stagger at 9 cards so later cards appear instantly */
+.recipe-card:nth-child(1) { animation-delay: 0.02s; }
+.recipe-card:nth-child(2) { animation-delay: 0.04s; }
+.recipe-card:nth-child(3) { animation-delay: 0.06s; }
+.recipe-card:nth-child(4) { animation-delay: 0.08s; }
+.recipe-card:nth-child(5) { animation-delay: 0.1s; }
+.recipe-card:nth-child(6) { animation-delay: 0.12s; }
+.recipe-card:nth-child(7) { animation-delay: 0.14s; }
+.recipe-card:nth-child(8) { animation-delay: 0.16s; }
+.recipe-card:nth-child(9) { animation-delay: 0.18s; }
+.recipe-card:nth-child(n+10) { animation-delay: 0s; opacity: 1; animation: none; }
 
 /* ============ Header Action Buttons ============ */
 
