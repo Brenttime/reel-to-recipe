@@ -178,7 +178,6 @@ function renderWeekGrid() {
                     `;
                 }).join('')}
             </div>
-            <button class="mp-day-add" data-date="${dateStr}">+ Quick Plan</button>
         `;
         grid.appendChild(col);
     }
@@ -757,14 +756,6 @@ function init() {
 
     // Delegate clicks inside the meal plan grid
     document.getElementById('mpWeekGrid').addEventListener('click', (e) => {
-        // Quick Plan add button
-        const addBtn = e.target.closest('.mp-day-add');
-        if (addBtn) {
-            e.stopPropagation();
-            openQuickAdd(addBtn.dataset.date);
-            return;
-        }
-
         // Remove button
         const removeBtn = e.target.closest('.mp-chip-remove');
         if (removeBtn) {
@@ -793,10 +784,16 @@ function init() {
             return;
         }
 
-        // Day column click → assign here
+        // Day column click
         const dayCol = e.target.closest('.mp-day-col');
-        if (dayCol && reassigningEntry) {
-            handleDayColumnClick(dayCol.dataset.date);
+        if (dayCol) {
+            if (reassigningEntry) {
+                // Reassign mode — move entry here
+                handleDayColumnClick(dayCol.dataset.date);
+            } else {
+                // No reassign — open quick add for this day
+                openQuickAdd(dayCol.dataset.date);
+            }
             return;
         }
 

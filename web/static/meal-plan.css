@@ -198,7 +198,6 @@
 
 @media (max-width: 480px) {
     .mp-week-grid { grid-template-columns: repeat(2, 1fr); }
-    .mp-day-add { padding: 6px; font-size: 0.7rem; }
 }
 
 .mp-day-col {
@@ -207,9 +206,11 @@
     border-radius: 14px;
     padding: 10px 8px;
     min-height: 0;
+    height: 100%;
     display: flex;
     flex-direction: column;
     transition: var(--transition);
+    overflow: hidden;
 }
 
 .mp-day-col.is-today {
@@ -1244,36 +1245,4 @@
     font-size: 0.9rem;
 }
 
-/* ─── Add button in empty day columns ─── */
-.mp-day-add {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    padding: 8px;
-    margin-top: 6px;
-    border: 1.5px dashed rgba(0, 0, 0, 0.12);
-    border-radius: 10px;
-    background: transparent;
-    color: var(--text-tertiary);
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    gap: 4px;
-}
 
-.mp-day-add:active { transform: scale(0.95); }
-
-.mp-day-add:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-[data-theme="dark"] .mp-day-add {
-    border-color: rgba(255, 255, 255, 0.15);
-}
-
-[data-theme="dark"] .mp-day-add:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-}
