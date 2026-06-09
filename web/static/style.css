@@ -830,6 +830,9 @@ body {
     color: var(--text-primary);
     line-height: 1.2;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 .serving-size-sub {
