@@ -396,11 +396,17 @@ function cycleUnits() {
     unitSystem = cycle[(idx + 1) % cycle.length];
     localStorage.setItem('onlypans-units', unitSystem);
 
-    // Trigger flip animation
+    // Trigger spin animation
     const btn = document.getElementById('unitToggleBtn');
     if (btn) {
-        btn.classList.add('flipping');
-        setTimeout(() => btn.classList.remove('flipping'), 400);
+        const icon = btn.querySelector('.unit-toggle-icon');
+        if (icon) {
+            // Accumulate rotation so it always spins forward
+            const current = parseInt(icon.dataset.rotation || '0');
+            const next = current + 120;
+            icon.dataset.rotation = next;
+            icon.style.transform = `rotate(${next}deg)`;
+        }
     }
 
     refreshIngredientsDisplay();
@@ -446,12 +452,15 @@ function parseServingsNumber(servingsStr) {
 }
 
 // ─── Init ───────────────────────────────────────
+let hasLoadedOnce = false;
+
 async function init() {
     await loadUserProfile();
     await loadRecipes();
     await loadCategories();
     setupListeners();
     updateCartBadge();
+    hasLoadedOnce = true;
     // Deep-link: open recipe if URL is /recipe/<id>/...
     await openRecipeFromUrl();
     // Handle browser back/forward
@@ -464,6 +473,16 @@ async function init() {
     });
     // Poll for new recipes every 60s
     setInterval(pollForNewRecipes, 60000);
+
+    // PWA resume: skip card animations when returning from background
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && hasLoadedOnce) {
+            // Mark all existing cards as no-animate so they don't replay entrance
+            document.querySelectorAll('.recipe-card').forEach(card => {
+                card.classList.add('no-animate');
+            });
+        }
+    });
 }
 
 // ─── User Profile ────────────────────────────────
@@ -828,7 +847,7 @@ function renderModal(recipe) {
         <div class="section-title-row">
             <h4 class="section-title">Ingredients</h4>
             <button class="unit-toggle-btn" id="unitToggleBtn" data-units="${unitSystem}" onclick="cycleUnits()" title="Convert units">
-                <span class="unit-toggle-icon">⇄</span>
+                <span class="unit-toggle-icon">↻</span>
                 <span class="unit-toggle-label">${unitSystem === 'imperial' ? 'oz · lb · cups' : unitSystem === 'metric' ? 'g · ml · °C' : 'As Written'}</span>
             </button>
         </div>
