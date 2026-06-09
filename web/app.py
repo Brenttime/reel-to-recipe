@@ -113,6 +113,7 @@ AUTH_EXEMPT_ENDPOINTS = (
     'api_convert_progress', # MCP server reports conversion progress
     'get_meal_plan',        # MCP meal plan read
     'add_to_meal_plan',     # MCP meal plan write
+    'add_quick_plan',       # MCP quick plan write
     'move_meal_plan_entry', # MCP meal plan update
     'remove_from_meal_plan',# MCP meal plan delete
     'get_grocery_list',     # MCP grocery list read
@@ -765,9 +766,10 @@ def get_meal_plan():
     db = get_db()
     rows = db.execute(
         """SELECT mp.id, mp.recipe_id, mp.date, mp.added_by_name,
+                  mp.quick_plan_text, mp.quick_plan_emoji,
                   r.title, r.creator, r.ingredients, r.tags
            FROM meal_plan mp
-           JOIN recipes r ON r.id = mp.recipe_id
+           LEFT JOIN recipes r ON r.id = mp.recipe_id
            WHERE mp.date >= ? AND mp.date <= ?
            ORDER BY mp.date, mp.id""",
         (week_start, week_end)
@@ -775,16 +777,23 @@ def get_meal_plan():
 
     plan = []
     for row in rows:
-        plan.append({
+        entry = {
             "id": row["id"],
             "recipe_id": row["recipe_id"],
             "date": row["date"],
             "added_by": row["added_by_name"],
-            "title": row["title"],
-            "creator": row["creator"],
-            "ingredients": json.loads(row["ingredients"]) if row["ingredients"] else [],
-            "tags": json.loads(row["tags"]) if row["tags"] else [],
-        })
+        }
+        if row["quick_plan_text"]:
+            entry["type"] = "quick_plan"
+            entry["title"] = row["quick_plan_text"]
+            entry["emoji"] = row["quick_plan_emoji"] or "🍽️"
+        else:
+            entry["type"] = "recipe"
+            entry["title"] = row["title"] or "Untitled"
+            entry["creator"] = row["creator"]
+            entry["ingredients"] = json.loads(row["ingredients"]) if row["ingredients"] else []
+            entry["tags"] = json.loads(row["tags"]) if row["tags"] else []
+        plan.append(entry)
 
     return jsonify({"week_start": week_start, "week_end": week_end, "plan": plan})
 
@@ -810,6 +819,31 @@ def add_to_meal_plan():
     db.commit()
 
     return jsonify({"status": "ok", "id": cursor.lastrowid}), 201
+
+
+@app.route("/api/meal-plan/quick", methods=["POST"])
+def add_quick_plan():
+    """Add a freeform quick plan to a day. Body: {text, date, emoji?}"""
+    data = request.json
+    text = (data.get("text") or "").strip()
+    plan_date = data.get("date")
+    emoji = data.get("emoji", "🍽️")
+
+    if not text or not plan_date:
+        return jsonify({"error": "text and date required"}), 400
+
+    user_name = session.get("user", {}).get("display_name", "")
+    user_id = session.get("user_id")
+
+    db = get_db()
+    cursor = db.execute(
+        "INSERT INTO meal_plan (recipe_id, date, added_by_user_id, added_by_name, quick_plan_text, quick_plan_emoji) VALUES (NULL, ?, ?, ?, ?, ?)",
+        (plan_date, user_id, user_name, text, emoji)
+    )
+    db.commit()
+
+    return jsonify({"status": "ok", "id": cursor.lastrowid}), 201
+
 
 
 @app.route("/api/meal-plan/<int:entry_id>", methods=["PUT"])
@@ -883,13 +917,55 @@ with app.app_context():
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS meal_plan (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            recipe_id INTEGER NOT NULL,
+            recipe_id INTEGER,
             date TEXT NOT NULL,
             added_by_user_id INTEGER,
             added_by_name TEXT DEFAULT '',
+            quick_plan_text TEXT DEFAULT NULL,
+            quick_plan_emoji TEXT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_meal_plan_date ON meal_plan(date);
     """)
+    # Migration: add quick_plan columns if they don't exist
+    try:
+        conn.execute("ALTER TABLE meal_plan ADD COLUMN quick_plan_text TEXT DEFAULT NULL")
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE meal_plan ADD COLUMN quick_plan_emoji TEXT DEFAULT NULL")
+    except Exception:
+        pass
+    # Migration: make recipe_id nullable (recreate table if constraint exists)
+    # Check if we can insert a NULL recipe_id
+    try:
+        conn.execute("INSERT INTO meal_plan (recipe_id, date, quick_plan_text) VALUES (NULL, '1970-01-01', '__migration_test__')")
+        conn.execute("DELETE FROM meal_plan WHERE quick_plan_text = '__migration_test__'")
+        conn.commit()
+    except Exception:
+        # NOT NULL constraint still in place — recreate table
+        conn.rollback()
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS meal_plan_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                recipe_id INTEGER,
+                date TEXT NOT NULL,
+                added_by_user_id INTEGER,
+                added_by_name TEXT DEFAULT '',
+                quick_plan_text TEXT DEFAULT NULL,
+                quick_plan_emoji TEXT DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
+            );
+            INSERT INTO meal_plan_new (id, recipe_id, date, added_by_user_id, added_by_name, quick_plan_text, quick_plan_emoji, created_at)
+                SELECT id, recipe_id, date, added_by_user_id, added_by_name,
+                       CASE WHEN quick_plan_text IS NOT NULL THEN quick_plan_text ELSE NULL END,
+                       CASE WHEN quick_plan_emoji IS NOT NULL THEN quick_plan_emoji ELSE NULL END,
+                       created_at
+                FROM meal_plan;
+            DROP TABLE meal_plan;
+            ALTER TABLE meal_plan_new RENAME TO meal_plan;
+            CREATE INDEX IF NOT EXISTS idx_meal_plan_date ON meal_plan(date);
+        """)
     conn.close()
