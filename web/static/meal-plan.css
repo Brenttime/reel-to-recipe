@@ -1225,10 +1225,6 @@
     transform: scale(0.98);
 }
 
-.quick-add-submit.success {
-    background: #34C759;
-}
-
 /* ─── Quick Plan chips in kanban ─── */
 .mp-meal-chip.quick-plan {
     background: rgba(255, 255, 255, 0.5);
