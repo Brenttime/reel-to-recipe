@@ -396,19 +396,6 @@ function cycleUnits() {
     unitSystem = cycle[(idx + 1) % cycle.length];
     localStorage.setItem('onlypans-units', unitSystem);
 
-    // Trigger spin animation
-    const btn = document.getElementById('unitToggleBtn');
-    if (btn) {
-        const icon = btn.querySelector('.unit-toggle-icon');
-        if (icon) {
-            // Accumulate rotation so it always spins forward
-            const current = parseInt(icon.dataset.rotation || '0');
-            const next = current + 120;
-            icon.dataset.rotation = next;
-            icon.style.transform = `rotate(${next}deg)`;
-        }
-    }
-
     refreshIngredientsDisplay();
     updateUnitToggleLabel();
 }
@@ -847,7 +834,15 @@ function renderModal(recipe) {
         <div class="section-title-row">
             <h4 class="section-title">Ingredients</h4>
             <button class="unit-toggle-btn" id="unitToggleBtn" data-units="${unitSystem}" onclick="cycleUnits()" title="Convert units">
-                <span class="unit-toggle-icon">↻</span>
+                <svg class="unit-toggle-scale" viewBox="0 0 24 20" width="16" height="14">
+                    <line x1="12" y1="2" x2="12" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <line x1="6" y1="18" x2="18" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <g class="scale-beam">
+                        <line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M1 6 L3 12 L5 12 Z" fill="currentColor" opacity="0.6"/>
+                        <path d="M19 6 L21 12 L23 12 Z" fill="currentColor" opacity="0.6"/>
+                    </g>
+                </svg>
                 <span class="unit-toggle-label">${unitSystem === 'imperial' ? 'oz · lb · cups' : unitSystem === 'metric' ? 'g · ml · °C' : 'As Written'}</span>
             </button>
         </div>

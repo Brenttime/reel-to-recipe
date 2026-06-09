@@ -839,12 +839,25 @@ body {
     transform: scale(0.9);
 }
 
-.unit-toggle-btn .unit-toggle-icon {
-    font-size: 0.8rem;
-    font-weight: 600;
-    display: inline-block;
-    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    line-height: 1;
+.unit-toggle-btn .unit-toggle-scale {
+    flex-shrink: 0;
+}
+
+.unit-toggle-btn .scale-beam {
+    transform-origin: 12px 6px;
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.unit-toggle-btn[data-units="original"] .scale-beam {
+    transform: rotate(0deg);
+}
+
+.unit-toggle-btn[data-units="imperial"] .scale-beam {
+    transform: rotate(-12deg);
+}
+
+.unit-toggle-btn[data-units="metric"] .scale-beam {
+    transform: rotate(12deg);
 }
 
 .unit-toggle-btn .unit-toggle-label {
