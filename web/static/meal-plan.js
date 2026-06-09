@@ -572,7 +572,6 @@ const SMART_EMOJI_MAP = {
 let quickAddDate = null;
 let quickAddEmoji = '🍽️';
 let mpScrollBeforeQuickAdd = 0;
-let bodyScrollBeforeQuickAdd = 0;
 
 function detectEmoji(text) {
     const lower = text.toLowerCase();
@@ -591,13 +590,6 @@ function openQuickAdd(dateStr) {
     // Save scroll positions before keyboard disrupts them
     const panel = document.querySelector('.meal-plan-panel');
     mpScrollBeforeQuickAdd = panel ? panel.scrollTop : 0;
-    bodyScrollBeforeQuickAdd = window.scrollY;
-
-    // Lock body to prevent iOS keyboard from scrolling page behind overlay
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${bodyScrollBeforeQuickAdd}px`;
-    document.body.style.left = '0';
-    document.body.style.right = '0';
 
     document.getElementById('quickAddDayLabel').textContent = `${dayName}, ${monthDay}`;
     document.getElementById('quickAddInput').value = '';
@@ -616,28 +608,17 @@ function openQuickAdd(dateStr) {
 }
 
 function closeQuickAdd() {
-    // Blur input first to dismiss keyboard before layout recalc
+    // Blur input to dismiss keyboard
     document.getElementById('quickAddInput').blur();
     document.getElementById('quickAddOverlay').classList.remove('active');
     quickAddDate = null;
 
-    // Unlock body position and restore scroll
-    document.body.style.position = '';
-    document.body.style.top = '';
-    document.body.style.left = '';
-    document.body.style.right = '';
-    window.scrollTo(0, bodyScrollBeforeQuickAdd);
-
-    // Keep body overflow hidden if meal plan panel is still open
-    if (document.getElementById('mealPlanOverlay').classList.contains('active')) {
-        document.body.style.overflow = 'hidden';
-    }
-
-    // Restore meal plan panel scroll
-    requestAnimationFrame(() => {
+    // Restore meal plan panel scroll after keyboard dismissed
+    setTimeout(() => {
         const panel = document.querySelector('.meal-plan-panel');
         if (panel) panel.scrollTop = mpScrollBeforeQuickAdd;
-    });
+        window.scrollTo(0, 0);
+    }, 100);
 }
 
 async function loadRecentPills() {
