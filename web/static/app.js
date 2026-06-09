@@ -835,6 +835,7 @@ function renderModal(recipe) {
                                 <button class="scaler-btn" id="scalerPlus">+</button>
                             </span>
                         ` : `${escapeHtml(recipe.servings)}`}
+                        ${recipe.serving_size ? `<span class="serving-size-sub">${escapeHtml(recipe.serving_size)} each</span>` : ''}
                     </div>
                 ` : ''}
                 ${recipe.prep_time ? `<div class="modal-meta-item"><strong>Prep:</strong> ${escapeHtml(recipe.prep_time)}</div>` : ''}
@@ -986,6 +987,13 @@ function renderEditModal(recipe) {
                     <label class="edit-label">Servings</label>
                     <input type="text" class="edit-input" id="edit-servings" value="${escapeAttr(recipe.servings)}">
                 </div>
+                <div class="edit-col">
+                    <label class="edit-label">Serving Size</label>
+                    <input type="text" class="edit-input" id="edit-serving_size" value="${escapeAttr(recipe.serving_size || '')}" placeholder="e.g. ½ sandwich, 1 cup">
+                </div>
+            </div>
+
+            <div class="edit-row">
                 <div class="edit-col">
                     <label class="edit-label">Prep Time</label>
                     <input type="text" class="edit-input" id="edit-prep_time" value="${escapeAttr(recipe.prep_time)}">
@@ -1568,7 +1576,7 @@ async function deleteRecipe(recipe) {
 
 function getEditFormSnapshot() {
     const fields = ['edit-title','edit-creator','edit-platform','edit-servings',
-        'edit-prep_time','edit-cook_time','edit-source_url','edit-added_by',
+        'edit-serving_size','edit-prep_time','edit-cook_time','edit-source_url','edit-added_by',
         'edit-ingredients','edit-instructions','edit-tips','edit-macros','edit-tags'];
     const snap = {};
     fields.forEach(id => {
@@ -1607,6 +1615,7 @@ async function saveRecipe(id) {
         source_url: document.getElementById('edit-source_url').value.trim(),
         added_by: document.getElementById('edit-added_by').value.trim(),
         servings: document.getElementById('edit-servings').value.trim(),
+        serving_size: document.getElementById('edit-serving_size').value.trim(),
         prep_time: document.getElementById('edit-prep_time').value.trim(),
         cook_time: document.getElementById('edit-cook_time').value.trim(),
         total_time: '',

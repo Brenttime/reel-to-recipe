@@ -793,6 +793,15 @@ body {
     font-weight: 600;
 }
 
+.serving-size-sub {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    font-weight: 400;
+    margin-top: 2px;
+    font-style: italic;
+}
+
 .section-title {
     font-size: 0.8rem;
     text-transform: uppercase;

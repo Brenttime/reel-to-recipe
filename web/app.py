@@ -215,6 +215,8 @@ def init_db():
     cols = [row[1] for row in conn.execute("PRAGMA table_info(recipes)").fetchall()]
     if "added_by" not in cols:
         conn.execute("ALTER TABLE recipes ADD COLUMN added_by TEXT DEFAULT ''")
+    if "serving_size" not in cols:
+        conn.execute("ALTER TABLE recipes ADD COLUMN serving_size TEXT DEFAULT ''")
     conn.close()
     # Initialize auth tables
     init_auth_db(DB_PATH)
@@ -462,7 +464,7 @@ def api_update_recipe(recipe_id):
     db.execute("""
         UPDATE recipes SET
             title = ?, creator = ?, source_url = ?, platform = ?,
-            servings = ?, prep_time = ?, cook_time = ?, total_time = ?,
+            servings = ?, serving_size = ?, prep_time = ?, cook_time = ?, total_time = ?,
             ingredients = ?, instructions = ?, tips = ?, macros = ?, tags = ?,
             added_by = ?
         WHERE id = ?
@@ -472,6 +474,7 @@ def api_update_recipe(recipe_id):
         data.get("source_url", row["source_url"]),
         data.get("platform", row["platform"]),
         data.get("servings", row["servings"]),
+        data.get("serving_size", row["serving_size"]),
         data.get("prep_time", row["prep_time"]),
         data.get("cook_time", row["cook_time"]),
         data.get("total_time", row["total_time"]),
@@ -518,15 +521,16 @@ def api_add_recipe():
 
     db.execute("""
         INSERT INTO recipes (title, creator, source_url, platform, servings,
-                           prep_time, cook_time, total_time, ingredients,
+                           serving_size, prep_time, cook_time, total_time, ingredients,
                            instructions, tips, macros, tags, added_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data.get("title", "Untitled"),
         data.get("creator", ""),
         data.get("source_url", ""),
         data.get("platform", ""),
         data.get("servings", ""),
+        data.get("serving_size", ""),
         data.get("prep_time", ""),
         data.get("cook_time", ""),
         data.get("total_time", ""),
