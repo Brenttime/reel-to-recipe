@@ -198,11 +198,6 @@
 
 @media (max-width: 480px) {
     .mp-week-grid { grid-template-columns: repeat(2, 1fr); }
-    .mp-day-col:last-child {
-        grid-column: span 2;
-        max-width: calc(50% - 4px);
-        justify-self: center;
-    }
 }
 
 .mp-day-col {
