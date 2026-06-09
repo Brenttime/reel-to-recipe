@@ -114,7 +114,6 @@ AUTH_EXEMPT_ENDPOINTS = (
     'get_meal_plan',        # MCP meal plan read
     'add_to_meal_plan',     # MCP meal plan write
     'add_quick_plan',       # MCP quick plan write
-    'recent_quick_plans',   # Recent quick plans read
     'move_meal_plan_entry', # MCP meal plan update
     'remove_from_meal_plan',# MCP meal plan delete
     'get_grocery_list',     # MCP grocery list read
@@ -845,19 +844,6 @@ def add_quick_plan():
 
     return jsonify({"status": "ok", "id": cursor.lastrowid}), 201
 
-
-@app.route("/api/meal-plan/recent-quick")
-def recent_quick_plans():
-    """Get recent unique quick plan texts for suggestion pills."""
-    db = get_db()
-    rows = db.execute(
-        """SELECT DISTINCT quick_plan_text, quick_plan_emoji
-           FROM meal_plan
-           WHERE quick_plan_text IS NOT NULL
-           ORDER BY created_at DESC
-           LIMIT 8"""
-    ).fetchall()
-    return jsonify([{"text": r["quick_plan_text"], "emoji": r["quick_plan_emoji"] or "🍽️"} for r in rows])
 
 
 @app.route("/api/meal-plan/<int:entry_id>", methods=["PUT"])

@@ -72,11 +72,26 @@ async function addQuickPlan(text, date, emoji) {
 }
 
 async function fetchRecentQuickPlans() {
+    // Client-side only — stored in sessionStorage, expires after 10 minutes
     try {
-        const res = await fetch('/api/meal-plan/recent-quick');
-        if (res.ok) return await res.json();
+        const stored = JSON.parse(sessionStorage.getItem('qp_recent') || '[]');
+        const now = Date.now();
+        const fresh = stored.filter(r => (now - r.ts) < 10 * 60 * 1000);
+        // Clean up expired
+        if (fresh.length !== stored.length) sessionStorage.setItem('qp_recent', JSON.stringify(fresh));
+        return fresh;
+    } catch (e) { return []; }
+}
+
+function saveRecentQuickPlan(text, emoji) {
+    try {
+        const stored = JSON.parse(sessionStorage.getItem('qp_recent') || '[]');
+        // Deduplicate by text
+        const filtered = stored.filter(r => r.text !== text);
+        filtered.unshift({ text, emoji, ts: Date.now() });
+        // Keep max 8
+        sessionStorage.setItem('qp_recent', JSON.stringify(filtered.slice(0, 8)));
     } catch (e) {}
-    return [];
 }
 
 async function moveEntry(entryId, newDate) {
@@ -626,6 +641,7 @@ async function submitQuickPlan() {
     const success = await addQuickPlan(text, quickAddDate, quickAddEmoji);
 
     if (success) {
+        saveRecentQuickPlan(text, quickAddEmoji);
         btn.querySelector('span').textContent = '✓ Added!';
         setTimeout(() => {
             closeQuickAdd();
