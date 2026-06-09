@@ -1196,9 +1196,10 @@ async function renderShoppingPanel() {
         <div class="shopping-header">
             <h2>Shopping List</h2>
             <div class="shopping-actions">
-                <button id="copyListBtn" title="Copy to clipboard">📋 Copy</button>
                 <button id="clearCheckedBtn">Clear Checked</button>
-                <button id="clearAllBtn">Clear All</button>
+                <button id="clearAllBtn" class="empty-cart-btn" title="Empty cart">
+                    <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+                </button>
             </div>
         </div>
         <button class="unit-toggle-btn shopping-unit-toggle" id="shoppingUnitToggle" data-units="${unitSystem}" title="Convert units">
@@ -1224,6 +1225,7 @@ async function renderShoppingPanel() {
         <ul class="shopping-list" id="shoppingListItems">
             ${listHtml}
         </ul>
+        <button class="shopping-copy-btn" id="copyListBtn">Copy to Clipboard</button>
     `;
 
     // Bind remove buttons
@@ -1339,7 +1341,8 @@ async function renderShoppingPanel() {
             const btn = document.getElementById('copyListBtn');
             if (success) {
                 btn.textContent = '✓ Copied!';
-                setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
+                btn.classList.add('copied');
+                setTimeout(() => { btn.textContent = 'Copy to Clipboard'; btn.classList.remove('copied'); }, 2000);
             } else {
                 // Last resort: show a modal with selectable text
                 showCopyFallback(text);
@@ -2192,14 +2195,28 @@ function showEditDiscardDialog(onDiscard) {
     });
 }
 
+var _shoppingTouchHandler = null;
+
 function openShoppingPanel() {
     shoppingOverlay.classList.add('active');
     document.body.style.overflow = 'hidden';
+    // Prevent background scroll on iOS: block touchmove outside panel
+    _shoppingTouchHandler = function(e) {
+        const panel = shoppingOverlay.querySelector('.glass-modal');
+        if (!panel || !panel.contains(e.target)) {
+            e.preventDefault();
+        }
+    };
+    shoppingOverlay.addEventListener('touchmove', _shoppingTouchHandler, { passive: false });
 }
 
 function closeShoppingPanel() {
     shoppingOverlay.classList.remove('active');
     document.body.style.overflow = '';
+    if (_shoppingTouchHandler) {
+        shoppingOverlay.removeEventListener('touchmove', _shoppingTouchHandler);
+        _shoppingTouchHandler = null;
+    }
 }
 
 // ─── Util ───────────────────────────────────────

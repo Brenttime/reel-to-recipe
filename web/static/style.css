@@ -717,7 +717,7 @@ body {
     position: absolute;
     top: 16px;
     right: 16px;
-    background: rgba(0,0,0,0.06);
+    background: rgba(0, 0, 0, 0.05);
     border: none;
     border-radius: 50%;
     width: 32px;
@@ -728,11 +728,16 @@ body {
     cursor: pointer;
     color: var(--text-secondary);
     transition: var(--transition);
+    z-index: 10;
 }
 
 .modal-close:hover {
-    background: rgba(0,0,0,0.12);
+    background: rgba(0, 0, 0, 0.1);
     color: var(--text-primary);
+}
+
+.modal-close:active {
+    transform: scale(0.9);
 }
 
 .modal-close svg {
@@ -1544,6 +1549,8 @@ body {
 .shopping-actions {
     display: flex;
     gap: 8px;
+    margin-right: 28px;
+    align-items: center;
 }
 
 .shopping-actions button {
@@ -1559,11 +1566,44 @@ body {
     transition: var(--transition);
 }
 
+.shopping-actions .empty-cart-btn {
+    padding: 6px 8px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.shopping-actions .empty-cart-btn:hover {
+    background: rgba(255, 59, 48, 0.12);
+    color: #FF3B30;
+    border-color: rgba(255, 59, 48, 0.3);
+}
+
 .shopping-actions button:hover {
     background: var(--accent-soft);
     color: var(--accent);
     border-color: rgba(0, 122, 255, 0.3);
 }
+
+.shopping-copy-btn {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 14px;
+    background: var(--accent);
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+    margin-top: 16px;
+    flex-shrink: 0;
+}
+
+.shopping-copy-btn:hover { opacity: 0.9; }
+.shopping-copy-btn.copied { background: #34C759; }
 
 .shopping-recipes {
     display: flex;
@@ -2307,12 +2347,12 @@ body {
 }
 
 [data-theme="dark"] .modal-close {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.06);
     color: var(--text-secondary);
 }
 
 [data-theme="dark"] .modal-close:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.1);
     color: var(--text-primary);
 }
 

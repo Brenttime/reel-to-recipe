@@ -110,6 +110,8 @@ def _conversion_worker(job_id, url, added_by):
 AUTH_EXEMPT_PREFIXES = ('/auth/', '/static/')
 AUTH_EXEMPT_ENDPOINTS = (
     'api_add_recipe',       # MCP server pushes recipes without login
+    'api_update_recipe',    # MCP server updates recipes on force-reprocess
+    'api_convert',          # Reprocess pipeline (force flag for batch jobs)
     'api_convert_progress', # MCP server reports conversion progress
     'get_meal_plan',        # MCP meal plan read
     'add_to_meal_plan',     # MCP meal plan write

@@ -445,7 +445,7 @@ def _extract_page_text(html: str) -> str:
     return text.strip()[:8000]  # Cap at 8K chars for LLM
 
 
-def convert_blog_to_recipe(url: str, job_id: str = "", source_url: str = "", platform: str = "Web") -> str:
+def convert_blog_to_recipe(url: str, job_id: str = "", source_url: str = "", platform: str = "Web", force: bool = False) -> str:
     """Convert a blog/web URL into a structured recipe.
 
     Strategy:
@@ -551,7 +551,7 @@ def convert_blog_to_recipe(url: str, job_id: str = "", source_url: str = "", pla
         timings["format"] = time.time() - t0
 
         _report_progress(job_id, "saving", "Saving…")
-        _save_to_recipe_glass(recipe_text, save_url, save_platform)
+        _save_to_recipe_glass(recipe_text, save_url, save_platform, force=force)
         timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
         return f"{recipe_text}\n\n---\n⏱️ {timing_str}"
 
@@ -567,7 +567,7 @@ def convert_blog_to_recipe(url: str, job_id: str = "", source_url: str = "", pla
     timings["format"] = time.time() - t0
 
     _report_progress(job_id, "saving", "Saving…")
-    _save_to_recipe_glass(recipe_text, save_url, save_platform)
+    _save_to_recipe_glass(recipe_text, save_url, save_platform, force=force)
 
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe_text}\n\n---\n⏱️ {timing_str}"
@@ -916,10 +916,11 @@ def _strip_hermes_chrome(output: str) -> str:
     return "\n".join(content_lines).strip() if content_lines else output
 
 
-def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
+def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, force: bool = False) -> None:
     """Parse recipe text and POST to Recipe Glass for persistent storage.
 
     Best-effort: failures are logged but don't break the MCP response.
+    When force=True, updates the existing recipe instead of skipping duplicates.
     """
     try:
         lines = recipe_text.strip().split("\n")
@@ -930,6 +931,7 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
         tips = ""
         macros = ""
         servings = ""
+        serving_size = ""
         prep_time = ""
         cook_time = ""
         total_time = ""
@@ -991,6 +993,9 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
                 continue
             if low.startswith("yield:"):
                 servings = stripped.split(":", 1)[1].strip()
+                continue
+            if low.startswith("serving size:"):
+                serving_size = stripped.split(":", 1)[1].strip()
                 continue
 
             # Detect sections (handles: ## Header, **Header**, Header:, HEADER, bare "ingredients")
@@ -1292,6 +1297,24 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
         if not title:
             title = "Untitled Recipe"
 
+        # Build payload
+        payload = {
+            "title": title,
+            "creator": creator,
+            "source_url": url,
+            "platform": platform,
+            "servings": servings,
+            "serving_size": serving_size,
+            "prep_time": prep_time,
+            "cook_time": cook_time,
+            "total_time": total_time,
+            "ingredients": ingredients,
+            "instructions": instructions,
+            "tips": tips,
+            "macros": macros,
+            "tags": tags,
+        }
+
         # Check for duplicate by source_url
         if url:
             existing = None
@@ -1306,26 +1329,27 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
             if existing and existing.status_code == 200:
                 data = existing.json()
                 if data:
-                    print(f"[Recipe Glass] Duplicate skipped (already have '{data[0]['title']}' from {url})")
-                    return
+                    if force:
+                        # Update existing recipe instead of creating a new one
+                        existing_id = data[0]["id"]
+                        try:
+                            resp = httpx.put(
+                                f"{RECIPE_GLASS_URL}/api/recipes/{existing_id}",
+                                json=payload,
+                                timeout=10
+                            )
+                            if resp.status_code == 200:
+                                print(f"[Recipe Glass] Updated (force): {title} (id={existing_id})")
+                            else:
+                                print(f"[Recipe Glass] Update failed ({resp.status_code}): {resp.text[:100]}")
+                        except Exception as e:
+                            print(f"[Recipe Glass] Update error: {e}")
+                        return
+                    else:
+                        print(f"[Recipe Glass] Duplicate skipped (already have '{data[0]['title']}' from {url})")
+                        return
 
         # POST to Recipe Glass
-        payload = {
-            "title": title,
-            "creator": creator,
-            "source_url": url,
-            "platform": platform,
-            "servings": servings,
-            "prep_time": prep_time,
-            "cook_time": cook_time,
-            "total_time": total_time,
-            "ingredients": ingredients,
-            "instructions": instructions,
-            "tips": tips,
-            "macros": macros,
-            "tags": tags,
-        }
-
         resp = httpx.post(
             f"{RECIPE_GLASS_URL}/api/recipes",
             json=payload,
@@ -1366,6 +1390,7 @@ Recipe Title Here
 Source: @creatorhandle
 
 Servings: X
+Serving Size: description of one portion (e.g. "1 sandwich", "1 bowl", "2 pieces")
 Prep Time: Xm
 Cook Time: Xm
 
@@ -1428,7 +1453,7 @@ Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
 
 
 @mcp.tool()
-def convert_reel_to_recipe(url: str) -> str:
+def convert_reel_to_recipe(url: str, force: bool = False) -> str:
     """Convert an Instagram Reel, TikTok, or recipe blog URL into a structured recipe.
 
     For reels/TikToks: Runs all extraction pipelines (caption, audio transcription, and OCR)
@@ -1439,6 +1464,8 @@ def convert_reel_to_recipe(url: str) -> str:
 
     Args:
         url: Full Instagram Reel, TikTok, or recipe blog URL
+        force: If True, reprocess and update even if the recipe already exists in OnlyPans.
+               Default False preserves duplicate detection.
 
     Returns:
         Formatted recipe text with title, ingredients, instructions, and tips.
@@ -1447,7 +1474,7 @@ def convert_reel_to_recipe(url: str) -> str:
 
     # Route blog/web URLs to the blog pipeline
     if is_blog_url(url):
-        return convert_blog_to_recipe(url)
+        return convert_blog_to_recipe(url, force=force)
 
     # Combined download: caption + audio + video in one network session
     t0 = time.time()
@@ -1466,7 +1493,7 @@ def convert_reel_to_recipe(url: str) -> str:
             if dl.get("video_path"):
                 os.unlink(dl["video_path"])
             platform = "TikTok" if is_tiktok_url(url) else "Instagram"
-            return convert_blog_to_recipe(recipe_link, source_url=url, platform=platform)
+            return convert_blog_to_recipe(recipe_link, source_url=url, platform=platform, force=force)
         except Exception:
             pass  # Link failed — fall through to normal pipeline
 
@@ -1494,7 +1521,7 @@ def convert_reel_to_recipe(url: str) -> str:
     timings["format"] = time.time() - t0
 
     # Save to Recipe Glass
-    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
+    _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram", force=force)
 
     timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
     return f"{recipe}\n\n---\n⏱️ {timing_str}"
@@ -1749,22 +1776,24 @@ if __name__ == "__main__":
                 return
 
             job_id = body.get("job_id", "")  # Passed by web app for progress tracking
+            force = body.get("force", False)  # Bypass duplicate check and update existing
 
             # ── Early duplicate check (before expensive processing) ──
-            _report_progress(job_id, "checking", "Checking…")
-            existing = _check_duplicate(url)
-            if existing:
-                self._json_response({
-                    "error": f"Already converted: {existing.get('title', 'Unknown')}",
-                    "duplicate": True,
-                    "existing_id": existing.get("id")
-                }, 409)
-                return
+            if not force:
+                _report_progress(job_id, "checking", "Checking…")
+                existing = _check_duplicate(url)
+                if existing:
+                    self._json_response({
+                        "error": f"Already converted: {existing.get('title', 'Unknown')}",
+                        "duplicate": True,
+                        "existing_id": existing.get("id")
+                    }, 409)
+                    return
 
             # ── Blog/web URL → JSON-LD or LLM extraction (no video pipeline) ──
             if is_blog_url(url):
                 try:
-                    result = convert_blog_to_recipe(url, job_id)
+                    result = convert_blog_to_recipe(url, job_id, force=force)
                     self._json_response({"status": "ok", "result": result})
                 except Exception as e:
                     self._json_response({"error": str(e)}, 500)
@@ -1780,7 +1809,7 @@ if __name__ == "__main__":
                 _report_progress(job_id, "analyzing", "Following link…")
                 try:
                     platform = "TikTok" if is_tiktok_url(url) else "Instagram"
-                    result = convert_blog_to_recipe(recipe_link, job_id, source_url=url, platform=platform)
+                    result = convert_blog_to_recipe(recipe_link, job_id, source_url=url, platform=platform, force=force)
                     self._json_response({"status": "ok", "result": result})
                     return
                 except Exception:
@@ -1795,12 +1824,12 @@ if __name__ == "__main__":
                 _report_progress(job_id, "downloading", "Downloading…")
 
             try:
-                result = self._run_pipeline(url, job_id, caption, skip_ocr=skip_ocr)
+                result = self._run_pipeline(url, job_id, caption, skip_ocr=skip_ocr, force=force)
                 self._json_response({"status": "ok", "result": result})
             except Exception as e:
                 self._json_response({"error": str(e)}, 500)
 
-        def _run_pipeline(self, url, job_id, preloaded_caption, skip_ocr=False):
+        def _run_pipeline(self, url, job_id, preloaded_caption, skip_ocr=False, force=False):
             """Single unified pipeline. Skips OCR when caption is recipe-rich."""
             timings = {}
 
@@ -1857,7 +1886,7 @@ if __name__ == "__main__":
                 timings["format"] = time.time() - t0
 
             _report_progress(job_id, "saving", "Saving…")
-            _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram")
+            _save_to_recipe_glass(recipe, url, "TikTok" if is_tiktok_url(url) else "Instagram", force=force)
 
             timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
             return f"{recipe}\n\n---\n⏱️ {timing_str}"
