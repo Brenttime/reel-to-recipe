@@ -111,10 +111,14 @@ function closeMealPlan() {
 }
 
 async function refreshMealPlan() {
+    // Preserve scroll position during re-render
+    const panel = document.querySelector('.meal-plan-panel');
+    const scrollTop = panel ? panel.scrollTop : 0;
     currentPlan = await fetchPlan(mpWeekStart);
     renderWeekGrid();
     renderWeekTitle();
     updateBadge();
+    if (panel) panel.scrollTop = scrollTop;
 }
 
 function renderWeekTitle() {
@@ -586,6 +590,10 @@ function openQuickAdd(dateStr) {
 function closeQuickAdd() {
     document.getElementById('quickAddOverlay').classList.remove('active');
     quickAddDate = null;
+    // Keep body scroll locked if meal plan panel is still open
+    if (!document.getElementById('mealPlanOverlay').classList.contains('active')) {
+        document.body.style.overflow = '';
+    }
 }
 
 async function loadRecentPills() {
