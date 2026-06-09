@@ -395,6 +395,14 @@ function cycleUnits() {
     const idx = cycle.indexOf(unitSystem);
     unitSystem = cycle[(idx + 1) % cycle.length];
     localStorage.setItem('onlypans-units', unitSystem);
+
+    // Trigger flip animation
+    const btn = document.getElementById('unitToggleBtn');
+    if (btn) {
+        btn.classList.add('flipping');
+        setTimeout(() => btn.classList.remove('flipping'), 400);
+    }
+
     refreshIngredientsDisplay();
     updateUnitToggleLabel();
 }
