@@ -49,6 +49,7 @@ let currentMultiplier = 1;
 let originalServings = 1;
 const MULTIPLIER_STEPS = [0.5, 1, 2, 3, 4];
 let wakeLockSentinel = null;
+let unitSystem = localStorage.getItem('onlypans-units') || 'original'; // 'original' | 'metric' | 'imperial'
 
 // ─── Drink Detection ────────────────────────────
 const DRINK_TAGS = new Set([
@@ -226,6 +227,199 @@ function scaleIngredient(ingredient, ratio) {
     if (quantity === null) return ingredient;
     const scaled = quantity * ratio;
     return `${formatNumber(scaled)} ${rest}`;
+}
+
+// ─── Unit Conversion Engine ─────────────────────
+const UNIT_CONVERSIONS = {
+    // Weight: metric → imperial
+    'g': { imperial: { factor: 0.03527396, unit: 'oz', threshold: 28 } },
+    'grams': { imperial: { factor: 0.03527396, unit: 'oz', threshold: 28 } },
+    'gram': { imperial: { factor: 0.03527396, unit: 'oz', threshold: 28 } },
+    'kg': { imperial: { factor: 2.20462, unit: 'lb', threshold: 0.1 } },
+    'kilogram': { imperial: { factor: 2.20462, unit: 'lb', threshold: 0.1 } },
+    'kilograms': { imperial: { factor: 2.20462, unit: 'lb', threshold: 0.1 } },
+    // Weight: imperial → metric
+    'oz': { metric: { factor: 28.3495, unit: 'g', threshold: 0.5 } },
+    'ounce': { metric: { factor: 28.3495, unit: 'g', threshold: 0.5 } },
+    'ounces': { metric: { factor: 28.3495, unit: 'g', threshold: 0.5 } },
+    'lb': { metric: { factor: 453.592, unit: 'g', threshold: 0.25 } },
+    'lbs': { metric: { factor: 453.592, unit: 'g', threshold: 0.25 } },
+    'pound': { metric: { factor: 453.592, unit: 'g', threshold: 0.25 } },
+    'pounds': { metric: { factor: 453.592, unit: 'g', threshold: 0.25 } },
+    // Volume: metric → imperial
+    'ml': { imperial: { factor: 0.033814, unit: 'fl oz', threshold: 15 } },
+    'milliliter': { imperial: { factor: 0.033814, unit: 'fl oz', threshold: 15 } },
+    'milliliters': { imperial: { factor: 0.033814, unit: 'fl oz', threshold: 15 } },
+    'l': { imperial: { factor: 4.22675, unit: 'cups', threshold: 0.05 } },
+    'liter': { imperial: { factor: 4.22675, unit: 'cups', threshold: 0.05 } },
+    'liters': { imperial: { factor: 4.22675, unit: 'cups', threshold: 0.05 } },
+    'litre': { imperial: { factor: 4.22675, unit: 'cups', threshold: 0.05 } },
+    'litres': { imperial: { factor: 4.22675, unit: 'cups', threshold: 0.05 } },
+    // Volume: imperial → metric
+    'cup': { metric: { factor: 236.588, unit: 'ml', threshold: 0.125 } },
+    'cups': { metric: { factor: 236.588, unit: 'ml', threshold: 0.125 } },
+    'tbsp': { metric: { factor: 14.787, unit: 'ml', threshold: 0.5 } },
+    'tablespoon': { metric: { factor: 14.787, unit: 'ml', threshold: 0.5 } },
+    'tablespoons': { metric: { factor: 14.787, unit: 'ml', threshold: 0.5 } },
+    'tsp': { metric: { factor: 4.929, unit: 'ml', threshold: 0.25 } },
+    'teaspoon': { metric: { factor: 4.929, unit: 'ml', threshold: 0.25 } },
+    'teaspoons': { metric: { factor: 4.929, unit: 'ml', threshold: 0.25 } },
+    'fl oz': { metric: { factor: 29.5735, unit: 'ml', threshold: 0.5 } },
+    'fluid ounce': { metric: { factor: 29.5735, unit: 'ml', threshold: 0.5 } },
+    'fluid ounces': { metric: { factor: 29.5735, unit: 'ml', threshold: 0.5 } },
+    'quart': { metric: { factor: 946.353, unit: 'ml', threshold: 0.25 } },
+    'quarts': { metric: { factor: 946.353, unit: 'ml', threshold: 0.25 } },
+    'pint': { metric: { factor: 473.176, unit: 'ml', threshold: 0.25 } },
+    'pints': { metric: { factor: 473.176, unit: 'ml', threshold: 0.25 } },
+    'gallon': { metric: { factor: 3785.41, unit: 'ml', threshold: 0.25 } },
+    'gallons': { metric: { factor: 3785.41, unit: 'ml', threshold: 0.25 } },
+    // Temperature: handled separately
+    '°c': { imperial: { convert: (v) => v * 9/5 + 32, unit: '°F' } },
+    '°f': { metric: { convert: (v) => (v - 32) * 5/9, unit: '°C' } },
+    'c': { _tempOnly: true, imperial: { convert: (v) => v * 9/5 + 32, unit: '°F' } },
+    'f': { _tempOnly: true, metric: { convert: (v) => (v - 32) * 5/9, unit: '°C' } },
+};
+
+function detectIngredientSystem(ingredients) {
+    // Detect whether recipe is predominantly metric or imperial
+    let metricCount = 0, imperialCount = 0;
+    const metricUnits = new Set(['g', 'grams', 'gram', 'kg', 'kilogram', 'kilograms', 'ml', 'milliliter', 'milliliters', 'l', 'liter', 'liters', 'litre', 'litres', '°c']);
+    const imperialUnits = new Set(['oz', 'ounce', 'ounces', 'lb', 'lbs', 'pound', 'pounds', 'cup', 'cups', 'tbsp', 'tablespoon', 'tablespoons', 'tsp', 'teaspoon', 'teaspoons', 'fl oz', 'fluid ounce', 'fluid ounces', 'quart', 'quarts', 'pint', 'pints', 'gallon', 'gallons', '°f']);
+
+    for (const ing of ingredients) {
+        const text = ingText(ing).toLowerCase();
+        for (const u of metricUnits) {
+            if (text.includes(u)) { metricCount++; break; }
+        }
+        for (const u of imperialUnits) {
+            if (text.includes(u)) { imperialCount++; break; }
+        }
+    }
+    if (metricCount > imperialCount) return 'metric';
+    if (imperialCount > metricCount) return 'imperial';
+    return 'mixed';
+}
+
+function getTargetSystem(recipeSystem) {
+    // If user selected 'original', show as-is
+    if (unitSystem === 'original') return null;
+    // Otherwise convert toward the selected system
+    return unitSystem;
+}
+
+function convertIngredientUnits(ingredientText, targetSystem) {
+    if (!targetSystem) return ingredientText;
+
+    // Match: quantity + unit + rest of ingredient
+    // e.g. "800g chicken breast" or "2 cups flour" or "1/2 lb ground beef"
+    const match = ingredientText.match(/^([\d\s\/\.]+)\s*(°[cfCF]|fl oz|fluid ounces?|[a-zA-Z]+)\.?\s+(.*)$/);
+    if (!match) return ingredientText;
+
+    const quantityStr = match[1].trim();
+    const unitRaw = match[2];
+    const remainder = match[3];
+
+    const quantity = parseFraction(quantityStr);
+    if (quantity === null) return ingredientText;
+
+    const unitLower = unitRaw.toLowerCase();
+    const conversion = UNIT_CONVERSIONS[unitLower];
+    if (!conversion) return ingredientText;
+    if (!conversion[targetSystem]) return ingredientText;
+
+    // Skip temp-only markers unless the value looks like a temperature (>100 for C, >200 for F)
+    if (conversion._tempOnly) {
+        if (unitLower === 'c' && quantity < 100) return ingredientText;
+        if (unitLower === 'f' && quantity < 200) return ingredientText;
+    }
+
+    const conv = conversion[targetSystem];
+    let converted;
+    if (conv.convert) {
+        converted = conv.convert(quantity);
+    } else {
+        converted = quantity * conv.factor;
+    }
+
+    // Smart rounding: round to reasonable precision
+    if (converted >= 100) {
+        converted = Math.round(converted);
+    } else if (converted >= 10) {
+        converted = Math.round(converted * 2) / 2; // nearest 0.5
+    } else {
+        converted = Math.round(converted * 4) / 4; // nearest 0.25
+    }
+
+    return `${formatNumber(converted)} ${conv.unit} ${remainder}`;
+}
+
+// Also handle the "800g" no-space pattern
+function convertIngredientLine(ingredientText, targetSystem) {
+    if (!targetSystem) return ingredientText;
+
+    // First try: "800g chicken" (no space between number and unit)
+    const noSpaceMatch = ingredientText.match(/^([\d\s\/\.]+)(g|kg|ml|oz|lb|lbs)\b\s*(.*)$/i);
+    if (noSpaceMatch) {
+        const quantityStr = noSpaceMatch[1].trim();
+        const unitRaw = noSpaceMatch[2];
+        const remainder = noSpaceMatch[3];
+        const quantity = parseFraction(quantityStr);
+        if (quantity !== null) {
+            const unitLower = unitRaw.toLowerCase();
+            const conversion = UNIT_CONVERSIONS[unitLower];
+            if (conversion && conversion[targetSystem]) {
+                const conv = conversion[targetSystem];
+                let converted = conv.convert ? conv.convert(quantity) : quantity * conv.factor;
+                if (converted >= 100) converted = Math.round(converted);
+                else if (converted >= 10) converted = Math.round(converted * 2) / 2;
+                else converted = Math.round(converted * 4) / 4;
+                return `${formatNumber(converted)} ${conv.unit} ${remainder}`;
+            }
+        }
+    }
+
+    // Standard pattern with space
+    return convertIngredientUnits(ingredientText, targetSystem);
+}
+
+function getConvertedIngredient(ing, multiplier, targetSystem) {
+    let text = ingText(ing);
+    if (multiplier !== 1) text = scaleIngredient(text, multiplier);
+    if (targetSystem) text = convertIngredientLine(text, targetSystem);
+    return text;
+}
+
+function cycleUnits() {
+    // Cycle: original → imperial → metric → original
+    const cycle = ['original', 'imperial', 'metric'];
+    const idx = cycle.indexOf(unitSystem);
+    unitSystem = cycle[(idx + 1) % cycle.length];
+    localStorage.setItem('onlypans-units', unitSystem);
+    refreshIngredientsDisplay();
+    updateUnitToggleLabel();
+}
+
+function updateUnitToggleLabel() {
+    const btn = document.getElementById('unitToggleBtn');
+    if (!btn) return;
+    const labels = { original: 'As Written', imperial: 'Imperial', metric: 'Metric' };
+    const icons = { original: '📝', imperial: '🇺🇸', metric: '⚖️' };
+    btn.setAttribute('data-units', unitSystem);
+    btn.querySelector('.unit-toggle-label').textContent = labels[unitSystem];
+    btn.querySelector('.unit-toggle-icon').textContent = icons[unitSystem];
+}
+
+function refreshIngredientsDisplay() {
+    const ingredientsList = document.getElementById('ingredientsList');
+    if (!ingredientsList || !currentRecipe) return;
+
+    const recipeSystem = detectIngredientSystem(currentRecipe.ingredients);
+    const targetSystem = getTargetSystem(recipeSystem);
+
+    ingredientsList.innerHTML = currentRecipe.ingredients.map(ing => {
+        const text = getConvertedIngredient(ing, currentMultiplier, targetSystem);
+        return `<li>${escapeHtml(text)}</li>`;
+    }).join('');
 }
 
 function recipeIsScalable(recipe) {
@@ -625,9 +819,20 @@ function renderModal(recipe) {
 
         ${recipe.macros ? `<div class="modal-macros">📊 ${escapeHtml(recipe.macros)}</div>` : ''}
 
-        <h4 class="section-title">Ingredients</h4>
+        <div class="section-title-row">
+            <h4 class="section-title">Ingredients</h4>
+            <button class="unit-toggle-btn" id="unitToggleBtn" data-units="${unitSystem}" onclick="cycleUnits()" title="Convert units">
+                <span class="unit-toggle-icon">${unitSystem === 'imperial' ? '🇺🇸' : unitSystem === 'metric' ? '⚖️' : '📝'}</span>
+                <span class="unit-toggle-label">${unitSystem === 'imperial' ? 'Imperial' : unitSystem === 'metric' ? 'Metric' : 'As Written'}</span>
+            </button>
+        </div>
         <ul class="ingredients-list" id="ingredientsList">
-            ${recipe.ingredients.map(ing => `<li>${escapeHtml(ingText(ing))}</li>`).join('')}
+            ${recipe.ingredients.map(ing => {
+                const recipeSystem = detectIngredientSystem(recipe.ingredients);
+                const targetSystem = getTargetSystem(recipeSystem);
+                const text = getConvertedIngredient(ing, 1, targetSystem);
+                return `<li>${escapeHtml(text)}</li>`;
+            }).join('')}
         </ul>
 
         <h4 class="section-title">Instructions</h4>
@@ -715,10 +920,11 @@ function updateScale(delta) {
     // Update ingredients display
     const ingredientsList = document.getElementById('ingredientsList');
     if (ingredientsList && currentRecipe) {
+        const recipeSystem = detectIngredientSystem(currentRecipe.ingredients);
+        const targetSystem = getTargetSystem(recipeSystem);
         ingredientsList.innerHTML = currentRecipe.ingredients.map(ing => {
-            const text = ingText(ing);
-            const scaled = currentMultiplier === 1 ? text : scaleIngredient(text, currentMultiplier);
-            return `<li>${escapeHtml(scaled)}</li>`;
+            const text = getConvertedIngredient(ing, currentMultiplier, targetSystem);
+            return `<li>${escapeHtml(text)}</li>`;
         }).join('');
     }
 }
