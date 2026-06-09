@@ -2053,8 +2053,16 @@ function setupListeners() {
     });
 }
 
+let scrollLockPos = 0;
+
 function openModal() {
     modalOverlay.classList.add('active');
+    // iOS PWA: overflow:hidden doesn't prevent background scroll in standalone mode.
+    // position:fixed + width:100% locks the body; save scroll pos to restore on close.
+    scrollLockPos = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollLockPos}px`;
+    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
     // Update URL to permalink
     if (currentRecipe) {
@@ -2075,7 +2083,12 @@ function doCloseModal() {
     isEditMode = false;
     editFormSnapshot = null;
     modalOverlay.classList.remove('active');
+    // Unlock body scroll and restore position
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
     document.body.style.overflow = '';
+    window.scrollTo(0, scrollLockPos);
     currentRecipe = null;
     // Remove discard dialog if present
     const dialog = document.getElementById('discardEditDialog');
