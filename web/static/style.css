@@ -779,10 +779,10 @@ body {
 }
 
 .modal-meta-bar {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-    gap: 0;
-    padding: 14px 4px;
+    display: flex;
+    justify-content: space-evenly;
+    align-items: stretch;
+    padding: 14px 12px;
     background: var(--surface);
     border-radius: var(--radius-md);
     margin-bottom: 24px;
@@ -797,6 +797,7 @@ body {
     align-items: center;
     justify-content: center;
     text-align: center;
+    flex: 1;
     padding: 4px 6px;
     min-width: 0;
     position: relative;
@@ -1766,7 +1767,7 @@ body {
 
 /* Give the servings column more room when it has the scaler */
 .modal-meta-item:has(.scaler-widget) {
-    min-width: 120px;
+    flex: 1.5;
 }
 
 .scaler-btn {
