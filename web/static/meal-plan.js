@@ -619,12 +619,21 @@ async function submitQuickPlan() {
 
     if (success) {
         btn.querySelector('span').textContent = '✓ Added!';
+        btn.classList.add('success');
+        // Clear input but keep sheet open for another entry
         setTimeout(() => {
-            closeQuickAdd();
+            input.value = '';
+            quickAddEmoji = '🍽️';
+            document.getElementById('quickAddEmojiBtn').textContent = quickAddEmoji;
+            document.querySelectorAll('.vibe-tag').forEach(t => t.classList.remove('selected'));
+            btn.querySelector('span').textContent = 'Add to Plan';
+            btn.classList.remove('success');
+            btn.disabled = true;
+            // Refresh the plan view behind
             refreshMealPlan();
             renderTodaysMeals();
-            btn.querySelector('span').textContent = 'Add to Plan';
-        }, 400);
+            loadRecentPills();
+        }, 600);
     } else {
         btn.querySelector('span').textContent = 'Failed — try again';
         btn.disabled = false;
