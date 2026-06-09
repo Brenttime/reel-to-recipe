@@ -848,6 +848,11 @@ body {
     text-overflow: unset;
 }
 
+/* Give the cook column more room when it has stacked times */
+.modal-meta-item:has(.meta-time-line) {
+    flex: 1.5;
+}
+
 .serving-size-sub {
     display: inline;
     font-size: inherit;
