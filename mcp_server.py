@@ -1389,8 +1389,8 @@ Recipe Title Here
 
 Source: @creatorhandle
 
-Servings: X
-Serving Size: description of one portion (e.g. "1 sandwich", "1 bowl", "2 pieces")
+Servings: X (just a number — how many portions the recipe makes)
+Serving Size: what ONE portion is (e.g. "1 sandwich", "1 bowl", "2 pieces") — never a number alone
 Prep Time: Xm
 Cook Time: Xm
 
