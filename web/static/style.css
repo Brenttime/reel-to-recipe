@@ -835,6 +835,19 @@ body {
     max-width: 100%;
 }
 
+.meta-time-line {
+    display: block;
+    white-space: nowrap;
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
+.modal-meta-item .meta-value:has(.meta-time-line) {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+}
+
 .serving-size-sub {
     display: inline;
     font-size: inherit;

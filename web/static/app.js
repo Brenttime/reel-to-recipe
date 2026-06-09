@@ -854,7 +854,7 @@ function renderModal(recipe) {
                 ${recipe.cook_time && recipe.cook_time !== '0m' && recipe.cook_time !== '0' ? `
                     <div class="modal-meta-item">
                         <span class="meta-label">Cook</span>
-                        <span class="meta-value">${escapeHtml(recipe.cook_time)}</span>
+                        <span class="meta-value">${recipe.cook_time.includes(' or ') ? recipe.cook_time.split(' or ').map(t => `<span class="meta-time-line">${escapeHtml(t.trim())}</span>`).join('') : escapeHtml(recipe.cook_time)}</span>
                     </div>
                 ` : ''}
                 ${recipe.total_time ? `
