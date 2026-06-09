@@ -29,12 +29,13 @@ Everything saves to a self-hosted cookbook with search, ratings, meal planning, 
 - ⭐ **Ratings & reviews** — 1-5 stars per user, green ✓ badge for 4+ rated recipes
 - 👨‍🍳 **Cook mode** — fullscreen step-by-step with screen wake lock
 - 🛒 **Shopping list** — smart quantity merging, grouped by grocery aisle
-- 📅 **Meal planner** — radial day selector, shared weekly calendar, auto grocery aggregation
+- 📅 **Meal planner** — radial day selector, shared weekly calendar, freeform quick plans, auto grocery aggregation
+- ⚖️ **Unit converter** — toggle between metric/imperial/original with a balance-scale icon
 - 🌙 **Dark mode** — system/light/dark with Apple-inspired deep purple gradients
 - 🔗 **Share** — native share sheet (iOS/Android) or clipboard copy
 - 🔐 **Discord auth** — login with Discord, user profiles, "Added by Me" filter
 - 📱 **PWA** — install on iPhone home screen, standalone mode with Dynamic Island support
-- ⚡ **Async conversion** — paste URLs and keep browsing; recipes appear when ready
+- ⚡ **Async conversion** — paste URLs and keep browsing; live step progress, recipes appear when ready
 
 ---
 
@@ -113,7 +114,7 @@ Real Let's Encrypt cert, auto-renews, zero maintenance.
 │  OnlyPans (Docker :5100)                                  │
 │  Flask + SQLite/FTS5 + Discord OAuth2 + Liquid Glass UI   │
 └────────────────────────────┬─────────────────────────────┘
-                             │ REST API
+                             │ REST API + progress webhook
 ┌────────────────────────────┴─────────────────────────────┐
 │  MCP Server (:8001 MCP / :8002 HTTP)                      │
 │  yt-dlp → faster-whisper → Tesseract OCR → gpt-4o-mini   │

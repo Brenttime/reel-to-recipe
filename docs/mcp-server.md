@@ -42,6 +42,8 @@ When a reel's caption contains a URL to an external recipe page (e.g., thefoodie
 - **Total pipeline (blogs with JSON-LD): ~10s**
 - **Total pipeline (caption-link-following): ~17s**
 
+Progress is reported per-step via webhook to `/api/convert/progress` so the frontend can show live status (checking → downloading → transcribing → formatting → saving).
+
 ## Smart Optimizations
 - **Caption link detection** — follows recipe URLs in captions for exact data (skips entire video pipeline)
 - **Caption signal detection** — skips OCR when caption has 3+ quantity patterns (saves ~20s)
