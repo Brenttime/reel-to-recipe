@@ -835,7 +835,7 @@ function renderModal(recipe) {
                                 <button class="scaler-btn" id="scalerPlus">+</button>
                             </span>
                         ` : `${escapeHtml(recipe.servings)}`}
-                        ${recipe.serving_size ? `<span class="serving-size-sub">${escapeHtml(recipe.serving_size)} each</span>` : ''}
+                        ${recipe.serving_size ? `<span class="serving-size-sub">(${escapeHtml(recipe.serving_size)} each)</span>` : ''}
                     </div>
                 ` : ''}
                 ${recipe.prep_time ? `<div class="modal-meta-item"><strong>Prep:</strong> ${escapeHtml(recipe.prep_time)}</div>` : ''}
@@ -1173,20 +1173,24 @@ async function renderShoppingPanel() {
     }
 
     // Build grouped HTML
+    const targetSystem = unitSystem === 'original' ? null : unitSystem;
     let listHtml = '';
     let itemIdx = 0;
     for (const sec of sectionOrder) {
         if (!grouped[sec] || grouped[sec].length === 0) continue;
         listHtml += `<li class="shopping-section-header">${sectionLabels[sec] || sec}</li>`;
         for (const item of grouped[sec]) {
+            const displayText = targetSystem ? convertIngredientLine(item.text, targetSystem) : item.text;
             listHtml += `
                 <li class="shopping-item ${checked.includes(item.text) ? 'checked' : ''}">
                     <input type="checkbox" ${checked.includes(item.text) ? 'checked' : ''} data-ing-idx="${itemIdx}" data-ing-text="${escapeAttr(item.text)}">
-                    <span class="shopping-item-text">${escapeHtml(item.text)}</span>
+                    <span class="shopping-item-text">${escapeHtml(displayText)}</span>
                 </li>`;
             itemIdx++;
         }
     }
+
+    const unitLabels = { original: 'As Written', imperial: 'oz · lb · cups', metric: 'g · ml · °C' };
 
     shoppingContent.innerHTML = `
         <div class="shopping-header">
@@ -1197,6 +1201,18 @@ async function renderShoppingPanel() {
                 <button id="clearAllBtn">Clear All</button>
             </div>
         </div>
+        <button class="unit-toggle-btn shopping-unit-toggle" id="shoppingUnitToggle" data-units="${unitSystem}" title="Convert units">
+            <svg class="unit-toggle-scale" viewBox="0 0 24 20" width="18" height="15">
+                <line x1="12" y1="2" x2="12" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="6" y1="18" x2="18" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <g class="scale-beam">
+                    <line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M1 6 L3 12 L5 12 Z" fill="currentColor" opacity="0.6"/>
+                    <path d="M19 6 L21 12 L23 12 Z" fill="currentColor" opacity="0.6"/>
+                </g>
+            </svg>
+            <span class="unit-toggle-label">${unitLabels[unitSystem]}</span>
+        </button>
         <div class="shopping-recipes">
             ${recipes.map(r => `
                 <span class="shopping-recipe-chip">
@@ -1241,6 +1257,12 @@ async function renderShoppingPanel() {
     document.getElementById('clearCheckedBtn').addEventListener('click', () => {
         const checked = getChecked();
         setChecked([]);
+        renderShoppingPanel();
+    });
+
+    // Unit toggle in shopping panel
+    document.getElementById('shoppingUnitToggle').addEventListener('click', () => {
+        cycleUnits();
         renderShoppingPanel();
     });
 

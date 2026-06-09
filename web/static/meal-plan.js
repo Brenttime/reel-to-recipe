@@ -332,12 +332,25 @@ async function renderRadialRing() {
 }
 
 // ─── Grocery List ──────────────────────────────────
+const GROCERY_CHECKED_KEY = 'reel-cookbook-grocery-checked';
+
+function getGroceryChecked() {
+    try { return JSON.parse(localStorage.getItem(GROCERY_CHECKED_KEY)) || []; }
+    catch { return []; }
+}
+
+function setGroceryChecked(items) {
+    localStorage.setItem(GROCERY_CHECKED_KEY, JSON.stringify(items));
+}
+
 async function openGroceryList() {
     document.getElementById('groceryOverlay').classList.add('active');
     const body = document.getElementById('groceryBody');
     const subtitle = document.getElementById('grocerySubtitle');
+    const actions = document.getElementById('groceryActions');
 
     body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-tertiary)">Loading...</div>';
+    actions.style.display = 'none';
 
     try {
         const res = await fetch(`/api/meal-plan/grocery-list?week=${formatDate(mpWeekStart)}`);
@@ -350,13 +363,69 @@ async function openGroceryList() {
             return;
         }
 
+        actions.style.display = 'flex';
         const sections = groupIngredients(data.ingredients);
+        const checked = getGroceryChecked();
+        const targetSystem = (typeof unitSystem !== 'undefined' && unitSystem !== 'original') ? unitSystem : null;
+        const unitLabels = { original: 'As Written', imperial: 'oz · lb · cups', metric: 'g · ml · °C' };
+        const currentUnit = (typeof unitSystem !== 'undefined') ? unitSystem : 'original';
+
+        // Insert unit toggle into the actions row
+        let existingToggle = document.getElementById('groceryUnitToggle');
+        if (existingToggle) existingToggle.remove();
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'unit-toggle-btn grocery-unit-toggle';
+        toggleBtn.id = 'groceryUnitToggle';
+        toggleBtn.setAttribute('data-units', currentUnit);
+        toggleBtn.title = 'Convert units';
+        toggleBtn.innerHTML = `
+            <svg class="unit-toggle-scale" viewBox="0 0 24 20" width="18" height="15">
+                <line x1="12" y1="2" x2="12" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="6" y1="18" x2="18" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                <g class="scale-beam">
+                    <line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M1 6 L3 12 L5 12 Z" fill="currentColor" opacity="0.6"/>
+                    <path d="M19 6 L21 12 L23 12 Z" fill="currentColor" opacity="0.6"/>
+                </g>
+            </svg>
+            <span class="unit-toggle-label">${unitLabels[currentUnit]}</span>`;
+        actions.appendChild(toggleBtn);
+
         body.innerHTML = Object.entries(sections).map(([section, items]) => `
             <div class="grocery-section">
                 <div class="grocery-section-title">${section}</div>
-                ${items.map(i => `<div class="grocery-item">• ${escapeHtml(i)}</div>`).join('')}
+                ${items.map(i => {
+                    const isChecked = checked.includes(i);
+                    const displayText = targetSystem && typeof convertIngredientLine === 'function' ? convertIngredientLine(i, targetSystem) : i;
+                    return `<label class="grocery-item ${isChecked ? 'checked' : ''}">
+                        <input type="checkbox" ${isChecked ? 'checked' : ''} data-grocery-text="${escapeHtml(i)}">
+                        <span class="grocery-item-text">${escapeHtml(displayText)}</span>
+                    </label>`;
+                }).join('')}
             </div>
         `).join('');
+
+        // Bind unit toggle
+        document.getElementById('groceryUnitToggle').addEventListener('click', () => {
+            if (typeof cycleUnits === 'function') cycleUnits();
+            openGroceryList(); // Re-render with new units
+        });
+
+        // Bind checkboxes
+        body.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', () => {
+                const text = cb.dataset.groceryText;
+                let checked = getGroceryChecked();
+                if (cb.checked) {
+                    if (!checked.includes(text)) checked.push(text);
+                    cb.closest('.grocery-item').classList.add('checked');
+                } else {
+                    checked = checked.filter(t => t !== text);
+                    cb.closest('.grocery-item').classList.remove('checked');
+                }
+                setGroceryChecked(checked);
+            });
+        });
     } catch (e) {
         body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary)">Failed to load</div>';
     }
@@ -394,10 +463,15 @@ function groupIngredients(ingredients) {
 
 function copyGroceryList() {
     const body = document.getElementById('groceryBody');
+    const checked = getGroceryChecked();
     const lines = [];
     body.querySelectorAll('.grocery-section').forEach(s => {
         lines.push(`\n${s.querySelector('.grocery-section-title').textContent}`);
-        s.querySelectorAll('.grocery-item').forEach(i => lines.push(i.textContent));
+        s.querySelectorAll('.grocery-item').forEach(i => {
+            const text = i.querySelector('.grocery-item-text').textContent;
+            const mark = checked.includes(text) ? '✓' : '•';
+            lines.push(`${mark} ${text}`);
+        });
     });
     navigator.clipboard.writeText(lines.join('\n').trim()).then(() => {
         const btn = document.getElementById('groceryCopyBtn');
@@ -705,6 +779,10 @@ function init() {
         if (e.target === e.currentTarget) closeGroceryList();
     });
     document.getElementById('groceryCopyBtn').addEventListener('click', copyGroceryList);
+    document.getElementById('groceryClearCheckedBtn').addEventListener('click', () => {
+        setGroceryChecked([]);
+        openGroceryList();
+    });
 
     // Quick Add Sheet
     document.getElementById('quickAddClose').addEventListener('click', closeQuickAdd);
