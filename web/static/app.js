@@ -402,11 +402,9 @@ function cycleUnits() {
 function updateUnitToggleLabel() {
     const btn = document.getElementById('unitToggleBtn');
     if (!btn) return;
-    const labels = { original: 'As Written', imperial: 'Imperial', metric: 'Metric' };
-    const icons = { original: '📝', imperial: '🇺🇸', metric: '⚖️' };
+    const labels = { original: 'As Written', imperial: 'oz · lb · cups', metric: 'g · ml · °C' };
     btn.setAttribute('data-units', unitSystem);
     btn.querySelector('.unit-toggle-label').textContent = labels[unitSystem];
-    btn.querySelector('.unit-toggle-icon').textContent = icons[unitSystem];
 }
 
 function refreshIngredientsDisplay() {
@@ -822,8 +820,8 @@ function renderModal(recipe) {
         <div class="section-title-row">
             <h4 class="section-title">Ingredients</h4>
             <button class="unit-toggle-btn" id="unitToggleBtn" data-units="${unitSystem}" onclick="cycleUnits()" title="Convert units">
-                <span class="unit-toggle-icon">${unitSystem === 'imperial' ? '🇺🇸' : unitSystem === 'metric' ? '⚖️' : '📝'}</span>
-                <span class="unit-toggle-label">${unitSystem === 'imperial' ? 'Imperial' : unitSystem === 'metric' ? 'Metric' : 'As Written'}</span>
+                <span class="unit-toggle-icon">⇄</span>
+                <span class="unit-toggle-label">${unitSystem === 'imperial' ? 'oz · lb · cups' : unitSystem === 'metric' ? 'g · ml · °C' : 'As Written'}</span>
             </button>
         </div>
         <ul class="ingredients-list" id="ingredientsList">
