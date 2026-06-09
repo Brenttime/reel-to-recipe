@@ -780,22 +780,53 @@ body {
 
 .modal-meta-bar {
     display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    padding: 14px 18px;
-    background: rgba(0,0,0,0.03);
+    justify-content: space-evenly;
+    align-items: stretch;
+    padding: 16px 8px;
+    background: var(--surface);
     border-radius: var(--radius-md);
     margin-bottom: 24px;
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
 }
 
 .modal-meta-item {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    flex: 1;
+    padding: 4px 8px;
+    min-width: 0;
+    position: relative;
 }
 
-.modal-meta-item strong {
-    color: var(--text-primary);
+.modal-meta-item + .modal-meta-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 15%;
+    height: 70%;
+    width: 1px;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.modal-meta-item .meta-label {
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+}
+
+.modal-meta-item .meta-value {
+    font-size: 0.9rem;
     font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.2;
 }
 
 .serving-size-sub {
@@ -1727,7 +1758,6 @@ body {
     gap: 0;
     background: rgba(0,0,0,0.04);
     border-radius: 10px;
-    margin-left: 10px;
     overflow: hidden;
     border: 1px solid rgba(0,0,0,0.08);
 }
@@ -2354,6 +2384,15 @@ body {
 [data-theme="dark"] .modal-close:hover {
     background: rgba(255, 255, 255, 0.1);
     color: var(--text-primary);
+}
+
+[data-theme="dark"] .modal-meta-item + .modal-meta-item::before {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .scaler-widget {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Header action buttons */

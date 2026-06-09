@@ -823,24 +823,46 @@ function renderModal(recipe) {
             </div>
         </div>
 
-        ${(recipe.servings || recipe.prep_time || recipe.cook_time || recipe.total_time) ? `
+        ${(recipe.servings || recipe.serving_size || recipe.prep_time || recipe.cook_time || recipe.total_time) ? `
             <div class="modal-meta-bar">
                 ${recipe.servings ? `
                     <div class="modal-meta-item">
-                        <strong>Makes:</strong>
-                        ${parseServingsNumber(recipe.servings) && recipeIsScalable(recipe) ? `
-                            <span class="scaler-widget">
-                                <button class="scaler-btn" id="scalerMinus">−</button>
-                                <span class="scaler-value" id="scalerValue">${parseServingsNumber(recipe.servings)}</span>
-                                <button class="scaler-btn" id="scalerPlus">+</button>
-                            </span>
-                        ` : `${escapeHtml(recipe.servings)}`}
-                        ${recipe.serving_size ? `<span class="serving-size-sub">${parseServingsNumber(recipe.servings) === 1 ? escapeHtml(recipe.serving_size) : '(' + escapeHtml(recipe.serving_size) + ' each)'}</span>` : ''}
+                        <span class="meta-label">Servings</span>
+                        <span class="meta-value">
+                            ${parseServingsNumber(recipe.servings) && recipeIsScalable(recipe) ? `
+                                <span class="scaler-widget">
+                                    <button class="scaler-btn" id="scalerMinus">−</button>
+                                    <span class="scaler-value" id="scalerValue">${parseServingsNumber(recipe.servings)}</span>
+                                    <button class="scaler-btn" id="scalerPlus">+</button>
+                                </span>
+                            ` : `${escapeHtml(recipe.servings)}`}
+                        </span>
                     </div>
                 ` : ''}
-                ${recipe.prep_time ? `<div class="modal-meta-item"><strong>Prep:</strong> ${escapeHtml(recipe.prep_time)}</div>` : ''}
-                ${recipe.cook_time ? `<div class="modal-meta-item"><strong>Cook:</strong> ${escapeHtml(recipe.cook_time)}</div>` : ''}
-                ${recipe.total_time ? `<div class="modal-meta-item"><strong>Total:</strong> ${escapeHtml(recipe.total_time)}</div>` : ''}
+                ${recipe.serving_size ? `
+                    <div class="modal-meta-item">
+                        <span class="meta-label">Serving Size</span>
+                        <span class="meta-value">${escapeHtml(recipe.serving_size)}</span>
+                    </div>
+                ` : ''}
+                ${recipe.prep_time ? `
+                    <div class="modal-meta-item">
+                        <span class="meta-label">Prep</span>
+                        <span class="meta-value">${escapeHtml(recipe.prep_time)}</span>
+                    </div>
+                ` : ''}
+                ${recipe.cook_time ? `
+                    <div class="modal-meta-item">
+                        <span class="meta-label">Cook</span>
+                        <span class="meta-value">${escapeHtml(recipe.cook_time)}</span>
+                    </div>
+                ` : ''}
+                ${recipe.total_time ? `
+                    <div class="modal-meta-item">
+                        <span class="meta-label">Total</span>
+                        <span class="meta-value">${escapeHtml(recipe.total_time)}</span>
+                    </div>
+                ` : ''}
             </div>
         ` : ''}
 
