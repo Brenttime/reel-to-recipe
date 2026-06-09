@@ -1048,7 +1048,23 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str) -> None:
             elif section == "macros":
                 item = stripped.lstrip("-*•● ").strip()
                 if item and "not provided" not in item.lower():
-                    macros += (" | " if macros else "") + item
+                    # Skip placeholder/empty values (N/A, X, -, unknown, etc.)
+                    # A valid macro line must contain at least one digit
+                    if not re.search(r'\d', item):
+                        continue
+                    # Filter out individual entries that are just placeholders
+                    parts = [p.strip() for p in item.split("|")]
+                    valid_parts = []
+                    for p in parts:
+                        # Skip entries like "Calories: N/A", "Protein: X", "Fat: -"
+                        val = re.sub(r'^[^:]+:\s*', '', p).strip().lower()
+                        if val in ('n/a', 'na', 'x', '-', '--', 'unknown', 'not available', 'none', ''):
+                            continue
+                        if re.search(r'\d', p):
+                            valid_parts.append(p)
+                    if valid_parts:
+                        filtered = " | ".join(valid_parts)
+                        macros += (" | " if macros else "") + filtered
             elif section is None:
                 # Auto-detect section from content patterns
                 if stripped.startswith("-") or stripped.startswith("•"):

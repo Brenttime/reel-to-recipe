@@ -844,7 +844,7 @@ function renderModal(recipe) {
             </div>
         ` : ''}
 
-        ${recipe.macros ? `<div class="modal-macros">📊 ${escapeHtml(recipe.macros)}</div>` : ''}
+        ${recipe.macros && /\d/.test(recipe.macros) ? `<div class="modal-macros">📊 ${escapeHtml(recipe.macros)}</div>` : ''}
 
         <div class="section-title-row">
             <h4 class="section-title">Ingredients</h4>
@@ -2054,18 +2054,21 @@ function setupListeners() {
 }
 
 let scrollLockPos = 0;
+let _modalTouchHandler = null;
 
 function openModal() {
     modalOverlay.classList.add('active');
     // Reset modal scroll to top for fresh recipe view
     const modal = modalOverlay.querySelector('.glass-modal');
     if (modal) modal.scrollTop = 0;
-    // iOS PWA: overflow:hidden doesn't prevent background scroll in standalone mode.
-    // position:fixed + width:100% locks the body; save scroll pos to restore on close.
-    scrollLockPos = window.scrollY;
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${scrollLockPos}px`;
-    document.body.style.width = '100%';
+    // Prevent background scroll: block touchmove on overlay except inside .glass-modal
+    _modalTouchHandler = function(e) {
+        const modal = modalOverlay.querySelector('.glass-modal');
+        if (!modal || !modal.contains(e.target)) {
+            e.preventDefault();
+        }
+    };
+    modalOverlay.addEventListener('touchmove', _modalTouchHandler, { passive: false });
     document.body.style.overflow = 'hidden';
     // Update URL to permalink
     if (currentRecipe) {
@@ -2086,12 +2089,15 @@ function doCloseModal() {
     isEditMode = false;
     editFormSnapshot = null;
     modalOverlay.classList.remove('active');
-    // Unlock body scroll and restore position
-    document.body.style.position = '';
-    document.body.style.top = '';
-    document.body.style.width = '';
+    // Reset modal scroll so next open starts fresh
+    const modal = modalOverlay.querySelector('.glass-modal');
+    if (modal) modal.scrollTop = 0;
+    // Remove touch scroll lock
+    if (_modalTouchHandler) {
+        modalOverlay.removeEventListener('touchmove', _modalTouchHandler);
+        _modalTouchHandler = null;
+    }
     document.body.style.overflow = '';
-    window.scrollTo(0, scrollLockPos);
     currentRecipe = null;
     // Remove discard dialog if present
     const dialog = document.getElementById('discardEditDialog');
