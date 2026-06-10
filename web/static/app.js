@@ -595,8 +595,7 @@ async function openRecipeFromUrl() {
         if (!res.ok) return;
         const recipe = await res.json();
         renderModal(recipe);
-        modalOverlay.classList.add('active');
-        document.body.style.overflow = 'hidden';
+        openModal();
     } catch (e) { /* recipe not found — stay on gallery */ }
 }
 
@@ -2101,7 +2100,6 @@ function setupListeners() {
     });
 }
 
-let scrollLockPos = 0;
 let _modalTouchHandler = null;
 
 function openModal() {
@@ -2219,9 +2217,15 @@ function showEditDiscardDialog(onDiscard) {
 }
 
 var _shoppingTouchHandler = null;
+var _shoppingScrollLockPos = 0;
 
 function openShoppingPanel() {
     shoppingOverlay.classList.add('active');
+    // iOS scroll lock: freeze body at current scroll position to prevent jump
+    _shoppingScrollLockPos = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${_shoppingScrollLockPos}px`;
+    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
     // Prevent background scroll on iOS: block touchmove outside panel
     _shoppingTouchHandler = function(e) {
@@ -2235,11 +2239,16 @@ function openShoppingPanel() {
 
 function closeShoppingPanel() {
     shoppingOverlay.classList.remove('active');
-    document.body.style.overflow = '';
     if (_shoppingTouchHandler) {
         shoppingOverlay.removeEventListener('touchmove', _shoppingTouchHandler);
         _shoppingTouchHandler = null;
     }
+    // iOS scroll restore: unfreeze body and restore exact scroll position
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
+    document.body.style.overflow = '';
+    window.scrollTo(0, _shoppingScrollLockPos);
 }
 
 // ─── Util ───────────────────────────────────────
