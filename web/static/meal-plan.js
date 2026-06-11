@@ -25,7 +25,7 @@ function getMonday(d) {
     return date;
 }
 
-function formatDate(d) { return d.toISOString().split('T')[0]; }
+function formatDate(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
 function isToday(d) { return formatDate(d) === formatDate(new Date()); }
 function isCurrentWeek(d) { return formatDate(getMonday(d)) === formatDate(getMonday(new Date())); }

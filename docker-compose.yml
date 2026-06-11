@@ -6,6 +6,8 @@ services:
       - "5100:5100"
     volumes:
       - cookbook-data:/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     environment:
       - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:?Set DISCORD_CLIENT_ID in .env}
       - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:?Set DISCORD_CLIENT_SECRET in .env}

@@ -2476,5 +2476,69 @@ window.openRecipeById = async function(id) {
     } catch (e) { /* recipe not found */ }
 };
 
+// ─── PWA Install Prompt (iOS Safari) ────────────
+function showInstallBanner() {
+    // Only show on iOS Safari, not if already in standalone/PWA mode
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    const isSafari = /Safari/.test(navigator.userAgent) && !/CriOS|FxiOS|OPiOS/.test(navigator.userAgent);
+    const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+    const dismissed = localStorage.getItem('pwa-install-dismissed');
+
+    if (!isIOS || !isSafari || isStandalone || dismissed) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'pwa-install-banner';
+    banner.innerHTML = `
+        <div class="pwa-install-content">
+            <div class="pwa-install-header">
+                <div class="pwa-install-icon">
+                    <img src="/static/apple-touch-icon.png" alt="OnlyPans" />
+                </div>
+                <div class="pwa-install-text">
+                    <strong>Add OnlyPans to Home Screen</strong>
+                    <span>Use as a fullscreen app — instant access, no browser UI.</span>
+                </div>
+                <button class="pwa-install-close" aria-label="Dismiss">✕</button>
+            </div>
+            <div class="pwa-install-steps">
+                <div class="pwa-install-step">
+                    <svg class="pwa-share-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/>
+                        <polyline points="16 6 12 2 8 6"/>
+                        <line x1="12" y1="2" x2="12" y2="15"/>
+                    </svg>
+                    <span>Tap <strong>Share</strong> in the toolbar below</span>
+                </div>
+                <div class="pwa-install-step">
+                    <svg class="pwa-add-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="4"/>
+                        <line x1="12" y1="8" x2="12" y2="16"/>
+                        <line x1="8" y1="12" x2="16" y2="12"/>
+                    </svg>
+                    <span>Then tap <strong>Add to Home Screen</strong></span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(banner);
+
+    // Animate in
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => banner.classList.add('visible'));
+    });
+
+    // Dismiss handler
+    banner.querySelector('.pwa-install-close').addEventListener('click', () => {
+        banner.classList.remove('visible');
+        setTimeout(() => banner.remove(), 350);
+        localStorage.setItem('pwa-install-dismissed', Date.now());
+    });
+}
+
 // ─── Boot ───────────────────────────────────────
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+    init();
+    // Slight delay so it doesn't compete with page load
+    setTimeout(showInstallBanner, 1500);
+});
