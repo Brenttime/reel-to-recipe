@@ -1453,6 +1453,211 @@ Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
 
 
 @mcp.tool()
+def import_liked_reels(max_pages: int = 50, dry_run: bool = True) -> str:
+    """Import recipe reels from your Instagram liked posts.
+
+    Fetches your liked reels, classifies them using a local LLM (Gemma 4 on Brain)
+    to identify cooking tutorials vs restaurant reviews/non-food, then converts
+    each recipe reel into a structured recipe in OnlyPans.
+
+    Args:
+        max_pages: Maximum pages of likes to fetch (21 items per page). Default 50.
+                   Use a small number (5-10) for testing.
+        dry_run: If True (default), only classify and report results without converting.
+                 Set False to actually run the conversion pipeline on identified recipes.
+
+    Returns:
+        Summary of classified and imported reels.
+    """
+    import http.cookiejar
+    import re as _re
+    from pathlib import Path
+
+    # ── Load Instagram session cookies ──
+    cookies_path = Path(__file__).parent / "cookies.txt"
+    if not cookies_path.exists():
+        return "Error: cookies.txt not found. Run yt-dlp --cookies-from-browser to export Instagram session."
+
+    cj = http.cookiejar.MozillaCookieJar(str(cookies_path))
+    cj.load(ignore_discard=True, ignore_expires=True)
+
+    cookies = {}
+    for c in cj:
+        cookies[c.name] = c.value
+
+    csrf = cookies.get("csrftoken", "")
+    if not csrf:
+        return "Error: No csrftoken in cookies.txt. Session may be expired."
+
+    # yt-dlp Instagram UA — must match the session's original UA
+    YT_DLP_UA = (
+        "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro Build/T1B3.230222.007; wv) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.6099.230 "
+        "Mobile Safari/537.36 Instagram 317.0.0.34.109 Android "
+        "(33/13; 560dpi; 1440x2891; Google/google; Pixel 7 Pro; cheetah; tensor; en_US; 562916418)"
+    )
+
+    try:
+        from curl_cffi import requests as curl_requests
+    except ImportError:
+        return "Error: curl_cffi not installed in venv."
+
+    ig_headers = {
+        "User-Agent": YT_DLP_UA,
+        "X-CSRFToken": csrf,
+        "X-IG-App-ID": "936619743392459",
+        "X-Requested-With": "XMLHttpRequest",
+        "Referer": "https://www.instagram.com/",
+        "Cookie": "; ".join([f"{k}={v}" for k, v in cookies.items()]),
+    }
+
+    # ── Phase 1: Fetch liked reels ──
+    all_reels = []
+    max_id = None
+
+    for page in range(max_pages):
+        url = "https://www.instagram.com/api/v1/feed/liked/"
+        if max_id:
+            url += f"?max_id={max_id}"
+
+        try:
+            resp = curl_requests.get(url, headers=ig_headers, timeout=15)
+        except Exception as e:
+            break
+
+        if resp.status_code == 400 and "useragent mismatch" in resp.text:
+            return "Error: Instagram session UA mismatch. Re-export cookies with yt-dlp."
+        if resp.status_code != 200:
+            break
+
+        data = resp.json()
+        items = data.get("items", [])
+        more = data.get("more_available", False)
+        max_id = data.get("next_max_id")
+
+        for item in items:
+            media = item.get("media_or_ad", item)
+            code = media.get("code", "")
+            product_type = media.get("product_type", "")
+            if product_type == "clips" and code:
+                caption = media.get("caption", {})
+                text = (caption.get("text", "") if caption else "")
+                user = media.get("user", {}).get("username", "?")
+                all_reels.append({
+                    "url": f"https://www.instagram.com/reel/{code}/",
+                    "user": user,
+                    "caption": text,
+                })
+
+        if not more or not max_id:
+            break
+        time.sleep(0.5)
+
+    if not all_reels:
+        return "No liked reels found. Check if session is valid."
+
+    # ── Phase 2: Classify via Brain (local Gemma 4) ──
+    BRAIN_URL = "http://192.168.4.55:8080/v1/chat/completions"
+    BATCH_SIZE = 25
+    recipe_reels = []
+    skip_reels = []
+
+    for batch_start in range(0, len(all_reels), BATCH_SIZE):
+        batch = all_reels[batch_start:batch_start + BATCH_SIZE]
+
+        lines = []
+        for i, r in enumerate(batch):
+            cap = r["caption"][:120].replace("\n", " ").strip()
+            lines.append(f"{i+1}. @{r['user']}: {cap}")
+
+        prompt = (
+            "Classify each reel: RECIPE (teaching how to make food/drinks at home) "
+            "or SKIP (restaurants, travel, non-food, just eating).\n"
+            "Reply ONLY number and label:\n1. RECIPE\n2. SKIP\n\n"
+            + "\n".join(lines)
+        )
+
+        try:
+            resp = curl_requests.post(
+                BRAIN_URL,
+                json={
+                    "model": "gemma-4-12b-it",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 250,
+                    "temperature": 0.1,
+                },
+                timeout=90,
+            )
+            if resp.status_code != 200:
+                continue
+
+            content = resp.json()["choices"][0]["message"]["content"]
+            for line in content.strip().split("\n"):
+                match = _re.match(r"(\d+)\.\s*(RECIPE|SKIP)", line.strip())
+                if match:
+                    idx = int(match.group(1)) - 1
+                    if 0 <= idx < len(batch):
+                        if match.group(2) == "RECIPE":
+                            recipe_reels.append(batch[idx])
+                        else:
+                            skip_reels.append(batch[idx])
+        except Exception:
+            continue
+
+    # ── Phase 3: Convert recipes (or report dry run) ──
+    results = []
+    results.append(f"📊 Scanned {len(all_reels)} liked reels ({page + 1} pages)")
+    results.append(f"🍳 Classified as RECIPE: {len(recipe_reels)}")
+    results.append(f"⏭️ Classified as SKIP: {len(skip_reels)}")
+    unclassified = len(all_reels) - len(recipe_reels) - len(skip_reels)
+    if unclassified:
+        results.append(f"❓ Unclassified (LLM truncation): {unclassified}")
+    results.append("")
+
+    if dry_run:
+        results.append("🔍 DRY RUN — recipes found but not imported:")
+        results.append("")
+        for i, r in enumerate(recipe_reels, 1):
+            cap = r["caption"][:60].replace("\n", " ").strip()
+            results.append(f"{i}. @{r['user']} — {cap}")
+            results.append(f"   {r['url']}")
+        results.append("")
+        results.append("Set dry_run=False to import these into OnlyPans.")
+    else:
+        results.append("🚀 Importing recipes into OnlyPans...")
+        results.append("")
+        imported = 0
+        skipped_dupes = 0
+        failed = 0
+
+        for i, r in enumerate(recipe_reels, 1):
+            reel_url = r["url"]
+            # Check for duplicate first
+            existing = _check_duplicate(reel_url)
+            if existing:
+                skipped_dupes += 1
+                results.append(f"  ⏭️ {i}. @{r['user']} — already in cookbook")
+                continue
+
+            try:
+                convert_reel_to_recipe(reel_url)
+                imported += 1
+                cap = r["caption"][:40].replace("\n", " ").strip()
+                results.append(f"  ✅ {i}. @{r['user']} — {cap}")
+            except Exception as e:
+                failed += 1
+                results.append(f"  ❌ {i}. @{r['user']} — {str(e)[:50]}")
+
+            # Rate limit between conversions (IG download + whisper + OCR is heavy)
+            time.sleep(2)
+
+        results.append("")
+        results.append(f"✅ Imported: {imported} | ⏭️ Dupes skipped: {skipped_dupes} | ❌ Failed: {failed}")
+
+    return "\n".join(results)
+
+
+@mcp.tool()
 def convert_reel_to_recipe(url: str, force: bool = False) -> str:
     """Convert an Instagram Reel, TikTok, or recipe blog URL into a structured recipe.
 
