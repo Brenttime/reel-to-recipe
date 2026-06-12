@@ -902,6 +902,7 @@ function renderModal(recipe) {
             <button class="btn-add-list ${inCart ? 'in-cart' : ''}" id="addToListBtn">
                 ${inCart ? '✓ In Shopping List' : '🛒 Add to Shopping List'}
             </button>
+            <button class="btn-meal-plan" id="addToMealPlanBtn">📅 Add to Meal Plan</button>
             ${recipe.instructions.length > 0 ? `
                 <button class="btn-cook" id="startCookModeBtn">${isDrinkRecipe(recipe) ? '🍸 Start Mixing' : '👨‍🍳 Start Cooking'}</button>
             ` : ''}
@@ -940,6 +941,16 @@ function renderModal(recipe) {
     const cookBtn = document.getElementById('startCookModeBtn');
     if (cookBtn) {
         cookBtn.addEventListener('click', () => openCookMode(recipe));
+    }
+
+    // Bind add to meal plan button (opens radial menu)
+    const mealPlanBtn = document.getElementById('addToMealPlanBtn');
+    if (mealPlanBtn) {
+        mealPlanBtn.addEventListener('click', () => {
+            if (window.openMealPlanRadial) {
+                window.openMealPlanRadial(recipe.id, recipe.title);
+            }
+        });
     }
 
     // Bind share button

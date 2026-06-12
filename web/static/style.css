@@ -2006,6 +2006,7 @@ body {
 
 .modal-action-bar {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     margin-top: 24px;
     padding-top: 20px;
@@ -2059,6 +2060,28 @@ body {
     background: #0056CC;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+.btn-meal-plan {
+    flex: 1;
+    padding: 14px 20px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--glass-border);
+    background: var(--surface);
+    backdrop-filter: blur(12px);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    color: var(--text-secondary);
+    font-family: inherit;
+}
+
+.btn-meal-plan:hover {
+    background: rgba(52, 199, 89, 0.1);
+    color: #34c759;
+    border-color: rgba(52, 199, 89, 0.3);
+    transform: translateY(-1px);
 }
 
 @media (max-width: 768px) {
