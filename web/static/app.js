@@ -2178,6 +2178,8 @@ function doCloseModal() {
         _modalTouchHandler = null;
     }
     document.body.style.overflow = '';
+    // iOS: force viewport back to correct position after keyboard may have shifted it
+    window.scrollTo(0, 0);
     currentRecipe = null;
     // Remove discard dialog if present
     const dialog = document.getElementById('discardEditDialog');
@@ -2571,6 +2573,48 @@ function showInstallBanner() {
 }
 
 // ─── Boot ───────────────────────────────────────
+// ─── iOS Visual Viewport Fix ───────────────────────────────────────────────
+// On iOS Safari (especially PWA/standalone), the keyboard resizes the visual
+// viewport but position:fixed elements and vh units still reference the layout
+// viewport. This causes modals to appear offset after keyboard dismissal.
+// We track the actual visual viewport height via a CSS custom property.
+(function initVisualViewportHandler() {
+    function setVh() {
+        // Use visualViewport.height if available (iOS Safari, Chrome)
+        // Fall back to window.innerHeight
+        const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight) * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+    }
+
+    // Set initial value
+    setVh();
+
+    if (window.visualViewport) {
+        // Listen for viewport resize (keyboard open/close, orientation change)
+        window.visualViewport.addEventListener('resize', setVh);
+        window.visualViewport.addEventListener('scroll', () => {
+            // iOS sometimes scrolls the visual viewport offset — reset it
+            // only when a modal is open to prevent content jumping
+            const overlay = document.getElementById('modalOverlay');
+            if (overlay && overlay.classList.contains('active')) {
+                // Nudge the viewport back to top to prevent offset drift
+                requestAnimationFrame(() => {
+                    window.scrollTo(0, 0);
+                });
+            }
+        });
+    } else {
+        // Fallback: listen for resize (covers orientation change, etc.)
+        window.addEventListener('resize', setVh);
+    }
+
+    // Also update on orientation change (belt-and-suspenders)
+    window.addEventListener('orientationchange', () => {
+        setTimeout(setVh, 100);
+        setTimeout(setVh, 300);
+    });
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
     init();
     // Slight delay so it doesn't compete with page load

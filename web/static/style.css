@@ -3,6 +3,8 @@
    ============================================ */
 
 :root {
+    /* iOS visual viewport height — updated by JS for keyboard handling */
+    --vh: 1vh;
     --glass-bg: rgba(255, 255, 255, 0.12);
     --glass-border: rgba(255, 255, 255, 0.25);
     --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
@@ -670,7 +672,12 @@ body {
 
 .modal-overlay {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* Use calc(var(--vh, 1vh) * 100) so iOS visual viewport is tracked */
+    height: 100%;
+    height: calc(var(--vh, 1vh) * 100);
     background: rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
@@ -682,6 +689,8 @@ body {
     pointer-events: none;
     transition: opacity 0.3s ease;
     padding: 24px;
+    /* Prevent iOS from scrolling behind the modal */
+    overscroll-behavior: none;
 }
 
 .modal-overlay.active {
@@ -695,7 +704,7 @@ body {
     border-radius: var(--radius-xl);
     max-width: 640px;
     width: 100%;
-    max-height: 85vh;
+    max-height: calc(var(--vh, 1vh) * 85);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
@@ -704,9 +713,6 @@ body {
     position: relative;
     transform: scale(0.9) translateY(20px);
     transition: var(--spring);
-    /* Promote to own compositor layer for smooth scroll */
-    will-change: transform;
-    -webkit-transform: translateZ(0);
 }
 
 .modal-overlay.active .glass-modal {
@@ -1255,7 +1261,7 @@ body {
     .glass-modal {
         padding: 24px;
         border-radius: var(--radius-lg);
-        max-height: 90vh;
+        max-height: calc(var(--vh, 1vh) * 90);
     }
 
     .modal-title {
@@ -1583,7 +1589,7 @@ body {
 .shopping-panel {
     max-width: 560px;
     width: 100%;
-    max-height: 85vh;
+    max-height: calc(var(--vh, 1vh) * 85);
     overflow-y: auto;
 }
 
