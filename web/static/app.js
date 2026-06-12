@@ -902,11 +902,11 @@ function renderModal(recipe) {
             <button class="btn-add-list ${inCart ? 'in-cart' : ''}" id="addToListBtn">
                 ${inCart ? '✓ In Shopping List' : '🛒 Add to Shopping List'}
             </button>
-            <button class="btn-meal-plan" id="addToMealPlanBtn">📅 Add to Meal Plan</button>
             ${recipe.instructions.length > 0 ? `
                 <button class="btn-cook" id="startCookModeBtn">${isDrinkRecipe(recipe) ? '🍸 Start Mixing' : '👨‍🍳 Start Cooking'}</button>
             ` : ''}
         </div>
+        <button class="btn-meal-plan" id="addToMealPlanBtn">📅 Add to Meal Plan</button>
     `;
 
     // Bind action buttons

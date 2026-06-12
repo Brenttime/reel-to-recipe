@@ -2063,7 +2063,7 @@ body {
 }
 
 .btn-meal-plan {
-    flex: 1;
+    width: 100%;
     padding: 14px 20px;
     border-radius: var(--radius-md);
     border: 1px solid var(--glass-border);
@@ -2075,6 +2075,7 @@ body {
     transition: var(--transition);
     color: var(--text-secondary);
     font-family: inherit;
+    margin-top: 10px;
 }
 
 .btn-meal-plan:hover {
