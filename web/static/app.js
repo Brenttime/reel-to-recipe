@@ -1119,13 +1119,6 @@ async function initAddedByDropdown() {
         input.value = option.dataset.name;
         dropdown.classList.remove('open');
         input.blur();
-        // iOS keyboard dismissal fix: reset viewport scroll after keyboard hides
-        setTimeout(() => {
-            window.scrollTo(0, 0);
-            document.body.scrollTop = 0;
-            const modal = document.getElementById('recipeModal');
-            if (modal) modal.scrollTop = modal.scrollTop; // force reflow
-        }, 300);
     });
 
     // Close dropdown on outside click
@@ -1664,21 +1657,6 @@ function openEditMode(recipe) {
     requestAnimationFrame(() => {
         editFormSnapshot = getEditFormSnapshot();
     });
-
-    // iOS keyboard dismissal fix: when any input/textarea loses focus,
-    // the viewport may stay pushed up. Force it back after keyboard animates away.
-    const form = document.getElementById('editForm');
-    if (form) {
-        form.querySelectorAll('input, textarea').forEach(el => {
-            el.addEventListener('blur', () => {
-                setTimeout(() => {
-                    window.scrollTo(0, 0);
-                    document.body.scrollTop = 0;
-                    document.documentElement.scrollTop = 0;
-                }, 300);
-            });
-        });
-    }
 }
 
 async function saveRecipe(id) {

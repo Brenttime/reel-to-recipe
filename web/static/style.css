@@ -704,9 +704,6 @@ body {
     position: relative;
     transform: scale(0.9) translateY(20px);
     transition: var(--spring);
-    /* Promote to own compositor layer for smooth scroll */
-    will-change: transform;
-    -webkit-transform: translateZ(0);
 }
 
 .modal-overlay.active .glass-modal {
