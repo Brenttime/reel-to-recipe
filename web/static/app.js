@@ -1493,10 +1493,16 @@ function mergeIngredients(allIngredients) {
 let cookModeStep = 0;
 let cookModeRecipe = null;
 
+var _cookModeScrollLockPos = 0;
 function openCookMode(recipe) {
     cookModeRecipe = recipe;
     cookModeStep = 0;
     cookModeEl.classList.add('active');
+    // iOS scroll lock: freeze body at current scroll position
+    _cookModeScrollLockPos = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${_cookModeScrollLockPos}px`;
+    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
     renderCookModeStep();
     requestWakeLock();
@@ -1504,7 +1510,12 @@ function openCookMode(recipe) {
 
 function closeCookMode() {
     cookModeEl.classList.remove('active');
+    // iOS scroll restore: unfreeze body and restore exact scroll position
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
     document.body.style.overflow = '';
+    window.scrollTo(0, _cookModeScrollLockPos);
     cookModeRecipe = null;
     releaseWakeLock();
 }
@@ -1741,8 +1752,14 @@ async function shareRecipe(recipe) {
 
 
 // ─── Spotlight (macOS-style convert overlay) ─────
+var _spotlightScrollLockPos = 0;
 function openSpotlight() {
     spotlightOverlay.classList.add('active');
+    // iOS scroll lock: freeze body at current scroll position
+    _spotlightScrollLockPos = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${_spotlightScrollLockPos}px`;
+    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
     const input = document.getElementById('convertInput');
     // Clear previous state
@@ -1756,7 +1773,12 @@ function openSpotlight() {
 
 function closeSpotlight() {
     spotlightOverlay.classList.remove('active');
+    // iOS scroll restore: unfreeze body and restore exact scroll position
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
     document.body.style.overflow = '';
+    window.scrollTo(0, _spotlightScrollLockPos);
 }
 
 function toggleSpotlight() {
@@ -2113,6 +2135,7 @@ function setupListeners() {
 }
 
 let _modalTouchHandler = null;
+let _modalScrollLockPos = 0;
 
 function openModal() {
     modalOverlay.classList.add('active');
@@ -2127,6 +2150,11 @@ function openModal() {
         }
     };
     modalOverlay.addEventListener('touchmove', _modalTouchHandler, { passive: false });
+    // iOS scroll lock: freeze body at current scroll position
+    _modalScrollLockPos = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${_modalScrollLockPos}px`;
+    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
     // Update URL to permalink
     if (currentRecipe) {
@@ -2155,7 +2183,12 @@ function doCloseModal() {
         modalOverlay.removeEventListener('touchmove', _modalTouchHandler);
         _modalTouchHandler = null;
     }
+    // iOS scroll restore: unfreeze body and restore exact scroll position
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
     document.body.style.overflow = '';
+    window.scrollTo(0, _modalScrollLockPos);
     currentRecipe = null;
     // Remove discard dialog if present
     const dialog = document.getElementById('discardEditDialog');
