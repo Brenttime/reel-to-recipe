@@ -82,12 +82,32 @@ def _report_progress(job_id: str, step: str, detail: str = ""):
         pass  # Fire-and-forget — never block conversion on progress reporting
 
 
+def _normalize_url(url: str) -> str:
+    """Strip tracking/share params from social media URLs for consistent dedup.
+
+    Instagram: remove ?igsh=, ?utm_*, etc. Keep only the reel/post path.
+    TikTok: remove query params, keep video path.
+    Other URLs: return as-is.
+    """
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower().replace("www.", "")
+
+    if "instagram.com" in domain or "tiktok.com" in domain:
+        # Strip all query params — the path alone identifies the content
+        clean = urlunparse((parsed.scheme, parsed.netloc, parsed.path.rstrip("/") + "/", "", "", ""))
+        return clean
+
+    return url
+
+
 def _check_duplicate(url: str) -> dict | None:
     """Early duplicate check against OnlyPans DB. Returns existing recipe dict or None."""
+    normalized = _normalize_url(url)
     try:
         resp = httpx.get(
             f"{RECIPE_GLASS_URL}/api/recipes",
-            params={"source_url": url},
+            params={"source_url": normalized},
             timeout=5
         )
         if resp.status_code == 200:
@@ -96,6 +116,20 @@ def _check_duplicate(url: str) -> dict | None:
                 return data[0]
     except Exception:
         pass
+    # Also check with original URL in case older entries have params
+    if normalized != url:
+        try:
+            resp = httpx.get(
+                f"{RECIPE_GLASS_URL}/api/recipes",
+                params={"source_url": url},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data:
+                    return data[0]
+        except Exception:
+            pass
     return None
 
 
@@ -1297,11 +1331,11 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, force: bool
         if not title:
             title = "Untitled Recipe"
 
-        # Build payload
+        # Build payload (normalize URL for consistent dedup)
         payload = {
             "title": title,
             "creator": creator,
-            "source_url": url,
+            "source_url": _normalize_url(url),
             "platform": platform,
             "servings": servings,
             "serving_size": serving_size,
@@ -1315,13 +1349,13 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, force: bool
             "tags": tags,
         }
 
-        # Check for duplicate by source_url
+        # Check for duplicate by source_url (normalized)
         if url:
             existing = None
             try:
                 existing = httpx.get(
                     f"{RECIPE_GLASS_URL}/api/recipes",
-                    params={"source_url": url},
+                    params={"source_url": _normalize_url(url)},
                     timeout=5
                 )
             except Exception:
