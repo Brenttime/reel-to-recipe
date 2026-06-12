@@ -32,6 +32,27 @@ _oauth_states = {}  # {state_token: expiry_timestamp}
 _STATE_TTL = 300  # 5 minutes
 
 
+def _pop_valid_state(state):
+    """Check if state exists and is not expired. Does NOT consume it."""
+    if state not in _oauth_states:
+        return False
+    if _oauth_states[state] < time.time():
+        del _oauth_states[state]
+        return False
+    return True
+
+
+def _consume_valid_state(state):
+    """Check if state exists and is not expired, then consume (delete) it."""
+    if state not in _oauth_states:
+        return False
+    if _oauth_states[state] < time.time():
+        del _oauth_states[state]
+        return False
+    del _oauth_states[state]
+    return True
+
+
 def init_auth_db(db_path):
     """Create the users table if it doesn't exist."""
     import sqlite3
@@ -138,7 +159,7 @@ def callback():
 
     # Verify state before rendering page (prevents forged callbacks)
     valid_state = False
-    if state in _oauth_states:
+    if _pop_valid_state(state):
         valid_state = True
     elif state == session.get('oauth_state'):
         valid_state = True
@@ -213,8 +234,7 @@ def callback_exchange():
 
     # Verify state
     valid = False
-    if state and state in _oauth_states:
-        del _oauth_states[state]
+    if state and _consume_valid_state(state):
         valid = True
     elif state and state == session.pop('oauth_state', None):
         valid = True
