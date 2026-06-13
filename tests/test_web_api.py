@@ -67,7 +67,7 @@ class TestRecipesList:
 class TestRecipeDetail:
     """Tests for GET /api/recipes/<id>."""
 
-    def test_get_recipe_by_id(self, http, base_url):
+    def test_get_recipe_by_id(self, http, base_url, fresh_db):
         """GET /api/recipes/1 returns full recipe with expected shape."""
         resp = http.get(f"{base_url}/api/recipes/1")
         assert resp.status_code == 200
