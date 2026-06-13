@@ -682,7 +682,7 @@ body {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
-    padding: 12vh 24px 24px;
+    padding: 5vh 24px 24px;
 }
 
 .modal-overlay.active {
