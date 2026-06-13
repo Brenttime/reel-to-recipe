@@ -2155,23 +2155,20 @@ function setupListeners() {
 
 let _modalTouchHandler = null;
 let _modalVVHandler = null;
-let _modalFocusOutHandler = null;
 let _modalSavedScroll = 0;
 let _modalOpenRAF = null;
 
 function openModal() {
-    // iOS PWA: freeze body at current scroll position (gallery stays visually in place)
+    // Save scroll position for restoration on close
     _modalSavedScroll = window.scrollY;
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${_modalSavedScroll}px`;
-    document.body.style.left = '0';
-    document.body.style.right = '0';
+    // Lock background scroll without repositioning body (avoids iOS repaint jump)
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
     // Reset modal scroll to top for fresh recipe view
     const modal = modalOverlay.querySelector('.glass-modal');
     if (modal) modal.scrollTop = 0;
-    // Reveal overlay after body is frozen (avoids jitter from simultaneous layout shift + animation)
+    // Reveal overlay
     if (_modalOpenRAF) cancelAnimationFrame(_modalOpenRAF);
     _modalOpenRAF = requestAnimationFrame(() => {
         _modalOpenRAF = null;
@@ -2190,28 +2187,13 @@ function openModal() {
         var fullHeight = window.visualViewport.height;
         _modalVVHandler = function() {
             if (window.visualViewport.height >= fullHeight * 0.9) {
-                // Keyboard dismissed — force iOS to recalculate position:fixed layout
-                // 1. Reset any rogue document scroll (iOS may have scrolled it)
-                if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
-                // 2. Force reflow on overlay without visible flicker
+                // Keyboard dismissed — nudge overlay to prevent drift
                 modalOverlay.style.transform = 'translateZ(0)';
                 void modalOverlay.offsetHeight;
                 modalOverlay.style.transform = '';
             }
         };
         window.visualViewport.addEventListener('resize', _modalVVHandler);
-    }
-    // Backup: focusout on inputs also resets scroll (catches cases where visualViewport doesn't fire)
-    if (!_modalFocusOutHandler) {
-        _modalFocusOutHandler = function(e) {
-            var tag = e.target && e.target.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-                setTimeout(function() {
-                    if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
-                }, 150);
-            }
-        };
-        modalOverlay.addEventListener('focusout', _modalFocusOutHandler);
     }
     // Update URL to permalink
     if (currentRecipe) {
@@ -2221,6 +2203,8 @@ function openModal() {
 }
 
 function closeModal() {
+    // No-op if modal isn't open
+    if (!modalOverlay.classList.contains('active') && !_modalOpenRAF) return;
     if (isEditMode && hasEditFormChanged()) {
         showEditDiscardDialog();
         return;
@@ -2249,25 +2233,16 @@ function doCloseModal() {
     if (location.pathname.startsWith('/recipe/')) {
         history.pushState({}, '', '/');
     }
-    // iOS PWA scroll unlock: unfreeze body and restore gallery scroll
-    document.body.style.position = '';
-    document.body.style.top = '';
-    document.body.style.left = '';
-    document.body.style.right = '';
+    // Unlock background scroll
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
-    document.body.style.overscrollBehavior = '';
-    // Restore scroll position after body is unfrozen
+    document.body.style.touchAction = '';
+    // Restore scroll position
     window.scrollTo(0, _modalSavedScroll);
     // Remove visualViewport listener
     if (_modalVVHandler && window.visualViewport) {
         window.visualViewport.removeEventListener('resize', _modalVVHandler);
         _modalVVHandler = null;
-    }
-    // Remove focusout handler
-    if (_modalFocusOutHandler) {
-        modalOverlay.removeEventListener('focusout', _modalFocusOutHandler);
-        _modalFocusOutHandler = null;
     }
     currentRecipe = null;
     // Remove discard dialog if present

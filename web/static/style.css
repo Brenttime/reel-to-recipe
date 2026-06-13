@@ -711,12 +711,14 @@ body {
     padding: 36px 36px 48px;
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2), var(--glass-inner-glow);
     position: relative;
-    transform: scale(0.97) translateY(8px);
-    transition: var(--spring);
+    transform: translateY(10px);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.0), opacity 0.2s ease;
 }
 
 .modal-overlay.active .glass-modal {
-    transform: scale(1) translateY(0);
+    transform: translateY(0);
+    opacity: 1;
 }
 
 .modal-close {

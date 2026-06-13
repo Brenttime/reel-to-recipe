@@ -1002,21 +1002,21 @@ class TestResponsiveViewportBugs:
         assert abs(scroll_after - scroll_before) < 10, \
             f"Scroll position changed: {scroll_before} → {scroll_after}"
 
-    def test_body_not_stuck_fixed_after_modal_close(self, page: Page):
-        """body.style.position should be cleared after modal close."""
+    def test_body_not_stuck_locked_after_modal_close(self, page: Page):
+        """body.style.overflow should be cleared after modal close."""
         load_app(page)
         open_first_recipe_modal(page)
 
-        # Body should be fixed while modal is open
-        pos = page.evaluate("document.body.style.position")
-        assert pos == "fixed", "Body should be fixed while modal open"
+        # Body should have scroll locked while modal is open
+        overflow = page.evaluate("document.body.style.overflow")
+        assert overflow == "hidden", "Body should be overflow:hidden while modal open"
 
         page.keyboard.press("Escape")
         page.wait_for_timeout(500)
 
-        # Body should be unfixed
-        pos = page.evaluate("document.body.style.position")
-        assert pos == "", f"Body position still '{pos}' after modal close"
+        # Body should be unlocked
+        overflow = page.evaluate("document.body.style.overflow")
+        assert overflow == "", f"Body overflow still '{overflow}' after modal close"
 
     def test_body_not_stuck_after_shopping_close(self, page: Page):
         """body.style.position should be cleared after shopping panel close."""
