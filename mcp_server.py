@@ -930,25 +930,7 @@ def transcribe(audio_path: str) -> str:
     return " ".join(segment.text.strip() for segment in segments)
 
 
-def _strip_hermes_chrome(output: str) -> str:
-    """Strip the hermes UI chrome — extract content between the box borders."""
-    lines = output.split("\n")
-    in_box = False
-    content_lines = []
-    for line in lines:
-        if "╭" in line:
-            in_box = True
-            continue
-        if "╰" in line:
-            break
-        if in_box:
-            cleaned = line.strip()
-            if cleaned.startswith("│"):
-                cleaned = cleaned[1:]
-            if cleaned.endswith("│"):
-                cleaned = cleaned[:-1]
-            content_lines.append(cleaned.strip())
-    return "\n".join(content_lines).strip() if content_lines else output
+
 
 
 def _call_llm(prompt: str) -> str:
@@ -987,6 +969,8 @@ def _call_llm(prompt: str) -> str:
                 {"role": "user", "content": prompt},
             ],
         )
+        if not response.choices:
+            raise RuntimeError("LLM returned no choices in response")
         content = response.choices[0].message.content
         if not content:
             raise RuntimeError("LLM returned empty response")

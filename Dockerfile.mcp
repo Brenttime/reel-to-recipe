@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Python dependencies
+# NOTE: These mirror pyproject.toml [project].dependencies.
+# Keep both in sync when adding/updating packages.
 RUN pip install --no-cache-dir \
     "curl-cffi>=0.10,<0.15" \
     "httpx>=0.28.1" \
