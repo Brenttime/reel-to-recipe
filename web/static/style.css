@@ -1417,8 +1417,8 @@ body {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.35);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
     z-index: 500;
     display: flex;
     flex-direction: column;
@@ -1426,19 +1426,13 @@ body {
     justify-content: flex-start;
     padding-top: 18vh;
     opacity: 0;
-    visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.2s ease, visibility 0s 0.2s;
-    contain: layout style paint;
+    transition: opacity 0.2s ease;
 }
 
 .spotlight-overlay.active {
     opacity: 1;
-    visibility: visible;
     pointer-events: all;
-    backdrop-filter: blur(12px) saturate(120%);
-    -webkit-backdrop-filter: blur(12px) saturate(120%);
-    transition: opacity 0.2s ease, visibility 0s 0s;
 }
 
 .spotlight-bar {
@@ -2625,18 +2619,14 @@ body {
 @media all and (display-mode: standalone) {
     .convert-queue-bar {
         /*
-         * Expand AROUND the physical Dynamic Island.
-         * iPhone 14 Pro+: island is ~126×37px, starts ~11px from screen top.
-         * iPhone 16: island is slightly wider (~162px with action button area).
-         * We make our pill START at the island's top edge and extend DOWN past it.
-         * The glow ring wraps the whole pill (= wraps around the island).
-         * Content (text + progress) lives below the physical cutout.
-         *
-         * IMPORTANT: No transform, animation, transition, backdrop-filter, or
-         * will-change on this element. Any of these cause position:fixed to
-         * jitter during momentum scroll on iOS standalone PWA (WebKit bug).
-         * Centering via left:0 + right:0 + margin:auto (no transform needed).
+         * position:sticky — handled by WebKit's layout engine, not compositor.
+         * Zero JS, zero frame lag. Different code path than position:fixed,
+         * so it doesn't jitter when sibling fixed overlays (spotlight) change state.
+         * The bar is the first child of <body>, so sticky+top:11px pins it
+         * at 11px from viewport as soon as the user scrolls.
          */
+        position: -webkit-sticky;
+        position: sticky;
         top: 11px;
         left: 0;
         right: 0;
@@ -2656,9 +2646,6 @@ body {
             0 8px 32px rgba(0, 0, 0, 0.4),
             0 2px 8px rgba(0, 0, 0, 0.2);
         overflow: visible;
-        /* Force own GPU compositing layer — insulates from other layers recompositing */
-        transform: translate3d(0, 0, 0);
-        -webkit-transform: translate3d(0, 0, 0);
         transition: none;
         animation: none;
     }
