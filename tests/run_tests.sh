@@ -8,6 +8,8 @@
 #   ./tests/run_tests.sh -m web       # Only web API tests
 #   ./tests/run_tests.sh -m mcp       # Only MCP server tests
 #   ./tests/run_tests.sh -k normalize # Only URL normalization tests
+#   ./tests/run_tests.sh -k ui        # Only Playwright UI tests
+#   ./tests/run_tests.sh --headed     # UI tests with visible browser
 #
 set -euo pipefail
 
