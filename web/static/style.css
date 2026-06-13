@@ -1293,6 +1293,10 @@ body {
 
 /* Standalone PWA — push content below Dynamic Island / notch */
 @media all and (display-mode: standalone) {
+    body {
+        /* Prevent elastic overscroll that makes fixed elements appear to move */
+        overscroll-behavior-y: none;
+    }
     .app-container {
         padding-top: calc(12px + env(safe-area-inset-top, 0px));
     }
@@ -2597,6 +2601,16 @@ body {
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
     transition: background 0.3s ease, border-color 0.3s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Hidden by default — use visibility/opacity so iOS keeps the compositor layer alive */
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.convert-queue-bar.queue-bar-visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
 }
 
 /* Hidden glow layer — only used in standalone mode */
@@ -2615,18 +2629,18 @@ body {
 @media all and (display-mode: standalone) {
     .convert-queue-bar {
         /*
-         * Expand AROUND the physical Dynamic Island.
-         * iPhone 14 Pro+: island is ~126×37px, starts ~11px from screen top.
-         * iPhone 16: island is slightly wider (~162px with action button area).
-         * We make our pill START at the island's top edge and extend DOWN past it.
-         * The glow ring wraps the whole pill (= wraps around the island).
-         * Content (text + progress) lives below the physical cutout.
+         * Keep position:fixed — it's the only thing that feels right.
+         * The jitter bug is caused by iOS WebKit's compositor corrupting
+         * fixed element layers after a sibling with backdrop-filter is shown.
+         * We fix this in JS by forcing a compositor layer reset on the bar
+         * after spotlight closes, rather than abandoning fixed positioning.
          */
+        position: fixed;
         top: 11px;
-        left: 50%;
-        right: auto;
-        transform: translateX(-50%);
-        /* Wide enough to encompass the island + breathing room */
+        left: 0;
+        right: 0;
+        margin-left: auto;
+        margin-right: auto;
         width: 200px;
         min-width: 200px;
         max-width: calc(100% - 32px);
@@ -2635,11 +2649,15 @@ body {
         border-bottom: none;
         border-radius: 36px;
         background: #000000;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
         box-shadow:
             0 8px 32px rgba(0, 0, 0, 0.4),
             0 2px 8px rgba(0, 0, 0, 0.2);
         overflow: visible;
-        animation: islandAppear 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        transition: none;
+        animation: none;
+        /* No transform/will-change — these create containing blocks that break fixed on iOS */
     }
 
     /* The animated glow ring — wraps around the entire pill (= around the island) */
@@ -2769,12 +2787,12 @@ body {
 
 @keyframes islandAppear {
     from {
-        transform: translateX(-50%) scaleX(0.3) scaleY(0.6);
         opacity: 0;
+        scale: 0.3 0.6;
     }
     to {
-        transform: translateX(-50%) scaleX(1) scaleY(1);
         opacity: 1;
+        scale: 1 1;
     }
 }
 
