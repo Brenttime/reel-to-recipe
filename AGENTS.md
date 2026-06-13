@@ -26,29 +26,29 @@ the filesystem and Docker. Make targeted, minimal changes that follow existing p
 
 ## Docker Commands
 
-The web app runs in Docker. To interact:
+The web app runs in Docker. **Always use the test environment for development/testing.**
 
 ```bash
-# Rebuild and restart (ALWAYS do this after web/ changes):
-docker compose up -d --build
+# Rebuild and restart TEST container (ALWAYS do this after web/ changes):
+docker compose -f docker-compose.test.yml up -d --build
 
 # View logs:
-docker logs reel-cookbook --tail 50
+docker logs reel-cookbook-test --tail 50
 
-# Execute commands inside the container:
-docker exec reel-cookbook <command>
+# Execute commands inside the test container:
+docker exec reel-cookbook-test <command>
 
 # Check DB directly:
-docker exec reel-cookbook python -c "
+docker exec reel-cookbook-test python -c "
 import sqlite3
 conn = sqlite3.connect('/data/recipes.db')
 # ... your query
 "
 ```
 
-**IMPORTANT**: After ANY change to files under `web/`, you MUST rebuild:
+**IMPORTANT**: After ANY change to files under `web/`, you MUST rebuild the TEST container:
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.test.yml up -d --build
 ```
 
 ## Key Files
@@ -176,18 +176,57 @@ Optional: `SECRET_KEY`, `SHOW_KOFI`, `DB_PATH` (default `/data/recipes.db`),
 - Instagram cookie in `~/cookies.txt` (yt-dlp Netscape format, expires June 2027)
 - Docker volume `cookbook-data` persists `/data` — never `docker compose down -v`
 
+## Testing Environment
+
+**IMPORTANT: Always develop and test against the TEST environment, never production.**
+
+| | Production | Test |
+|--|-----------|------|
+| Compose file | `docker-compose.yml` | `docker-compose.test.yml` |
+| Container | `reel-cookbook` | `reel-cookbook-test` |
+| Port | 5100 | **5101** |
+| Volume | `cookbook-data` | `cookbook-data-test` |
+| Env var | — | `TEST_MODE=1` |
+
+### Reset test environment (clean slate)
+```bash
+./scripts/reset_test_env.sh
+```
+This stops the test container, wipes the test volume, rebuilds, and seeds with sample data (10 recipes, 3 users, reviews, meal plan).
+
+### Build & verify against test
+```bash
+# 1. Build test container
+docker compose -f docker-compose.test.yml up -d --build
+
+# 2. Check it started clean
+docker logs reel-cookbook-test --tail 20
+
+# 3. Verify the endpoint works
+curl -s http://localhost:5101/api/recipes | python3 -c \
+  'import sys,json; d=json.load(sys.stdin); print(f"{len(d)} recipes")'
+```
+
+### Run scripts inside the test container
+```bash
+docker exec reel-cookbook-test python /app/scripts/seed_test_db.py
+```
+
+**DO NOT** run `docker compose up -d --build` (without `-f`) — that rebuilds production.
+**DO NOT** test against port 5100 — that is the live production app with real user data.
+
 ## Verification After Changes
 
 After modifying web app code:
 ```bash
-# 1. Rebuild
-docker compose up -d --build
+# 1. Rebuild TEST container
+docker compose -f docker-compose.test.yml up -d --build
 
 # 2. Check it started clean
-docker logs reel-cookbook --tail 20
+docker logs reel-cookbook-test --tail 20
 
 # 3. Verify the endpoint works
-curl -s http://localhost:5100/auth/login | head -5
+curl -s http://localhost:5101/api/recipes | head -5
 ```
 
 ## What NOT to Do
@@ -199,3 +238,4 @@ curl -s http://localhost:5100/auth/login | head -5
 - Don't use browser confirm()/alert() — use themed modals
 - Don't push to `stable` branch
 - Don't expose secrets in code — they come from `.env` via docker-compose
+- Don't test or rebuild against the production container (`reel-cookbook` / port 5100) — always use `docker-compose.test.yml` (`reel-cookbook-test` / port 5101)
