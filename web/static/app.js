@@ -2157,6 +2157,7 @@ let _modalTouchHandler = null;
 let _modalVVHandler = null;
 let _modalFocusOutHandler = null;
 let _modalSavedScroll = 0;
+let _modalOpenRAF = null;
 
 function openModal() {
     // iOS PWA: freeze body at current scroll position (gallery stays visually in place)
@@ -2167,10 +2168,15 @@ function openModal() {
     document.body.style.right = '0';
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
-    modalOverlay.classList.add('active');
     // Reset modal scroll to top for fresh recipe view
     const modal = modalOverlay.querySelector('.glass-modal');
     if (modal) modal.scrollTop = 0;
+    // Reveal overlay after body is frozen (avoids jitter from simultaneous layout shift + animation)
+    if (_modalOpenRAF) cancelAnimationFrame(_modalOpenRAF);
+    _modalOpenRAF = requestAnimationFrame(() => {
+        _modalOpenRAF = null;
+        modalOverlay.classList.add('active');
+    });
     // Prevent background scroll: block touchmove on overlay except inside .glass-modal
     _modalTouchHandler = function(e) {
         const modal = modalOverlay.querySelector('.glass-modal');
@@ -2225,6 +2231,11 @@ function closeModal() {
 function doCloseModal() {
     isEditMode = false;
     editFormSnapshot = null;
+    // Cancel pending open animation (prevents race if close fires before rAF)
+    if (_modalOpenRAF) {
+        cancelAnimationFrame(_modalOpenRAF);
+        _modalOpenRAF = null;
+    }
     modalOverlay.classList.remove('active');
     // Reset modal scroll so next open starts fresh
     const modal = modalOverlay.querySelector('.glass-modal');

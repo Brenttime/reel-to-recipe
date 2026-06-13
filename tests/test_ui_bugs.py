@@ -166,15 +166,18 @@ class TestStateLeaksBetweenOverlays:
         assert_overlay_closed(page, "#shoppingOverlay")
 
     def test_rapid_open_close_modal(self, page: Page):
-        """Rapidly open/close modal — no crash or stuck state."""
+        """Rapidly open/close modal on different cards — no crash or stuck state."""
         load_app(page)
         errors = collect_page_errors(page)
 
-        for _ in range(5):
-            page.locator("#recipeGrid .recipe-card").first.click()
+        cards = page.locator("#recipeGrid .recipe-card")
+        card_count = min(cards.count(), 5)
+        for i in range(card_count):
+            cards.nth(i).scroll_into_view_if_needed()
+            cards.nth(i).click()
             page.wait_for_timeout(100)
             page.keyboard.press("Escape")
-            page.wait_for_timeout(100)
+            page.wait_for_timeout(400)
 
         page.wait_for_timeout(300)
         assert len(errors) == 0, f"Uncaught exceptions during rapid open/close: {errors}"
@@ -1120,10 +1123,10 @@ class TestRaceConditions:
         page.wait_for_timeout(50)
         # Open recipe
         page.locator("#recipeGrid .recipe-card").first.click()
-        page.wait_for_timeout(50)
+        page.wait_for_timeout(100)
         # Close recipe
         page.keyboard.press("Escape")
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(400)
 
         assert len(errors) == 0, f"Errors during rapid overlay toggling: {errors}"
         # Everything should be closed
