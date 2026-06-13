@@ -954,16 +954,30 @@ def _strip_hermes_chrome(output: str) -> str:
 def _call_llm(prompt: str) -> str:
     """Call an OpenAI-compatible LLM API for recipe formatting.
 
-    Uses OPENAI_API_KEY and optionally OPENAI_BASE_URL from environment.
+    Uses OPENAI_API_KEY and OPENAI_BASE_URL from environment.
+    Supports standard OpenAI, Azure OpenAI, and any OpenAI-compatible API.
+    Set AZURE_OPENAI=1 to use Azure OpenAI client (requires api-version in URL or AZURE_API_VERSION env).
     Returns the response content string. Raises RuntimeError on failure.
     """
     api_key = os.environ.get("OPENAI_API_KEY", "")
     base_url = os.environ.get("OPENAI_BASE_URL") or None
+    use_azure = os.environ.get("AZURE_OPENAI", "").strip() in ("1", "true", "yes")
 
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY environment variable is not set")
 
-    client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=300.0)
+    if use_azure:
+        if not base_url:
+            raise RuntimeError("OPENAI_BASE_URL is required for Azure OpenAI (set to your Azure endpoint)")
+        api_version = os.environ.get("AZURE_API_VERSION", "2024-12-01-preview")
+        client = openai.AzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=base_url,
+            api_version=api_version,
+            timeout=300.0,
+        )
+    else:
+        client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=300.0)
 
     try:
         response = client.chat.completions.create(

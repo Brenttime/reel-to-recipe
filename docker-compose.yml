@@ -36,6 +36,8 @@ services:
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - OPENAI_API_KEY=${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env (use 'not-needed' for local models)}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:?Set OPENAI_BASE_URL in .env (e.g. http://YOUR_LLM_HOST:8080/v1)}
+      - AZURE_OPENAI=${AZURE_OPENAI:-}
+      - AZURE_API_VERSION=${AZURE_API_VERSION:-2024-12-01-preview}
       - WHISPER_DEVICE=cpu
       - WHISPER_COMPUTE_TYPE=int8
     depends_on:
