@@ -661,6 +661,7 @@ async function loadCategories() {
         renderCategoryChips(categories);
     } catch (e) {
         // Network failure — keep existing chips, don't crash
+        console.warn('loadCategories failed:', e.message);
     }
 }
 
