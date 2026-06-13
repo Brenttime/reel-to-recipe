@@ -106,4 +106,5 @@ Tips
 - **Transport:** `streamable-http` only. Not SSE. Not REST. Endpoint is `/mcp`.
 - **First call is slow:** Whisper model loads on first audio transcription.
 - **Instagram auth:** Optional. Only needed for age-restricted reels. Most work without cookies.
-- **Timeouts:** Set MCP client timeout to at least 120s for video conversions.
+- **Timeouts:** Set MCP client timeout to at least **300s** for video conversions with local LLMs (Gemma at ~9 tok/s takes ~150s just for the formatting step). Cloud LLMs (GPT-4o-mini) are much faster (~10s).
+- **LLM required:** The MCP server needs an OpenAI-compatible LLM API configured via `OPENAI_BASE_URL` in the container's environment. Without it, conversions will fail at the formatting step.

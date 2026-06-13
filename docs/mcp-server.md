@@ -1,5 +1,27 @@
 # MCP Server Implementation Notes
 
+## Deployment
+
+The MCP server runs as a Docker container (`onlypans-mcp`) alongside the web app:
+
+```bash
+docker compose up -d --build mcp-server
+```
+
+Container image: `python:3.11-slim` + ffmpeg + tesseract + yt-dlp + all Python deps.
+
+### Environment Variables
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OPENAI_BASE_URL` | ✅ | — | LLM API endpoint (e.g. `http://192.168.4.55:8080/v1`) |
+| `OPENAI_API_KEY` | ✅ | — | API key (use `not-needed` for local models) |
+| `LLM_MODEL` | ❌ | `gemma-4-12b-it` | Model name to request from the API |
+| `RECIPE_GLASS_URL` | ❌ | `http://reel-cookbook:5100` | Web app URL (inter-container) |
+
+### Volume Mounts
+- `cookbook-data:/data` — shared SQLite database with web app
+- `./cookies.txt:/app/cookies.txt` — Instagram session cookie (read-write, yt-dlp updates expiry)
+
 ## Transport
 - Uses `mcp` Python SDK (`FastMCP` class)
 - Streamable-http transport on `0.0.0.0:8001/mcp` for network access
@@ -19,18 +41,23 @@
 | `search_recipes(query?, category?)` | Search recipes by text or filter by category tag |
 
 ## Recipe Formatting Strategy
-The `convert_reel_to_recipe` tool sends caption, transcript, and OCR text to `hermes chat -q -m gpt-4o-mini` with this priority hierarchy:
+The `convert_reel_to_recipe` tool sends caption, transcript, and OCR text to an OpenAI-compatible LLM API (configured via `OPENAI_BASE_URL` and `LLM_MODEL` env vars) with this priority hierarchy:
 1. **Caption = authoritative** for ingredients, quantities, recipe name
 2. **OCR = secondary** for on-screen text overlays and recipe cards
 3. **Transcript = supplementary** for technique tips, cooking context, verbal instructions
 
 This multi-source approach compensates for Whisper's tendency to mishear ingredient names while still capturing technique details only mentioned verbally.
 
+### LLM Configuration
+The MCP server uses the OpenAI Python client (`openai` package) with a 300s timeout to support slow local models:
+- **Local Gemma** (default): `OPENAI_BASE_URL=http://<LAN_IP>:8080/v1`, `LLM_MODEL=gemma-4-12b-it`
+- **OpenAI**: `OPENAI_BASE_URL=https://api.openai.com/v1`, `LLM_MODEL=gpt-4o-mini`
+- **OpenRouter**: `OPENAI_BASE_URL=https://openrouter.ai/api/v1`, `LLM_MODEL=<model>`
+
+The 300s timeout accommodates local Gemma at ~9 tok/s processing large recipe prompts (scraped blog HTML).
+
 ### Caption Link Following
 When a reel's caption contains a URL to an external recipe page (e.g., thefoodie.menu, budgetbytes.com), the pipeline follows it through the blog extraction path for exact measurements — ~3x faster than the video OCR pipeline and produces more accurate quantities.
-
-## Hermes Output Parsing
-`hermes chat -q` wraps responses in box-drawing characters (╭/╰). The `_strip_hermes_chrome()` function strips these to return clean text.
 
 ## Performance Profile (AMD Ryzen 3 3200U, 4 cores, 13GB RAM, no GPU)
 - **faster-whisper** `base` model (int8 quantization): ~3-5s for 30-60s audio (CPU)
@@ -103,12 +130,14 @@ FFMPEG_HWACCEL=off
 - **VAAPI:** User must be in the `render` group (`sudo usermod -aG render $USER`). Mesa VA-API drivers installed.
 - **No setup needed for CPU-only** — auto-detection gracefully falls back.
 
-## Dependencies (managed by uv)
+## Dependencies (managed by uv / installed in Docker)
 - faster-whisper (CTranslate2, int8 quantization — 4x faster than openai-whisper)
 - mcp (MCP SDK >= 1.27.2, includes FastMCP HTTP transport)
+- openai (OpenAI Python client — talks to any OpenAI-compatible API)
 - yt-dlp (video/audio download for Instagram)
 - httpx (TikWM API calls + blog fetching)
 - curl_cffi <0.15 (yt-dlp browser impersonation + fallback fetching for bot-protected sites)
 - pytesseract + Pillow + imagehash (OCR + perceptual frame dedup)
 
-**System dependencies:** `ffmpeg`, `tesseract-ocr`, [Hermes Agent](https://github.com/nousresearch/hermes-agent) (LLM formatting via `hermes chat -q -m gpt-4o-mini`)
+**System dependencies (inside Docker):** `ffmpeg`, `tesseract-ocr`
+**External dependency:** Any OpenAI-compatible LLM API (local llama.cpp/Gemma, OpenAI, OpenRouter, etc.)
