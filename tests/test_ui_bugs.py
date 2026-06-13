@@ -1700,3 +1700,206 @@ class TestPollingTimerInteractions:
         page.wait_for_timeout(3000)
 
         assert len(errors) == 0, f"Errors during idle: {errors}"
+
+
+# ---------------------------------------------------------------------------
+# 17. Overlay Regressions (guards against specific fixed bugs)
+# ---------------------------------------------------------------------------
+
+class TestOverlayRegressions:
+    """Regression tests for bugs where:
+    - .glass-modal base class got opacity:0 (broke non-recipe overlays)
+    - body position:fixed caused iOS viewport jump
+    - closeModal() stole overflow from other panels
+    - Modal animation CSS leaked to non-modal .glass-modal elements
+
+    All tests run at mobile viewport (440x956) to match primary PWA target.
+    """
+
+    @pytest.fixture(autouse=True)
+    def mobile_viewport(self, page: Page):
+        """Set mobile viewport for all tests in this class."""
+        page.set_viewport_size({"width": 440, "height": 956})
+
+    # --- Bug 1: .glass-modal opacity:0 breaks non-recipe overlays ---
+
+    def test_shopping_panel_glass_modal_opacity_is_1(self, page: Page):
+        """Shopping panel's .glass-modal must have computed opacity 1 (not hidden by base class)."""
+        load_app(page)
+        page.evaluate("localStorage.setItem('cart', JSON.stringify([1]))")
+        page.reload()
+        page.wait_for_selector("#recipeGrid .recipe-card", timeout=10000)
+        open_shopping_panel(page)
+
+        opacity = page.evaluate("""
+            (() => {
+                const overlay = document.getElementById('shoppingOverlay');
+                const modal = overlay ? overlay.querySelector('.glass-modal') : null;
+                return modal ? getComputedStyle(modal).opacity : null;
+            })()
+        """)
+        assert opacity == "1", \
+            f"Shopping panel .glass-modal has opacity={opacity} — .glass-modal base class likely has opacity:0"
+
+    def test_meal_plan_glass_modal_opacity_is_1(self, page: Page):
+        """Meal plan's .glass-modal must have computed opacity 1."""
+        load_app(page)
+        open_meal_plan(page)
+        # Wait for entrance animation to finish (0.3s)
+        page.wait_for_timeout(500)
+
+        opacity = page.evaluate("""
+            (() => {
+                const overlay = document.getElementById('mealPlanOverlay');
+                const modal = overlay ? overlay.querySelector('.glass-modal') : null;
+                return modal ? getComputedStyle(modal).opacity : null;
+            })()
+        """)
+        assert opacity == "1", \
+            f"Meal plan .glass-modal has opacity={opacity} — .glass-modal base class likely has opacity:0"
+
+    def test_grocery_list_glass_modal_opacity_is_1(self, page: Page):
+        """Grocery list's .glass-modal must have computed opacity 1 (if accessible)."""
+        load_app(page)
+        open_meal_plan(page)
+
+        grocery_btn = page.locator("#groceryListBtn")
+        if not grocery_btn.is_visible():
+            pytest.skip("Grocery list button not visible")
+        grocery_btn.click()
+        page.wait_for_timeout(500)
+
+        if page.locator("#groceryOverlay.active").count() == 0:
+            pytest.skip("Grocery overlay didn't open")
+
+        opacity = page.evaluate("""
+            (() => {
+                const overlay = document.getElementById('groceryOverlay');
+                const modal = overlay ? overlay.querySelector('.glass-modal') : null;
+                return modal ? getComputedStyle(modal).opacity : null;
+            })()
+        """)
+        assert opacity == "1", \
+            f"Grocery list .glass-modal has opacity={opacity} — .glass-modal base class likely has opacity:0"
+
+    # --- Bug 2: body position:fixed causes iOS viewport jump ---
+
+    def test_recipe_modal_no_body_position_fixed(self, page: Page):
+        """Opening recipe modal must NOT set body position to fixed (iOS jump bug)."""
+        load_app(page)
+        open_first_recipe_modal(page)
+
+        position = page.evaluate("document.body.style.position")
+        assert position != "fixed", \
+            "body.style.position is 'fixed' when modal is open — causes iOS PWA viewport jump"
+
+    def test_shopping_panel_no_body_position_fixed(self, page: Page):
+        """Opening shopping panel must NOT set body position to fixed."""
+        load_app(page)
+        page.evaluate("localStorage.setItem('cart', JSON.stringify([1]))")
+        page.reload()
+        page.wait_for_selector("#recipeGrid .recipe-card", timeout=10000)
+        open_shopping_panel(page)
+
+        position = page.evaluate("document.body.style.position")
+        assert position != "fixed", \
+            "body.style.position is 'fixed' when shopping panel is open — causes iOS PWA viewport jump"
+
+    def test_meal_plan_no_body_position_fixed(self, page: Page):
+        """Opening meal plan must NOT set body position to fixed."""
+        load_app(page)
+        open_meal_plan(page)
+
+        position = page.evaluate("document.body.style.position")
+        assert position != "fixed", \
+            "body.style.position is 'fixed' when meal plan is open — causes iOS PWA viewport jump"
+
+    # --- Bug 3: closeModal() fires when modal isn't open (steals overflow) ---
+
+    def test_escape_meal_plan_not_stolen_by_close_modal(self, page: Page):
+        """With only meal plan open, Escape should close it cleanly.
+        closeModal() must not fire and steal body.style.overflow."""
+        load_app(page)
+        open_meal_plan(page)
+
+        # Verify body is scroll-locked
+        overflow_before = page.evaluate("document.body.style.overflow")
+        assert overflow_before == "hidden", \
+            f"Expected overflow:hidden while meal plan open, got '{overflow_before}'"
+
+        # Press Escape to close meal plan
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
+
+        # Meal plan should be closed
+        assert_overlay_closed(page, "#mealPlanOverlay")
+
+        # Body overflow should be cleared (not still hidden, not stolen)
+        overflow_after = page.evaluate("document.body.style.overflow")
+        assert overflow_after == "", \
+            f"body.style.overflow is '{overflow_after}' after closing meal plan — " \
+            f"closeModal() may be stealing overflow from other panels"
+
+    def test_escape_shopping_panel_not_stolen_by_close_modal(self, page: Page):
+        """With only shopping panel open, Escape should close it cleanly."""
+        load_app(page)
+        page.evaluate("localStorage.setItem('cart', JSON.stringify([1]))")
+        page.reload()
+        page.wait_for_selector("#recipeGrid .recipe-card", timeout=10000)
+        open_shopping_panel(page)
+
+        # Press Escape to close shopping panel
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(500)
+
+        # Shopping panel should be closed
+        assert_overlay_closed(page, "#shoppingOverlay")
+
+        # Body overflow should be cleared
+        overflow_after = page.evaluate("document.body.style.overflow")
+        assert overflow_after == "", \
+            f"body.style.overflow is '{overflow_after}' after closing shopping panel — " \
+            f"closeModal() may be stealing overflow"
+
+    # --- Bug 4: Modal animation specificity ---
+
+    def test_shopping_overlay_glass_modal_no_animation_opacity(self, page: Page):
+        """When shopping panel is open, its .glass-modal must have opacity:1.
+        Animation CSS must be scoped to .modal-overlay .glass-modal only."""
+        load_app(page)
+        page.evaluate("localStorage.setItem('cart', JSON.stringify([1]))")
+        page.reload()
+        page.wait_for_selector("#recipeGrid .recipe-card", timeout=10000)
+        open_shopping_panel(page)
+        page.wait_for_timeout(500)
+
+        opacity = page.evaluate("""
+            (() => {
+                const overlay = document.querySelector('#shoppingOverlay, .shopping-overlay');
+                const modal = overlay ? overlay.querySelector('.glass-modal') : null;
+                return modal ? getComputedStyle(modal).opacity : null;
+            })()
+        """)
+        if opacity is not None:
+            assert opacity == "1", \
+                f"Shopping .glass-modal has opacity={opacity} when open — " \
+                f"modal animation CSS is leaking to non-modal .glass-modal elements"
+
+    def test_meal_plan_overlay_glass_modal_no_animation_opacity(self, page: Page):
+        """When meal plan is open, its .glass-modal must have opacity:1.
+        Animation CSS must be scoped to .modal-overlay .glass-modal only."""
+        load_app(page)
+        open_meal_plan(page)
+        page.wait_for_timeout(500)
+
+        opacity = page.evaluate("""
+            (() => {
+                const overlay = document.querySelector('#mealPlanOverlay, .meal-plan-overlay');
+                const modal = overlay ? overlay.querySelector('.glass-modal') : null;
+                return modal ? getComputedStyle(modal).opacity : null;
+            })()
+        """)
+        if opacity is not None:
+            assert opacity == "1", \
+                f"Meal plan .glass-modal has opacity={opacity} when open — " \
+                f"modal animation CSS is leaking to non-modal .glass-modal elements"
