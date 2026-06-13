@@ -676,13 +676,13 @@ body {
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     z-index: 1000;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
-    padding: 24px;
+    padding: 12vh 24px 24px;
 }
 
 .modal-overlay.active {
