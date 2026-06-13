@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir \
     "pillow>=12.2.0" \
     "pytesseract>=0.3.13" \
     "yt-dlp>=2026.3.17" \
-    "openai"
+    "openai>=1.0,<3"
 
 # Copy application files
 COPY mcp_server.py .

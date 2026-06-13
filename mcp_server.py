@@ -28,7 +28,7 @@ mcp.settings.transport_security.enable_dns_rebinding_protection = False
 COOKIES_FILE = Path(__file__).parent / "cookies.txt"
 NETRC_FILE = Path.home() / ".netrc"
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
-VENV_PYTHON = "python"
+
 
 # GPU acceleration (auto-detected by default, override via environment variables)
 # WHISPER_DEVICE: "auto" (default — tries CUDA, falls back to CPU), "cpu", or "cuda"
@@ -978,11 +978,11 @@ def _call_llm(prompt: str) -> str:
             raise RuntimeError("LLM returned empty response")
         return content
     except openai.APIError as e:
-        raise RuntimeError(f"LLM API error: {e}")
+        raise RuntimeError(f"LLM API error: {e}") from e
     except Exception as e:
         if isinstance(e, RuntimeError):
             raise
-        raise RuntimeError(f"LLM call failed: {e}")
+        raise RuntimeError(f"LLM call failed: {e}") from e
 
 
 def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, force: bool = False) -> None:

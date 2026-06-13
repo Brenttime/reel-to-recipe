@@ -15,7 +15,7 @@ Container image: `python:3.11-slim` + ffmpeg + tesseract + yt-dlp + all Python d
 |----------|----------|---------|-------------|
 | `OPENAI_BASE_URL` | ✅ | — | LLM API endpoint (e.g. `http://192.168.4.55:8080/v1`) |
 | `OPENAI_API_KEY` | ✅ | — | API key (use `not-needed` for local models) |
-| `LLM_MODEL` | ❌ | `gemma-4-12b-it` | Model name to request from the API |
+| `LLM_MODEL` | ❌ | `gpt-4o-mini` | Model name to request from the API |
 | `RECIPE_GLASS_URL` | ❌ | `http://reel-cookbook:5100` | Web app URL (inter-container) |
 
 ### Volume Mounts
@@ -31,14 +31,15 @@ Container image: `python:3.11-slim` + ffmpeg + tesseract + yt-dlp + all Python d
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `convert_reel_to_recipe(url)` | Convert any Instagram Reel, TikTok, or recipe blog URL to structured recipe |
-| `get_meal_plan(week?)` | Get meal plan entries for a week (defaults to current week) |
-| `add_to_meal_plan(recipe_id, date)` | Add a recipe to a specific date |
-| `remove_from_meal_plan(entry_id)` | Remove a meal plan entry by ID |
-| `get_grocery_list(week?)` | Aggregated grocery list for a week's meal plan |
-| `search_recipes(query?, category?)` | Search recipes by text or filter by category tag |
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `import_liked_reels` | `max_pages: int = 50, dry_run: bool = True` | Bulk import liked reels from Instagram (requires cookies.txt) |
+| `convert_reel_to_recipe` | `url: str, force: bool = False` | Convert any URL (Instagram Reel, TikTok, recipe blog) to structured recipe. `force=True` skips duplicate check. |
+| `get_meal_plan` | `week: str = ""` | Get meal plan entries for a week (ISO date, defaults to current) |
+| `add_to_meal_plan` | `recipe_id: int, date: str` | Add a recipe to a specific date |
+| `remove_from_meal_plan` | `entry_id: int` | Remove a meal plan entry by ID |
+| `get_grocery_list` | `week: str = ""` | Aggregated grocery list for a week's meal plan |
+| `search_recipes` | `query: str = "", category: str = ""` | Search recipes by text or filter by category tag |
 
 ## Recipe Formatting Strategy
 The `convert_reel_to_recipe` tool sends caption, transcript, and OCR text to an OpenAI-compatible LLM API (configured via `OPENAI_BASE_URL` and `LLM_MODEL` env vars) with this priority hierarchy:
@@ -50,7 +51,7 @@ This multi-source approach compensates for Whisper's tendency to mishear ingredi
 
 ### LLM Configuration
 The MCP server uses the OpenAI Python client (`openai` package) with a 300s timeout to support slow local models:
-- **Local Gemma** (default): `OPENAI_BASE_URL=http://<LAN_IP>:8080/v1`, `LLM_MODEL=gemma-4-12b-it`
+- **Local Gemma**: `OPENAI_BASE_URL=http://<LAN_IP>:8080/v1`, `LLM_MODEL=gemma-4-12b-it`
 - **OpenAI**: `OPENAI_BASE_URL=https://api.openai.com/v1`, `LLM_MODEL=gpt-4o-mini`
 - **OpenRouter**: `OPENAI_BASE_URL=https://openrouter.ai/api/v1`, `LLM_MODEL=<model>`
 
