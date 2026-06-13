@@ -1,7 +1,7 @@
 """MCP Server tests for OnlyPans.
 
 Tests the MCP conversion endpoint and helper functions.
-MCP server runs on the host at port 8001 (SSE) / 8002 (HTTP).
+MCP server runs on the host at port 8001 (streamable-http at /mcp) / 8002 (HTTP).
 """
 
 import sys
