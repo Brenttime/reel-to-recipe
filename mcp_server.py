@@ -95,8 +95,10 @@ def _normalize_url(url: str) -> str:
     domain = parsed.netloc.lower().replace("www.", "")
 
     if "instagram.com" in domain or "tiktok.com" in domain:
-        # Strip all query params — the path alone identifies the content
-        clean = urlunparse((parsed.scheme, parsed.netloc, parsed.path.rstrip("/") + "/", "", "", ""))
+        # Normalize: lowercase scheme + netloc, strip www., strip query params,
+        # guarantee exactly one trailing slash on path
+        netloc = parsed.netloc.lower().replace("www.", "")
+        clean = urlunparse((parsed.scheme.lower(), netloc, parsed.path.rstrip("/") + "/", "", "", ""))
         return clean
 
     return url
