@@ -972,15 +972,23 @@ class TestResponsiveViewportBugs:
                 # Modal should be nearly full-width (within 20px margin)
                 assert box["width"] >= 300, f"Modal too narrow on mobile: {box['width']}px"
 
-    @pytest.mark.xfail(reason="Known bug: modal close resets scroll to top (scroll position not preserved)")
-    def test_scroll_position_preserved_after_modal_close(self, page: Page):
+    def test_scroll_position_preserved_after_modal_close(self, page: Page, fresh_db):
         """Closing modal should restore page scroll position."""
         load_app(page)
 
-        # Scroll down
-        page.evaluate("window.scrollTo(0, 300)")
+        # Scroll to a moderate position (use page height to ensure it's scrollable)
+        scroll_target = page.evaluate("""() => {
+            const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+            const target = Math.min(200, Math.floor(maxScroll / 2));
+            window.scrollTo(0, target);
+            return target;
+        }""")
         page.wait_for_timeout(200)
         scroll_before = page.evaluate("window.scrollY")
+
+        # Only test if page is actually scrollable
+        if scroll_before < 10:
+            pytest.skip("Page not scrollable enough for this test")
 
         open_first_recipe_modal(page)
         page.keyboard.press("Escape")
@@ -1249,7 +1257,6 @@ class TestConsoleErrorHunting:
 
         assert len(page_errors) == 0, f"Image 404 caused JS error: {page_errors}"
 
-    @pytest.mark.xfail(reason="Known bug: loadRecipes() doesn't catch fetch errors — 'Failed to fetch' leaks to console")
     def test_network_error_during_search(self, page: Page):
         """Network failure during search should not crash."""
         load_app(page)

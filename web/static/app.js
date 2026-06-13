@@ -442,6 +442,10 @@ function parseServingsNumber(servingsStr) {
 let hasLoadedOnce = false;
 
 async function init() {
+    // Prevent browser from auto-scrolling on history navigation (we manage scroll ourselves)
+    if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+    }
     await loadUserProfile();
     await loadRecipes();
     await loadCategories();
@@ -602,8 +606,18 @@ async function openRecipeFromUrl() {
 // ─── Data Loading ───────────────────────────────
 async function loadRecipes(query = '') {
     const url = query ? `/api/recipes?q=${encodeURIComponent(query)}` : '/api/recipes';
-    const res = await fetch(url);
-    allRecipes = await res.json();
+    try {
+        const res = await fetch(url);
+        if (!res.ok) {
+            console.warn(`loadRecipes: server returned ${res.status}`);
+            return;
+        }
+        allRecipes = await res.json();
+    } catch (e) {
+        // Network failure — keep existing recipes displayed, don't crash
+        console.warn('loadRecipes: network error, keeping cached results');
+        return;
+    }
     // Normalize tags: API returns comma-separated string, UI expects array
     allRecipes.forEach(r => {
         if (typeof r.tags === 'string') {
@@ -640,9 +654,14 @@ async function pollForNewRecipes() {
     }
 }
 async function loadCategories() {
-    const res = await fetch('/api/categories');
-    const categories = await res.json();
-    renderCategoryChips(categories);
+    try {
+        const res = await fetch('/api/categories');
+        if (!res.ok) return;
+        const categories = await res.json();
+        renderCategoryChips(categories);
+    } catch (e) {
+        // Network failure — keep existing chips, don't crash
+    }
 }
 
 // ─── Category Emoji Map ─────────────────────────
@@ -2215,6 +2234,10 @@ function doCloseModal() {
         modalOverlay.removeEventListener('touchmove', _modalTouchHandler);
         _modalTouchHandler = null;
     }
+    // Restore gallery URL BEFORE unfreezing body (prevents browser scroll reset)
+    if (location.pathname.startsWith('/recipe/')) {
+        history.pushState({}, '', '/');
+    }
     // iOS PWA scroll unlock: unfreeze body and restore gallery scroll
     document.body.style.position = '';
     document.body.style.top = '';
@@ -2223,6 +2246,7 @@ function doCloseModal() {
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
     document.body.style.overscrollBehavior = '';
+    // Restore scroll position after body is unfrozen
     window.scrollTo(0, _modalSavedScroll);
     // Remove visualViewport listener
     if (_modalVVHandler && window.visualViewport) {
@@ -2238,10 +2262,6 @@ function doCloseModal() {
     // Remove discard dialog if present
     const dialog = document.getElementById('discardEditDialog');
     if (dialog) dialog.remove();
-    // Restore gallery URL
-    if (location.pathname.startsWith('/recipe/')) {
-        history.pushState({}, '', '/');
-    }
 }
 
 function confirmDiscardEdit(recipe) {
