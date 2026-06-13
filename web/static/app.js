@@ -1524,6 +1524,8 @@ function openCookMode(recipe) {
     cookModeStep = 0;
     cookModeEl.classList.add('active');
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
     renderCookModeStep();
     requestWakeLock();
 }
@@ -1531,6 +1533,8 @@ function openCookMode(recipe) {
 function closeCookMode() {
     cookModeEl.classList.remove('active');
     document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
+    document.body.style.touchAction = '';
     cookModeRecipe = null;
     releaseWakeLock();
 }
@@ -1785,6 +1789,8 @@ async function shareRecipe(recipe) {
 function openSpotlight() {
     spotlightOverlay.classList.add('active');
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
     const input = document.getElementById('convertInput');
     // Clear previous state
     input.value = '';
@@ -1798,6 +1804,8 @@ function openSpotlight() {
 function closeSpotlight() {
     spotlightOverlay.classList.remove('active');
     document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
+    document.body.style.touchAction = '';
 }
 
 function toggleSpotlight() {

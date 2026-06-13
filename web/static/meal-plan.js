@@ -116,12 +116,16 @@ async function removeEntry(entryId) {
 function openMealPlan() {
     document.getElementById('mealPlanOverlay').classList.add('active');
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
     refreshMealPlan();
 }
 
 function closeMealPlan() {
     document.getElementById('mealPlanOverlay').classList.remove('active');
     document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
+    document.body.style.touchAction = '';
     cancelReassign();
 }
 
@@ -242,12 +246,16 @@ function openRadialMenu(recipeId, recipeTitle) {
     document.getElementById('radialRecipeTitle').textContent = recipeTitle;
     document.getElementById('radialOverlay').classList.add('active');
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
     renderRadialRing();
 }
 
 function closeRadialMenu() {
     document.getElementById('radialOverlay').classList.remove('active');
     document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
+    document.body.style.touchAction = '';
     radialRecipeId = null;
 }
 
@@ -345,6 +353,9 @@ function setGroceryChecked(items) {
 
 async function openGroceryList() {
     document.getElementById('groceryOverlay').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
     const body = document.getElementById('groceryBody');
     const subtitle = document.getElementById('grocerySubtitle');
     const actions = document.getElementById('groceryActions');
@@ -433,6 +444,9 @@ async function openGroceryList() {
 
 function closeGroceryList() {
     document.getElementById('groceryOverlay').classList.remove('active');
+    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
+    document.body.style.touchAction = '';
 }
 
 function groupIngredients(ingredients) {
