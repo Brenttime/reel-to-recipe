@@ -1809,7 +1809,9 @@ async function shareRecipe(recipe) {
 // ─── Spotlight (macOS-style convert overlay) ─────
 function openSpotlight() {
     spotlightOverlay.classList.add('active');
-    lockBodyScroll();
+    // NOTE: No lockBodyScroll() — spotlight uses pointer-events:all to block
+    // interaction, and toggling overflow/touch-action on html/body causes
+    // position:fixed elements (Dynamic Island bar) to jitter on iOS PWA.
     const input = document.getElementById('convertInput');
     // Clear previous state
     input.value = '';
@@ -1822,7 +1824,7 @@ function openSpotlight() {
 
 function closeSpotlight() {
     spotlightOverlay.classList.remove('active');
-    unlockBodyScroll();
+    // NOTE: No unlockBodyScroll() — matching openSpotlight change above.
 }
 
 function toggleSpotlight() {

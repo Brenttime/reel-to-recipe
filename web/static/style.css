@@ -1293,6 +1293,10 @@ body {
 
 /* Standalone PWA — push content below Dynamic Island / notch */
 @media all and (display-mode: standalone) {
+    body {
+        /* Prevent elastic overscroll that makes fixed elements appear to move */
+        overscroll-behavior-y: none;
+    }
     .app-container {
         padding-top: calc(12px + env(safe-area-inset-top, 0px));
     }
@@ -1413,8 +1417,8 @@ body {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(12px) saturate(120%);
-    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     z-index: 500;
     display: flex;
     flex-direction: column;
@@ -1422,13 +1426,19 @@ body {
     justify-content: flex-start;
     padding-top: 18vh;
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.2s ease, visibility 0s 0.2s;
+    contain: layout style paint;
 }
 
 .spotlight-overlay.active {
     opacity: 1;
+    visibility: visible;
     pointer-events: all;
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    transition: opacity 0.2s ease, visibility 0s 0s;
 }
 
 .spotlight-bar {
@@ -2621,12 +2631,17 @@ body {
          * We make our pill START at the island's top edge and extend DOWN past it.
          * The glow ring wraps the whole pill (= wraps around the island).
          * Content (text + progress) lives below the physical cutout.
+         *
+         * IMPORTANT: No transform, animation, transition, backdrop-filter, or
+         * will-change on this element. Any of these cause position:fixed to
+         * jitter during momentum scroll on iOS standalone PWA (WebKit bug).
+         * Centering via left:0 + right:0 + margin:auto (no transform needed).
          */
         top: 11px;
-        left: 50%;
-        right: auto;
-        transform: translateX(-50%);
-        /* Wide enough to encompass the island + breathing room */
+        left: 0;
+        right: 0;
+        margin-left: auto;
+        margin-right: auto;
         width: 200px;
         min-width: 200px;
         max-width: calc(100% - 32px);
@@ -2635,11 +2650,17 @@ body {
         border-bottom: none;
         border-radius: 36px;
         background: #000000;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
         box-shadow:
             0 8px 32px rgba(0, 0, 0, 0.4),
             0 2px 8px rgba(0, 0, 0, 0.2);
         overflow: visible;
-        animation: islandAppear 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        /* Force own GPU compositing layer — insulates from other layers recompositing */
+        transform: translate3d(0, 0, 0);
+        -webkit-transform: translate3d(0, 0, 0);
+        transition: none;
+        animation: none;
     }
 
     /* The animated glow ring — wraps around the entire pill (= around the island) */
@@ -2769,12 +2790,12 @@ body {
 
 @keyframes islandAppear {
     from {
-        transform: translateX(-50%) scaleX(0.3) scaleY(0.6);
         opacity: 0;
+        scale: 0.3 0.6;
     }
     to {
-        transform: translateX(-50%) scaleX(1) scaleY(1);
         opacity: 1;
+        scale: 1 1;
     }
 }
 
