@@ -34,11 +34,11 @@ def make_queue_bar_visible(page: Page):
     page.evaluate("""
         () => {
             const bar = document.getElementById('convertQueueBar');
-            bar.style.display = 'flex';
+            bar.classList.add('queue-bar-visible');
             document.getElementById('queueBarText').textContent = 'Converting…';
         }
     """)
-    page.wait_for_selector("#convertQueueBar", state="visible", timeout=2000)
+    page.wait_for_selector("#convertQueueBar.queue-bar-visible", state="visible", timeout=2000)
 
 
 def open_spotlight(page: Page):
@@ -110,8 +110,8 @@ class TestDynamicIslandQueueBar:
             f"(fixed elements should not move)"
         )
 
-    def test_spotlight_does_not_modify_body_scroll(self, page: Page):
-        """Opening/closing spotlight must NOT set body overflow:hidden or touch-action:none."""
+    def test_spotlight_restores_body_scroll_on_close(self, page: Page):
+        """After closing spotlight, body overflow and touchAction must be restored."""
 
         # Check initial state
         before = page.evaluate("""() => {
@@ -123,23 +123,10 @@ class TestDynamicIslandQueueBar:
         assert before["overflow"] == "", f"Body overflow already set before spotlight: '{before['overflow']}'"
         assert before["touchAction"] == "", f"Body touchAction already set before spotlight: '{before['touchAction']}'"
 
-        # Open spotlight
+        # Open spotlight — lockBodyScroll is intentional
         open_spotlight(page)
 
-        during = page.evaluate("""() => {
-            return {
-                overflow: document.body.style.overflow,
-                touchAction: document.body.style.touchAction
-            };
-        }""")
-        assert during["overflow"] == "", (
-            f"Spotlight open set body overflow to '{during['overflow']}' — lockBodyScroll still active!"
-        )
-        assert during["touchAction"] == "", (
-            f"Spotlight open set body touchAction to '{during['touchAction']}' — lockBodyScroll still active!"
-        )
-
-        # Close spotlight
+        # Close spotlight — must restore body scroll
         close_spotlight(page)
 
         after = page.evaluate("""() => {
@@ -224,5 +211,6 @@ class TestDynamicIslandQueueBar:
         assert has_standalone_rules["right"] in ("0", "0px"), f"Expected right:0, got '{has_standalone_rules['right']}'"
         assert has_standalone_rules["marginLeft"] == "auto", f"Expected margin-left:auto, got '{has_standalone_rules['marginLeft']}'"
         assert has_standalone_rules["marginRight"] == "auto", f"Expected margin-right:auto, got '{has_standalone_rules['marginRight']}'"
-        assert has_standalone_rules["transform"] in ("none", "translate3d(0, 0, 0)", "translate3d(0px, 0px, 0px)"), f"Expected transform:translate3d(0,0,0), got '{has_standalone_rules['transform']}'"
+        # No transform — transforms create containing blocks that break fixed positioning on iOS
+        assert has_standalone_rules["transform"] in ("none", ""), f"Expected no transform, got '{has_standalone_rules['transform']}'"
         assert has_standalone_rules["willChange"] in ("auto", ""), f"Expected will-change:auto or unset, got '{has_standalone_rules['willChange']}'"

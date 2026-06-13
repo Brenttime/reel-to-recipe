@@ -2601,6 +2601,16 @@ body {
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
     transition: background 0.3s ease, border-color 0.3s ease, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Hidden by default — use visibility/opacity so iOS keeps the compositor layer alive */
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.convert-queue-bar.queue-bar-visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
 }
 
 /* Hidden glow layer — only used in standalone mode */
@@ -2619,14 +2629,13 @@ body {
 @media all and (display-mode: standalone) {
     .convert-queue-bar {
         /*
-         * position:sticky — handled by WebKit's layout engine, not compositor.
-         * Zero JS, zero frame lag. Different code path than position:fixed,
-         * so it doesn't jitter when sibling fixed overlays (spotlight) change state.
-         * The bar is the first child of <body>, so sticky+top:11px pins it
-         * at 11px from viewport as soon as the user scrolls.
+         * Keep position:fixed — it's the only thing that feels right.
+         * The jitter bug is caused by iOS WebKit's compositor corrupting
+         * fixed element layers after a sibling with backdrop-filter is shown.
+         * We fix this in JS by forcing a compositor layer reset on the bar
+         * after spotlight closes, rather than abandoning fixed positioning.
          */
-        position: -webkit-sticky;
-        position: sticky;
+        position: fixed;
         top: 11px;
         left: 0;
         right: 0;
@@ -2648,6 +2657,7 @@ body {
         overflow: visible;
         transition: none;
         animation: none;
+        /* No transform/will-change — these create containing blocks that break fixed on iOS */
     }
 
     /* The animated glow ring — wraps around the entire pill (= around the island) */

@@ -1823,6 +1823,17 @@ function openSpotlight() {
 function closeSpotlight() {
     spotlightOverlay.classList.remove('active');
     unlockBodyScroll();
+    // iOS WebKit compositor fix: after a sibling with backdrop-filter is shown/hidden,
+    // fixed elements can get stuck on a stale compositor layer and jitter during scroll.
+    // Force iOS to destroy and recreate the bar's layer by toggling visibility.
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+        const bar = document.getElementById('convertQueueBar');
+        if (bar && bar.classList.contains('queue-bar-visible')) {
+            bar.style.visibility = 'hidden';
+            void bar.offsetHeight;
+            bar.style.visibility = '';
+        }
+    }
 }
 
 function toggleSpotlight() {
@@ -1950,9 +1961,9 @@ function updateQueueBar() {
     const count = activeJobs.size;
 
     if (count === 0) {
-        bar.style.display = 'none';
+        bar.classList.remove('queue-bar-visible');
     } else {
-        bar.style.display = 'flex';
+        bar.classList.add('queue-bar-visible');
         text.textContent = count === 1 ? 'Converting…' : `Converting ${count}…`;
     }
 }
@@ -1961,7 +1972,7 @@ function updateQueueBarDetail(detail) {
     const bar = document.getElementById('convertQueueBar');
     const text = document.getElementById('queueBarText');
     if (activeJobs.size > 0) {
-        bar.style.display = 'flex';
+        bar.classList.add('queue-bar-visible');
         text.textContent = detail;
     }
 }
@@ -1970,7 +1981,7 @@ function showRecipeAdded(recipe) {
     const bar = document.getElementById('convertQueueBar');
     const text = document.getElementById('queueBarText');
 
-    bar.style.display = 'flex';
+    bar.classList.add('queue-bar-visible');
     bar.classList.add('queue-bar-success');
     // Truncate title for compact island display
     const title = recipe.title.length > 18 ? recipe.title.slice(0, 16) + '…' : recipe.title;
@@ -1979,7 +1990,7 @@ function showRecipeAdded(recipe) {
     setTimeout(() => {
         bar.classList.remove('queue-bar-success');
         if (activeJobs.size === 0) {
-            bar.style.display = 'none';
+            bar.classList.remove('queue-bar-visible');
         } else {
             updateQueueBar();
         }
@@ -1990,7 +2001,7 @@ function showQueueError(error) {
     const bar = document.getElementById('convertQueueBar');
     const text = document.getElementById('queueBarText');
 
-    bar.style.display = 'flex';
+    bar.classList.add('queue-bar-visible');
     bar.classList.add('queue-bar-error');
 
     // Check for age-restricted error with doc link
@@ -2005,7 +2016,7 @@ function showQueueError(error) {
     setTimeout(() => {
         bar.classList.remove('queue-bar-error');
         if (activeJobs.size === 0) {
-            bar.style.display = 'none';
+            bar.classList.remove('queue-bar-visible');
         } else {
             updateQueueBar();
         }
@@ -2695,6 +2706,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Slight delay so it doesn't compete with page load
     setTimeout(showInstallBanner, 1500);
 
-    // ─── Standalone PWA: Dynamic Island bar uses position:sticky (CSS-only) ───
-    // No JS scroll listener needed — sticky is handled natively by WebKit's layout engine.
+    // ─── Standalone PWA: compositor layer reset is handled in closeSpotlight() ───
+    // position:fixed is kept; the display toggle trick resets corrupted layers.
 });
