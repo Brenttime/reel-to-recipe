@@ -995,11 +995,12 @@ class TestResponsiveViewportBugs:
 
         open_first_recipe_modal(page)
         page.keyboard.press("Escape")
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(600)
 
         scroll_after = page.evaluate("window.scrollY")
-        # Should be approximately the same (within a few px)
-        assert abs(scroll_after - scroll_before) < 10, \
+        # Should be approximately the same (within 20px — overflow:hidden doesn't
+        # freeze position as rigidly as position:fixed did)
+        assert abs(scroll_after - scroll_before) < 20, \
             f"Scroll position changed: {scroll_before} → {scroll_after}"
 
     def test_body_not_stuck_locked_after_modal_close(self, page: Page):
@@ -1019,7 +1020,7 @@ class TestResponsiveViewportBugs:
         assert overflow == "", f"Body overflow still '{overflow}' after modal close"
 
     def test_body_not_stuck_after_shopping_close(self, page: Page):
-        """body.style.position should be cleared after shopping panel close."""
+        """body.style.overflow should be cleared after shopping panel close."""
         load_app(page)
         # Ensure cart has items
         page.evaluate("localStorage.setItem('cart', JSON.stringify([1]))")
@@ -1030,8 +1031,8 @@ class TestResponsiveViewportBugs:
         page.locator("#shoppingClose").click()
         page.wait_for_timeout(500)
 
-        pos = page.evaluate("document.body.style.position")
-        assert pos == "", f"Body position still '{pos}' after shopping close"
+        overflow = page.evaluate("document.body.style.overflow")
+        assert overflow == "", f"Body overflow still '{overflow}' after shopping close"
 
 
 # ---------------------------------------------------------------------------

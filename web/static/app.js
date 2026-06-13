@@ -2317,12 +2317,11 @@ var _shoppingScrollLockPos = 0;
 
 function openShoppingPanel() {
     shoppingOverlay.classList.add('active');
-    // iOS scroll lock: freeze body at current scroll position to prevent jump
+    // Lock background scroll without repositioning body (avoids iOS jump)
     _shoppingScrollLockPos = window.scrollY;
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${_shoppingScrollLockPos}px`;
-    document.body.style.width = '100%';
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
     // Prevent background scroll on iOS: block touchmove outside panel
     _shoppingTouchHandler = function(e) {
         const panel = shoppingOverlay.querySelector('.glass-modal');
@@ -2339,11 +2338,10 @@ function closeShoppingPanel() {
         shoppingOverlay.removeEventListener('touchmove', _shoppingTouchHandler);
         _shoppingTouchHandler = null;
     }
-    // iOS scroll restore: unfreeze body and restore exact scroll position
-    document.body.style.position = '';
-    document.body.style.top = '';
-    document.body.style.width = '';
+    // Unlock background scroll and restore position
     document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
+    document.body.style.touchAction = '';
     window.scrollTo(0, _shoppingScrollLockPos);
 }
 
