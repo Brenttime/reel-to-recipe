@@ -63,6 +63,7 @@ html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
+    background: #0f0c29;
 }
 
 body {
@@ -682,14 +683,13 @@ body {
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     z-index: 1000;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
-    padding: 24px;
-    /* Prevent iOS from scrolling behind the modal */
+    padding: 6vh 24px 0;
     overscroll-behavior: none;
 }
 
@@ -704,11 +704,11 @@ body {
     border-radius: var(--radius-xl);
     max-width: 640px;
     width: 100%;
-    max-height: calc(var(--vh, 1vh) * 85);
+    max-height: calc(var(--vh, 1vh) * 88);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding: 36px;
+    padding: 36px 36px 48px;
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2), var(--glass-inner-glow);
     position: relative;
     transform: scale(0.9) translateY(20px);
@@ -1258,10 +1258,15 @@ body {
         gap: 14px;
     }
 
+    .modal-overlay {
+        align-items: flex-end;
+        padding: 0 12px;
+    }
+
     .glass-modal {
-        padding: 24px;
-        border-radius: var(--radius-lg);
-        max-height: calc(var(--vh, 1vh) * 90);
+        padding: 24px 24px calc(36px + env(safe-area-inset-bottom, 0px));
+        border-radius: var(--radius-lg) var(--radius-lg) var(--radius-md) var(--radius-md);
+        max-height: calc(var(--vh, 1vh) * 85);
     }
 
     .modal-title {
