@@ -140,10 +140,16 @@ AUTH_EXEMPT_ENDPOINTS = (
     'get_grocery_list',     # MCP grocery list read
 )
 
+# TEST_MODE=1 disables auth for automated testing (set via docker-compose.test.yml)
+TEST_MODE = os.environ.get("TEST_MODE", "0") == "1"
+
 
 @app.before_request
 def require_login():
     """Redirect unauthenticated users to Discord login."""
+    # TEST_MODE: skip all auth (test container only)
+    if TEST_MODE:
+        return None
     # Skip auth check for exempt paths
     path = request.path
     if any(path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES):
