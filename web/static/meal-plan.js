@@ -463,13 +463,13 @@ function groupIngredients(ingredients) {
 
 function copyGroceryList() {
     const body = document.getElementById('groceryBody');
-    const checked = getGroceryChecked();
     const lines = [];
     body.querySelectorAll('.grocery-section').forEach(s => {
         lines.push(`\n${s.querySelector('.grocery-section-title').textContent}`);
         s.querySelectorAll('.grocery-item').forEach(i => {
             const text = i.querySelector('.grocery-item-text').textContent;
-            const mark = checked.includes(text) ? '✓' : '•';
+            const isChecked = i.querySelector('input[type="checkbox"]')?.checked || i.classList.contains('checked');
+            const mark = isChecked ? '✓' : '•';
             lines.push(`${mark} ${text}`);
         });
     });
