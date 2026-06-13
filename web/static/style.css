@@ -22,7 +22,7 @@
     --radius-lg: 24px;
     --radius-xl: 32px;
     --transition: 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-    --spring: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    --spring: 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.0);
 
     /* Dark mode specific */
     --bg-gradient-light: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #5ee7df 75%, #b8cbb8 100%);
@@ -673,23 +673,18 @@ body {
 
 .modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    /* Use calc(var(--vh, 1vh) * 100) so iOS visual viewport is tracked */
-    height: 100%;
-    height: calc(var(--vh, 1vh) * 100);
+    inset: 0;
     background: rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: center;
     z-index: 1000;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
-    padding: 6vh 24px 0;
+    padding: 24px;
     overscroll-behavior: none;
 }
 
@@ -704,19 +699,25 @@ body {
     border-radius: var(--radius-xl);
     max-width: 640px;
     width: 100%;
-    max-height: calc(var(--vh, 1vh) * 88);
+    max-height: calc(var(--vh, 1vh) * 85);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     padding: 36px 36px 48px;
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2), var(--glass-inner-glow);
     position: relative;
-    transform: scale(0.9) translateY(20px);
-    transition: var(--spring);
+}
+
+/* Recipe modal entrance animation (only for #modalOverlay) */
+.modal-overlay .glass-modal {
+    transform: translateY(10px);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.0), opacity 0.2s ease;
 }
 
 .modal-overlay.active .glass-modal {
-    transform: scale(1) translateY(0);
+    transform: translateY(0);
+    opacity: 1;
 }
 
 .modal-close {
@@ -1259,14 +1260,14 @@ body {
     }
 
     .modal-overlay {
-        align-items: flex-end;
-        padding: 0 12px;
+        align-items: center;
+        padding: 16px;
     }
 
     .glass-modal {
         padding: 24px 24px calc(36px + env(safe-area-inset-bottom, 0px));
-        border-radius: var(--radius-lg) var(--radius-lg) var(--radius-md) var(--radius-md);
-        max-height: calc(var(--vh, 1vh) * 91);
+        border-radius: var(--radius-lg);
+        max-height: calc(var(--vh, 1vh) * 85);
     }
 
     .modal-title {
@@ -1589,6 +1590,11 @@ body {
 .shopping-overlay.active {
     opacity: 1;
     pointer-events: all;
+}
+
+.shopping-overlay.active .glass-modal {
+    transform: translateY(0);
+    opacity: 1;
 }
 
 .shopping-panel {
