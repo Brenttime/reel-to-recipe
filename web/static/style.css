@@ -1252,12 +1252,12 @@ body {
 
     .modal-overlay {
         align-items: flex-end;
-        padding: 0;
+        padding: 0 12px;
     }
 
     .glass-modal {
         padding: 24px 24px calc(36px + env(safe-area-inset-bottom, 0px));
-        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        border-radius: var(--radius-lg) var(--radius-lg) var(--radius-md) var(--radius-md);
         max-height: 85vh;
     }
 
