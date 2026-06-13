@@ -86,58 +86,11 @@ SEED_RECIPES = [
 ]
 
 
-def init_db():
-    """Create tables if they don't exist."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS recipes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            creator TEXT DEFAULT '',
-            source_url TEXT DEFAULT '',
-            platform TEXT DEFAULT '',
-            servings TEXT DEFAULT '',
-            prep_time TEXT DEFAULT '',
-            cook_time TEXT DEFAULT '',
-            total_time TEXT DEFAULT '',
-            ingredients TEXT NOT NULL DEFAULT '[]',
-            instructions TEXT NOT NULL DEFAULT '[]',
-            tips TEXT DEFAULT '',
-            macros TEXT DEFAULT '',
-            tags TEXT DEFAULT '[]',
-            image_url TEXT DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts USING fts5(
-            title, creator, ingredients, instructions, tips, tags,
-            content='recipes',
-            content_rowid='id'
-        );
-
-        CREATE TRIGGER IF NOT EXISTS recipes_ai AFTER INSERT ON recipes BEGIN
-            INSERT INTO recipes_fts(rowid, title, creator, ingredients, instructions, tips, tags)
-            VALUES (new.id, new.title, new.creator, new.ingredients, new.instructions, new.tips, new.tags);
-        END;
-
-        CREATE TRIGGER IF NOT EXISTS recipes_ad AFTER DELETE ON recipes BEGIN
-            INSERT INTO recipes_fts(recipes_fts, rowid, title, creator, ingredients, instructions, tips, tags)
-            VALUES ('delete', old.id, old.title, old.creator, old.ingredients, old.instructions, old.tips, old.tags);
-        END;
-
-        CREATE TRIGGER IF NOT EXISTS recipes_au AFTER UPDATE ON recipes BEGIN
-            INSERT INTO recipes_fts(recipes_fts, rowid, title, creator, ingredients, instructions, tips, tags)
-            VALUES ('delete', old.id, old.title, old.creator, old.ingredients, old.instructions, old.tips, old.tags);
-            INSERT INTO recipes_fts(rowid, title, creator, ingredients, instructions, tips, tags)
-            VALUES (new.id, new.title, new.creator, new.ingredients, new.instructions, new.tips, new.tags);
-        END;
-    """)
-    conn.close()
-
 
 def seed():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    init_db()
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 

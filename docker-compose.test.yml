@@ -10,9 +10,9 @@ services:
       - /etc/timezone:/etc/timezone:ro
       - ./scripts:/app/scripts:ro
     environment:
-      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:?Set DISCORD_CLIENT_ID in .env}
-      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:?Set DISCORD_CLIENT_SECRET in .env}
-      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI:?Set DISCORD_REDIRECT_URI in .env}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:-test}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:-test}
+      - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI:-http://localhost:5101/auth/callback}
       - SECRET_KEY=${SECRET_KEY:-onlypans-test-secret}
       - SHOW_KOFI=${SHOW_KOFI:-true}
       - TEST_MODE=1
