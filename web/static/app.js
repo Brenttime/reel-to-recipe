@@ -2135,8 +2135,19 @@ function setupListeners() {
 }
 
 let _modalTouchHandler = null;
+let _modalVVHandler = null;
+let _modalFocusOutHandler = null;
+let _modalSavedScroll = 0;
 
 function openModal() {
+    // iOS PWA: freeze body at current scroll position (gallery stays visually in place)
+    _modalSavedScroll = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${_modalSavedScroll}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
     modalOverlay.classList.add('active');
     // Reset modal scroll to top for fresh recipe view
     const modal = modalOverlay.querySelector('.glass-modal');
@@ -2149,7 +2160,34 @@ function openModal() {
         }
     };
     modalOverlay.addEventListener('touchmove', _modalTouchHandler, { passive: false });
-    document.body.style.overflow = 'hidden';
+    // iOS PWA keyboard dismiss fix: force overlay reflow when viewport restores
+    if (window.visualViewport && !_modalVVHandler) {
+        var fullHeight = window.visualViewport.height;
+        _modalVVHandler = function() {
+            if (window.visualViewport.height >= fullHeight * 0.9) {
+                // Keyboard dismissed — force iOS to recalculate position:fixed layout
+                // 1. Reset any rogue document scroll (iOS may have scrolled it)
+                if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+                // 2. Force reflow on overlay without visible flicker
+                modalOverlay.style.transform = 'translateZ(0)';
+                void modalOverlay.offsetHeight;
+                modalOverlay.style.transform = '';
+            }
+        };
+        window.visualViewport.addEventListener('resize', _modalVVHandler);
+    }
+    // Backup: focusout on inputs also resets scroll (catches cases where visualViewport doesn't fire)
+    if (!_modalFocusOutHandler) {
+        _modalFocusOutHandler = function(e) {
+            var tag = e.target && e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+                setTimeout(function() {
+                    if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+                }, 150);
+            }
+        };
+        modalOverlay.addEventListener('focusout', _modalFocusOutHandler);
+    }
     // Update URL to permalink
     if (currentRecipe) {
         const slug = currentRecipe.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -2177,9 +2215,25 @@ function doCloseModal() {
         modalOverlay.removeEventListener('touchmove', _modalTouchHandler);
         _modalTouchHandler = null;
     }
+    // iOS PWA scroll unlock: unfreeze body and restore gallery scroll
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.left = '';
+    document.body.style.right = '';
     document.body.style.overflow = '';
-    // iOS: force viewport back to correct position after keyboard may have shifted it
-    window.scrollTo(0, 0);
+    document.documentElement.style.overflow = '';
+    document.body.style.overscrollBehavior = '';
+    window.scrollTo(0, _modalSavedScroll);
+    // Remove visualViewport listener
+    if (_modalVVHandler && window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', _modalVVHandler);
+        _modalVVHandler = null;
+    }
+    // Remove focusout handler
+    if (_modalFocusOutHandler) {
+        modalOverlay.removeEventListener('focusout', _modalFocusOutHandler);
+        _modalFocusOutHandler = null;
+    }
     currentRecipe = null;
     // Remove discard dialog if present
     const dialog = document.getElementById('discardEditDialog');
