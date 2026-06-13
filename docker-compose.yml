@@ -28,7 +28,7 @@ services:
       - "8002:8002"
     volumes:
       - cookbook-data:/data
-      - ./cookies.txt:/app/cookies.txt:ro
+      - ./cookies.txt:/app/cookies.txt
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
