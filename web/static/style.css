@@ -1258,7 +1258,7 @@ body {
     .glass-modal {
         padding: 24px 24px calc(36px + env(safe-area-inset-bottom, 0px));
         border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-        max-height: 92vh;
+        max-height: 85vh;
     }
 
     .modal-title {
