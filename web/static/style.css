@@ -1250,10 +1250,15 @@ body {
         gap: 14px;
     }
 
+    .modal-overlay {
+        align-items: flex-end;
+        padding: 0;
+    }
+
     .glass-modal {
-        padding: 24px 24px 36px;
-        border-radius: var(--radius-lg);
-        max-height: 88vh;
+        padding: 24px 24px calc(36px + env(safe-area-inset-bottom, 0px));
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        max-height: 92vh;
     }
 
     .modal-title {
