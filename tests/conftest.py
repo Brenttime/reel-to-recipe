@@ -2,12 +2,13 @@
 
 Test environment:
 - Web app: http://localhost:5101 (reel-cookbook-test container)
-- MCP server: http://localhost:8001 (SSE), http://localhost:8002 (HTTP)
+- MCP server: http://localhost:8001 (streamable-http at /mcp), http://localhost:8002 (HTTP)
 - Test DB is seeded with 10 recipes, 3 users, reviews, and meal plan entries
 """
 
 import subprocess
 import time
+from pathlib import Path
 
 import pytest
 import requests
@@ -76,7 +77,7 @@ def ensure_test_environment():
         # Try to start the container
         subprocess.run(
             ["docker", "compose", "-f", "docker-compose.test.yml", "up", "-d", "--build"],
-            cwd="/home/brenttime/projects/tiktok-recipe",
+            cwd=str(Path(__file__).resolve().parent.parent),
             capture_output=True,
             timeout=120,
         )
