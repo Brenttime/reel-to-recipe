@@ -65,32 +65,33 @@ def _conversion_worker(job_id, url, added_by):
 
         # MCP auto-saves to /api/recipes — fetch from DB
         conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        new_recipe = conn.execute(
-            "SELECT * FROM recipes WHERE source_url = ? ORDER BY id DESC LIMIT 1", (url,)
-        ).fetchone()
+        try:
+            conn.row_factory = sqlite3.Row
+            new_recipe = conn.execute(
+                "SELECT * FROM recipes WHERE source_url = ? ORDER BY id DESC LIMIT 1", (url,)
+            ).fetchone()
 
-        if new_recipe:
-            # Update added_by if we know who queued it
-            if added_by:
-                conn.execute("UPDATE recipes SET added_by = ? WHERE id = ?", (added_by, new_recipe["id"]))
-                conn.commit()
-                new_recipe = conn.execute("SELECT * FROM recipes WHERE id = ?", (new_recipe["id"],)).fetchone()
+            if new_recipe:
+                # Update added_by if we know who queued it
+                if added_by:
+                    conn.execute("UPDATE recipes SET added_by = ? WHERE id = ?", (added_by, new_recipe["id"]))
+                    conn.commit()
+                    new_recipe = conn.execute("SELECT * FROM recipes WHERE id = ?", (new_recipe["id"],)).fetchone()
 
-            recipe = dict(new_recipe)
-            recipe["ingredients"] = json.loads(recipe["ingredients"])
-            recipe["instructions"] = json.loads(recipe["instructions"])
-            recipe["tags"] = json.loads(recipe["tags"])
+                recipe = dict(new_recipe)
+                recipe["ingredients"] = json.loads(recipe["ingredients"])
+                recipe["instructions"] = json.loads(recipe["instructions"])
+                recipe["tags"] = json.loads(recipe["tags"])
 
-            with convert_lock:
-                convert_jobs[job_id]["status"] = "done"
-                convert_jobs[job_id]["recipe"] = recipe
-        else:
-            with convert_lock:
-                convert_jobs[job_id]["status"] = "error"
-                convert_jobs[job_id]["error"] = "Conversion succeeded but recipe was not saved"
-
-        conn.close()
+                with convert_lock:
+                    convert_jobs[job_id]["status"] = "done"
+                    convert_jobs[job_id]["recipe"] = recipe
+            else:
+                with convert_lock:
+                    convert_jobs[job_id]["status"] = "error"
+                    convert_jobs[job_id]["error"] = "Conversion succeeded but recipe was not saved"
+        finally:
+            conn.close()
 
     except requests.exceptions.ConnectionError:
         with convert_lock:
@@ -814,8 +815,8 @@ def add_to_meal_plan():
     if not recipe_id or not plan_date:
         return jsonify({"error": "recipe_id and date required"}), 400
 
-    user_name = session.get("user", {}).get("display_name", "")
     user_id = session.get("user_id")
+    user_name = session.get("display_name") or session.get("username") or ""
 
     db = get_db()
     cursor = db.execute(
@@ -838,8 +839,8 @@ def add_quick_plan():
     if not text or not plan_date:
         return jsonify({"error": "text and date required"}), 400
 
-    user_name = session.get("user", {}).get("display_name", "")
     user_id = session.get("user_id")
+    user_name = session.get("display_name") or session.get("username") or ""
 
     db = get_db()
     cursor = db.execute(

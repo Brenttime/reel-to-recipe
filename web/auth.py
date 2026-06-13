@@ -1,10 +1,13 @@
 """Discord OAuth2 authentication for OnlyPans."""
 import os
+import re
 import time
 import secrets
+import threading
 import requests
 from functools import wraps
 from urllib.parse import urlencode
+from markupsafe import escape
 from flask import (
     Blueprint, redirect, request, session, jsonify, url_for, g
 )
@@ -27,7 +30,34 @@ SCOPES = "identify"
 # Server-side state store — avoids relying on session cookies surviving
 # the redirect chain (iOS standalone PWA drops cookies during OAuth redirects)
 _oauth_states = {}  # {state_token: expiry_timestamp}
+_oauth_lock = threading.Lock()  # Guard concurrent access
 _STATE_TTL = 300  # 5 minutes
+
+# RFC3986 unreserved characters + percent-encoded (safe for OAuth codes/states)
+_TOKEN_RE = re.compile(r'^[A-Za-z0-9_.~\-]+$')
+
+
+def _is_valid_state(state):
+    """Check if state exists and is not expired. Does NOT consume it."""
+    with _oauth_lock:
+        if state not in _oauth_states:
+            return False
+        if _oauth_states[state] < time.time():
+            del _oauth_states[state]
+            return False
+        return True
+
+
+def _consume_valid_state(state):
+    """Check if state exists and is not expired, then consume (delete) it."""
+    with _oauth_lock:
+        if state not in _oauth_states:
+            return False
+        if _oauth_states[state] < time.time():
+            del _oauth_states[state]
+            return False
+        del _oauth_states[state]
+        return True
 
 
 def init_auth_db(db_path):
@@ -90,15 +120,17 @@ def login():
             'hint': 'Set DISCORD_CLIENT_SECRET environment variable'
         }), 503
 
-    # Purge expired states
+    # Purge expired states (thread-safe)
     now = time.time()
-    expired = [k for k, v in _oauth_states.items() if v < now]
-    for k in expired:
-        del _oauth_states[k]
+    with _oauth_lock:
+        expired = [k for k, v in _oauth_states.items() if v < now]
+        for k in expired:
+            del _oauth_states[k]
 
     # Generate state — stored server-side so it survives cookie loss
     state = secrets.token_urlsafe(32)
-    _oauth_states[state] = now + _STATE_TTL
+    with _oauth_lock:
+        _oauth_states[state] = now + _STATE_TTL
     # Also save in session as backup
     session['oauth_state'] = state
 
@@ -118,15 +150,32 @@ def callback():
     """Show instant loading page, then exchange code via fetch."""
     error = request.args.get('error')
     if error:
-        return jsonify({'error': f'Discord auth failed: {error}'}), 400
+        # Don't reflect raw error param — escape it
+        return jsonify({'error': f'Discord auth failed: {str(escape(error))}'}), 400
 
-    code = request.args.get('code')
-    state = request.args.get('state')
+    code = request.args.get('code', '')
+    state = request.args.get('state', '')
 
     if not code or not state:
         return jsonify({'error': 'Missing code or state'}), 400
 
+    # Validate code and state are safe tokens (RFC3986 unreserved characters)
+    if not _TOKEN_RE.fullmatch(code):
+        return jsonify({'error': 'Invalid authorization code'}), 400
+    if not _TOKEN_RE.fullmatch(state):
+        return jsonify({'error': 'Invalid state parameter'}), 400
+
+    # Verify state before rendering page (prevents forged callbacks)
+    valid_state = False
+    if _is_valid_state(state):
+        valid_state = True
+    elif state == session.get('oauth_state'):
+        valid_state = True
+    if not valid_state:
+        return jsonify({'error': 'Invalid or expired session — please try again', 'login_url': '/auth/login'}), 401
+
     # Return loading page immediately — no white screen
+    # code and state are validated as safe alphanumeric above
     return f'''<!DOCTYPE html>
 <html><head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -193,8 +242,7 @@ def callback_exchange():
 
     # Verify state
     valid = False
-    if state and state in _oauth_states:
-        del _oauth_states[state]
+    if state and _consume_valid_state(state):
         valid = True
     elif state and state == session.pop('oauth_state', None):
         valid = True
@@ -240,9 +288,10 @@ def callback_exchange():
 
     discord_user = user_resp.json()
     discord_id = discord_user['id']
-    username = discord_user['username']
-    display_name = discord_user.get('global_name', username)
-    avatar = discord_user.get('avatar', '')
+    username = discord_user.get('username') or discord_id
+    # global_name can be None (not just missing), so use `or` fallback
+    display_name = discord_user.get('global_name') or username
+    avatar = discord_user.get('avatar') or ''
 
     # Upsert user in database
     from app import get_db
@@ -292,11 +341,19 @@ def me():
     if user['avatar']:
         avatar_url = f"https://cdn.discordapp.com/avatars/{user['discord_id']}/{user['avatar']}.png?size=128"
 
+    # Fallback chain: display_name → username → discord_id → 'Unknown User'
+    usable_name = (
+        user['display_name']
+        or user['username']
+        or user['discord_id']
+        or 'Unknown User'
+    )
+
     return jsonify({
         'authenticated': True,
         'id': user['id'],
         'discord_id': user['discord_id'],
-        'username': user['username'],
-        'display_name': user['display_name'],
+        'username': user['username'] or user['discord_id'] or 'Unknown User',
+        'display_name': usable_name,
         'avatar_url': avatar_url,
     })
