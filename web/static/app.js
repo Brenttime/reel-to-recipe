@@ -43,6 +43,30 @@ const spotlightOverlay = document.getElementById('spotlightOverlay');
 let allRecipes = [];
 let currentRecipe = null;
 let isEditMode = false;
+
+// ─── Scroll Lock Helpers (shared across all overlays) ────────
+// Checks if ANY overlay is still active before unlocking body scroll.
+// This prevents stacked overlays (e.g. spotlight on modal, grocery on meal plan)
+// from unlocking scroll when the top one closes.
+function lockBodyScroll() {
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+}
+function unlockBodyScroll() {
+    // Only unlock if no other overlay is currently active
+    const activeOverlays = document.querySelectorAll(
+        '.modal-overlay.active, .shopping-overlay.active, .meal-plan-overlay.active, .radial-overlay.active, .grocery-overlay.active, .spotlight-overlay.active, .cook-mode.active'
+    );
+    if (activeOverlays.length === 0) {
+        document.body.style.overflow = '';
+        document.documentElement.style.overflow = '';
+        document.body.style.touchAction = '';
+    }
+}
+// Expose globally so meal-plan.js can use them
+window._lockBodyScroll = lockBodyScroll;
+window._unlockBodyScroll = unlockBodyScroll;
 let editFormSnapshot = null;
 let debounceTimer = null;
 let currentMultiplier = 1;
@@ -661,7 +685,7 @@ async function loadCategories() {
         renderCategoryChips(categories);
     } catch (e) {
         // Network failure — keep existing chips, don't crash
-        console.warn('loadCategories failed:', e.message);
+        console.warn('loadCategories failed:', e);
     }
 }
 
@@ -1524,18 +1548,14 @@ function openCookMode(recipe) {
     cookModeRecipe = recipe;
     cookModeStep = 0;
     cookModeEl.classList.add('active');
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
+    lockBodyScroll();
     renderCookModeStep();
     requestWakeLock();
 }
 
 function closeCookMode() {
     cookModeEl.classList.remove('active');
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    document.body.style.touchAction = '';
+    unlockBodyScroll();
     cookModeRecipe = null;
     releaseWakeLock();
 }
@@ -1789,9 +1809,7 @@ async function shareRecipe(recipe) {
 // ─── Spotlight (macOS-style convert overlay) ─────
 function openSpotlight() {
     spotlightOverlay.classList.add('active');
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
+    lockBodyScroll();
     const input = document.getElementById('convertInput');
     // Clear previous state
     input.value = '';
@@ -1804,9 +1822,7 @@ function openSpotlight() {
 
 function closeSpotlight() {
     spotlightOverlay.classList.remove('active');
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    document.body.style.touchAction = '';
+    unlockBodyScroll();
 }
 
 function toggleSpotlight() {
@@ -2171,9 +2187,7 @@ function openModal() {
     // Save scroll position for restoration on close
     _modalSavedScroll = window.scrollY;
     // Lock background scroll without repositioning body (avoids iOS repaint jump)
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
+    lockBodyScroll();
     // Reset modal scroll to top for fresh recipe view
     const modal = modalOverlay.querySelector('.glass-modal');
     if (modal) modal.scrollTop = 0;
@@ -2242,12 +2256,10 @@ function doCloseModal() {
     if (location.pathname.startsWith('/recipe/')) {
         history.pushState({}, '', '/');
     }
-    // Unlock background scroll
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    document.body.style.touchAction = '';
-    // Restore scroll position
-    window.scrollTo(0, _modalSavedScroll);
+    // Unlock background scroll (only if no other overlay is active)
+    unlockBodyScroll();
+    // Restore scroll position if scroll was actually unlocked
+    if (!document.body.style.overflow) window.scrollTo(0, _modalSavedScroll);
     // Remove visualViewport listener
     if (_modalVVHandler && window.visualViewport) {
         window.visualViewport.removeEventListener('resize', _modalVVHandler);
@@ -2328,9 +2340,7 @@ function openShoppingPanel() {
     shoppingOverlay.classList.add('active');
     // Lock background scroll without repositioning body (avoids iOS jump)
     _shoppingScrollLockPos = window.scrollY;
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
+    lockBodyScroll();
     // Prevent background scroll on iOS: block touchmove outside panel
     _shoppingTouchHandler = function(e) {
         const panel = shoppingOverlay.querySelector('.glass-modal');
@@ -2348,10 +2358,8 @@ function closeShoppingPanel() {
         _shoppingTouchHandler = null;
     }
     // Unlock background scroll and restore position
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    document.body.style.touchAction = '';
-    window.scrollTo(0, _shoppingScrollLockPos);
+    unlockBodyScroll();
+    if (!document.body.style.overflow) window.scrollTo(0, _shoppingScrollLockPos);
 }
 
 // ─── Util ───────────────────────────────────────

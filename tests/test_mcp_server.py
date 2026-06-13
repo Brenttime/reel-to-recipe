@@ -167,8 +167,11 @@ class TestConvertEndpoint:
                 timeout=60,
             )
             # Any response means the server is up and processing requests.
-            # 4xx/5xx from a fake URL is expected — we only fail on no response.
-            assert resp.status_code is not None, "Got a response from MCP server"
+            # 4xx/5xx from a fake URL is expected — we only fail on no response
+            # or if the route itself is missing (404/405 = endpoint doesn't exist).
+            assert resp.status_code not in (404, 405), (
+                f"Endpoint missing: {resp.status_code} — /convert route not registered"
+            )
         except requests.ConnectionError:
             pytest.skip("MCP server not running on port 8002")
 

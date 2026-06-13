@@ -115,17 +115,13 @@ async function removeEntry(entryId) {
 // ─── Meal Plan Panel ───────────────────────────────
 function openMealPlan() {
     document.getElementById('mealPlanOverlay').classList.add('active');
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
+    window._lockBodyScroll();
     refreshMealPlan();
 }
 
 function closeMealPlan() {
     document.getElementById('mealPlanOverlay').classList.remove('active');
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    document.body.style.touchAction = '';
+    window._unlockBodyScroll();
     cancelReassign();
 }
 
@@ -245,17 +241,13 @@ function openRadialMenu(recipeId, recipeTitle) {
 
     document.getElementById('radialRecipeTitle').textContent = recipeTitle;
     document.getElementById('radialOverlay').classList.add('active');
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
+    window._lockBodyScroll();
     renderRadialRing();
 }
 
 function closeRadialMenu() {
     document.getElementById('radialOverlay').classList.remove('active');
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    document.body.style.touchAction = '';
+    window._unlockBodyScroll();
     radialRecipeId = null;
 }
 
@@ -353,9 +345,7 @@ function setGroceryChecked(items) {
 
 async function openGroceryList() {
     document.getElementById('groceryOverlay').classList.add('active');
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
+    window._lockBodyScroll();
     const body = document.getElementById('groceryBody');
     const subtitle = document.getElementById('grocerySubtitle');
     const actions = document.getElementById('groceryActions');
@@ -444,9 +434,7 @@ async function openGroceryList() {
 
 function closeGroceryList() {
     document.getElementById('groceryOverlay').classList.remove('active');
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    document.body.style.touchAction = '';
+    window._unlockBodyScroll();
 }
 
 function groupIngredients(ingredients) {
