@@ -673,12 +673,7 @@ body {
 
 .modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    /* Use calc(var(--vh, 1vh) * 100) so iOS visual viewport is tracked */
-    height: 100%;
-    height: calc(var(--vh, 1vh) * 100);
+    inset: 0;
     background: rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
