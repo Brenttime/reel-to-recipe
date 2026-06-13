@@ -711,6 +711,10 @@ body {
     padding: 36px 36px 48px;
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2), var(--glass-inner-glow);
     position: relative;
+}
+
+/* Recipe modal entrance animation (only for #modalOverlay) */
+.modal-overlay .glass-modal {
     transform: translateY(10px);
     opacity: 0;
     transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.0), opacity 0.2s ease;
@@ -1591,6 +1595,11 @@ body {
 .shopping-overlay.active {
     opacity: 1;
     pointer-events: all;
+}
+
+.shopping-overlay.active .glass-modal {
+    transform: translateY(0);
+    opacity: 1;
 }
 
 .shopping-panel {
