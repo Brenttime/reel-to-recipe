@@ -42,6 +42,20 @@ convert_jobs = {}  # job_id -> {status, url, added_by, recipe, error, created_at
 convert_lock = threading.Lock()
 
 
+def _normalize_source_url(url):
+    """Normalize URL for consistent source_url matching (mirrors MCP normalization)."""
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(url)
+    # Strip query params and fragment for Instagram/TikTok
+    if any(domain in parsed.netloc for domain in ['instagram.com', 'tiktok.com']):
+        normalized = urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
+        # Ensure trailing slash on path
+        if not normalized.endswith('/'):
+            normalized += '/'
+        return normalized
+    return url
+
+
 def _conversion_worker(job_id, url, added_by):
     """Background worker: calls MCP, saves recipe, updates job status."""
     try:
@@ -67,8 +81,9 @@ def _conversion_worker(job_id, url, added_by):
         conn = sqlite3.connect(DB_PATH)
         try:
             conn.row_factory = sqlite3.Row
+            normalized_url = _normalize_source_url(url)
             new_recipe = conn.execute(
-                "SELECT * FROM recipes WHERE source_url = ? ORDER BY id DESC LIMIT 1", (url,)
+                "SELECT * FROM recipes WHERE source_url = ? ORDER BY id DESC LIMIT 1", (normalized_url,)
             ).fetchone()
 
             if new_recipe:
@@ -220,6 +235,7 @@ def init_db():
         conn.execute("ALTER TABLE recipes ADD COLUMN added_by TEXT DEFAULT ''")
     if "serving_size" not in cols:
         conn.execute("ALTER TABLE recipes ADD COLUMN serving_size TEXT DEFAULT ''")
+    conn.commit()
     conn.close()
     # Initialize auth tables
     init_auth_db(DB_PATH)
@@ -654,8 +670,9 @@ def api_convert():
 
     # Check for duplicates first
     db = get_db()
+    normalized_url = _normalize_source_url(url)
     existing = db.execute(
-        "SELECT id, title FROM recipes WHERE source_url = ?", (url,)
+        "SELECT id, title FROM recipes WHERE source_url = ?", (normalized_url,)
     ).fetchone()
     if existing:
         return jsonify({
