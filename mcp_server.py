@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
+import openai
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("reel-to-recipe")
@@ -27,7 +28,7 @@ mcp.settings.transport_security.enable_dns_rebinding_protection = False
 COOKIES_FILE = Path(__file__).parent / "cookies.txt"
 NETRC_FILE = Path.home() / ".netrc"
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
-VENV_PYTHON = str(Path(__file__).parent / ".venv" / "bin" / "python")
+
 
 # GPU acceleration (auto-detected by default, override via environment variables)
 # WHISPER_DEVICE: "auto" (default — tries CUDA, falls back to CPU), "cpu", or "cuda"
@@ -611,7 +612,7 @@ def download_audio(url: str) -> str:
     """Download audio from Instagram Reel, return path to mp3."""
     tmp = tempfile.mktemp(suffix=".mp3")
     cmd = [
-        str(Path(__file__).parent / ".venv" / "bin" / "yt-dlp"),
+        "yt-dlp",
         "-x", "--audio-format", "mp3",
         "-o", tmp,
         "--no-playlist",
@@ -632,7 +633,7 @@ def download_audio(url: str) -> str:
 def get_caption(url: str) -> str:
     """Get the post caption/description."""
     cmd = [
-        str(Path(__file__).parent / ".venv" / "bin" / "yt-dlp"),
+        "yt-dlp",
         "--print", "description",
         "--no-playlist",
     ]
@@ -651,7 +652,7 @@ def download_video(url: str) -> str:
     """Download video from Instagram Reel, return path to mp4."""
     tmp = tempfile.mktemp(suffix=".mp4")
     cmd = [
-        str(Path(__file__).parent / ".venv" / "bin" / "yt-dlp"),
+        "yt-dlp",
         "-o", tmp,
         "--no-playlist",
     ]
@@ -682,7 +683,7 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
             result["video_path"] = tiktok_download_video(url)
         return result
 
-    yt_dlp = str(Path(__file__).parent / ".venv" / "bin" / "yt-dlp")
+    yt_dlp = "yt-dlp"
 
     if need_video:
         # Download full video + print description in one call
@@ -929,25 +930,57 @@ def transcribe(audio_path: str) -> str:
     return " ".join(segment.text.strip() for segment in segments)
 
 
-def _strip_hermes_chrome(output: str) -> str:
-    """Strip the hermes UI chrome — extract content between the box borders."""
-    lines = output.split("\n")
-    in_box = False
-    content_lines = []
-    for line in lines:
-        if "╭" in line:
-            in_box = True
-            continue
-        if "╰" in line:
-            break
-        if in_box:
-            cleaned = line.strip()
-            if cleaned.startswith("│"):
-                cleaned = cleaned[1:]
-            if cleaned.endswith("│"):
-                cleaned = cleaned[:-1]
-            content_lines.append(cleaned.strip())
-    return "\n".join(content_lines).strip() if content_lines else output
+
+
+
+def _call_llm(prompt: str) -> str:
+    """Call an OpenAI-compatible LLM API for recipe formatting.
+
+    Uses OPENAI_API_KEY and OPENAI_BASE_URL from environment.
+    Supports standard OpenAI, Azure OpenAI, and any OpenAI-compatible API.
+    Set AZURE_OPENAI=1 to use Azure OpenAI client (requires api-version in URL or AZURE_API_VERSION env).
+    Returns the response content string. Raises RuntimeError on failure.
+    """
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    base_url = os.environ.get("OPENAI_BASE_URL") or None
+    use_azure = os.environ.get("AZURE_OPENAI", "").strip() in ("1", "true", "yes")
+
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+
+    if use_azure:
+        if not base_url:
+            raise RuntimeError("OPENAI_BASE_URL is required for Azure OpenAI (set to your Azure endpoint)")
+        api_version = os.environ.get("AZURE_API_VERSION", "2024-12-01-preview")
+        client = openai.AzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=base_url,
+            api_version=api_version,
+            timeout=300.0,
+        )
+    else:
+        client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=300.0)
+
+    try:
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a recipe formatting assistant."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        if not response.choices:
+            raise RuntimeError("LLM returned no choices in response")
+        content = response.choices[0].message.content
+        if not content:
+            raise RuntimeError("LLM returned empty response")
+        return content
+    except openai.APIError as e:
+        raise RuntimeError(f"LLM API error: {e}") from e
+    except Exception as e:
+        if isinstance(e, RuntimeError):
+            raise
+        raise RuntimeError(f"LLM call failed: {e}") from e
 
 
 def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, force: bool = False) -> None:
@@ -1452,14 +1485,7 @@ Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
 - If a source is empty, ignore it. Combine all non-empty sources for the most complete recipe.
 - Ingredients section is REQUIRED even if you must infer from instructions."""
 
-    result = subprocess.run(
-        ["hermes", "chat", "-q", prompt, "-m", LLM_MODEL, "-t", ""],
-        capture_output=True, text=True, timeout=120
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Hermes failed: {result.stderr}")
-
-    output = _strip_hermes_chrome(result.stdout)
+    output = _call_llm(prompt)
 
     # Validate: LLM must produce a recipe with ingredients, not a refusal
     # Check for various heading formats: "## Ingredients", "Ingredients", "**Ingredients**"
