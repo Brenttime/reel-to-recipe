@@ -43,16 +43,16 @@ convert_lock = threading.Lock()
 
 
 def _normalize_source_url(url):
-    """Normalize URL for consistent source_url matching (mirrors MCP normalization)."""
+    """Normalize URL for consistent source_url matching (mirrors MCP _normalize_url)."""
     from urllib.parse import urlparse, urlunparse
     parsed = urlparse(url)
-    # Strip query params and fragment for Instagram/TikTok
-    if any(domain in parsed.netloc for domain in ['instagram.com', 'tiktok.com']):
-        normalized = urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
-        # Ensure trailing slash on path
-        if not normalized.endswith('/'):
-            normalized += '/'
-        return normalized
+    # Case-insensitive domain check with www. stripping (mirrors MCP)
+    domain = parsed.netloc.lower().replace("www.", "")
+    if "instagram.com" in domain or "tiktok.com" in domain:
+        # Strip all query params — the path alone identifies the content
+        # Use rstrip("/") + "/" to guarantee exactly one trailing slash
+        clean = urlunparse((parsed.scheme, parsed.netloc, parsed.path.rstrip("/") + "/", "", "", ""))
+        return clean
     return url
 
 
@@ -82,8 +82,11 @@ def _conversion_worker(job_id, url, added_by):
         try:
             conn.row_factory = sqlite3.Row
             normalized_url = _normalize_source_url(url)
+            # Query both normalized and original URL for backward compat
+            # (older rows may have stored source_url with query params)
             new_recipe = conn.execute(
-                "SELECT * FROM recipes WHERE source_url = ? ORDER BY id DESC LIMIT 1", (normalized_url,)
+                "SELECT * FROM recipes WHERE source_url = ? OR source_url = ? ORDER BY id DESC LIMIT 1",
+                (normalized_url, url)
             ).fetchone()
 
             if new_recipe:
@@ -668,11 +671,12 @@ def api_convert():
     if not url.startswith("http://") and not url.startswith("https://"):
         return jsonify({"error": "URL must start with http:// or https://"}), 400
 
-    # Check for duplicates first
+    # Check for duplicates first (both normalized and original for backward compat)
     db = get_db()
     normalized_url = _normalize_source_url(url)
     existing = db.execute(
-        "SELECT id, title FROM recipes WHERE source_url = ?", (normalized_url,)
+        "SELECT id, title FROM recipes WHERE source_url = ? OR source_url = ?",
+        (normalized_url, url)
     ).fetchone()
     if existing:
         return jsonify({
