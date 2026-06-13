@@ -675,7 +675,7 @@ def api_convert():
     db = get_db()
     normalized_url = _normalize_source_url(url)
     existing = db.execute(
-        "SELECT id, title FROM recipes WHERE source_url = ? OR source_url = ?",
+        "SELECT id, title FROM recipes WHERE source_url = ? OR source_url = ? ORDER BY id DESC LIMIT 1",
         (normalized_url, url)
     ).fetchone()
     if existing:
