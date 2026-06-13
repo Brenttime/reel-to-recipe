@@ -682,7 +682,7 @@ body {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
-    padding: 5vh 24px 24px;
+    padding: 6vh 24px 24px;
 }
 
 .modal-overlay.active {
@@ -696,11 +696,11 @@ body {
     border-radius: var(--radius-xl);
     max-width: 640px;
     width: 100%;
-    max-height: 85vh;
+    max-height: 80vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding: 36px;
+    padding: 36px 36px 48px;
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2), var(--glass-inner-glow);
     position: relative;
     transform: scale(0.9) translateY(20px);
@@ -1251,9 +1251,9 @@ body {
     }
 
     .glass-modal {
-        padding: 24px;
+        padding: 24px 24px 36px;
         border-radius: var(--radius-lg);
-        max-height: 90vh;
+        max-height: 82vh;
     }
 
     .modal-title {
