@@ -80,7 +80,7 @@ if [ -f "$PROJECT_DIR/.venv/bin/activate" ]; then
 fi
 
 # Run pytest with any additional args passed to this script
-pytest "$SCRIPT_DIR" \
+python -u -m pytest "$SCRIPT_DIR" \
     -v \
     --tb=short \
     --no-header \
