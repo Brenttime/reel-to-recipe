@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-title" content="OnlyPans">
     <meta name="theme-color" content="#FF9500">
     <link rel="stylesheet" href="/static/style.css?v=69">
-    <link rel="stylesheet" href="/static/meal-plan.css?v=15">
+    <link rel="stylesheet" href="/static/meal-plan.css?v=16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -267,6 +267,10 @@
                     <button id="groceryClearCheckedBtn">Clear Checked</button>
                 </div>
                 <div class="grocery-body" id="groceryBody"></div>
+                <div class="grocery-add-row" id="groceryAddRow">
+                    <input type="text" id="groceryAddInput" class="grocery-add-input" placeholder="Add an item..." maxlength="100" autocomplete="off" />
+                    <button id="groceryAddBtn" class="grocery-add-btn" disabled>Add</button>
+                </div>
                 <button class="grocery-copy-btn" id="groceryCopyBtn">Copy to Clipboard</button>
             </div>
         </div>
@@ -281,6 +285,6 @@
     </footer>
 
     <script src="/static/app.js?v=44"></script>
-    <script src="/static/meal-plan.js?v=8"></script>
+    <script src="/static/meal-plan.js?v=9"></script>
 </body>
 </html>
