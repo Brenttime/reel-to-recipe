@@ -343,6 +343,33 @@ function setGroceryChecked(items) {
     localStorage.setItem(GROCERY_CHECKED_KEY, JSON.stringify(items));
 }
 
+// Server-backed custom items
+async function fetchCustomItems(week) {
+    try {
+        const res = await fetch(`/api/meal-plan/grocery-custom?week=${week}`);
+        if (!res.ok) return [];
+        return await res.json();
+    } catch { return []; }
+}
+
+async function addCustomItemToServer(text, week) {
+    try {
+        const res = await fetch('/api/meal-plan/grocery-custom', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, week })
+        });
+        if (!res.ok) return null;
+        return await res.json();
+    } catch { return null; }
+}
+
+async function removeCustomItemFromServer(itemId) {
+    try {
+        await fetch(`/api/meal-plan/grocery-custom/${itemId}`, { method: 'DELETE' });
+    } catch { /* silent */ }
+}
+
 async function openGroceryList() {
     document.getElementById('groceryOverlay').classList.add('active');
     window._lockBodyScroll();
@@ -353,80 +380,129 @@ async function openGroceryList() {
     body.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-tertiary)">Loading...</div>';
     actions.style.display = 'none';
 
+    const week = formatDate(mpWeekStart);
+
     try {
-        const res = await fetch(`/api/meal-plan/grocery-list?week=${formatDate(mpWeekStart)}`);
+        const [res, customItems] = await Promise.all([
+            fetch(`/api/meal-plan/grocery-list?week=${week}`),
+            fetchCustomItems(week)
+        ]);
         const data = await res.json();
+
+        const customTexts = customItems.map(c => c.text);
+        const allIngredients = [...data.ingredients, ...customTexts];
 
         subtitle.textContent = `${data.recipes.length} recipe${data.recipes.length !== 1 ? 's' : ''} this week`;
 
-        if (data.ingredients.length === 0) {
-            body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary)">No meals planned this week</div>';
-            return;
-        }
-
-        actions.style.display = 'flex';
-        const sections = groupIngredients(data.ingredients);
         const checked = getGroceryChecked();
         const targetSystem = (typeof unitSystem !== 'undefined' && unitSystem !== 'original') ? unitSystem : null;
         const unitLabels = { original: 'As Written', imperial: 'oz · lb · cups', metric: 'g · ml · °C' };
         const currentUnit = (typeof unitSystem !== 'undefined') ? unitSystem : 'original';
 
-        // Insert unit toggle into the actions row
-        let existingToggle = document.getElementById('groceryUnitToggle');
-        if (existingToggle) existingToggle.remove();
-        const toggleBtn = document.createElement('button');
-        toggleBtn.className = 'unit-toggle-btn grocery-unit-toggle';
-        toggleBtn.id = 'groceryUnitToggle';
-        toggleBtn.setAttribute('data-units', currentUnit);
-        toggleBtn.title = 'Convert units';
-        toggleBtn.innerHTML = `
-            <svg class="unit-toggle-scale" viewBox="0 0 24 20" width="18" height="15">
-                <line x1="12" y1="2" x2="12" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                <line x1="6" y1="18" x2="18" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                <g class="scale-beam">
-                    <line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                    <path d="M1 6 L3 12 L5 12 Z" fill="currentColor" opacity="0.6"/>
-                    <path d="M19 6 L21 12 L23 12 Z" fill="currentColor" opacity="0.6"/>
-                </g>
-            </svg>
-            <span class="unit-toggle-label">${unitLabels[currentUnit]}</span>`;
-        actions.appendChild(toggleBtn);
+        if (allIngredients.length === 0) {
+            body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary)">No meals planned this week<br><span style="font-size:0.9em;margin-top:8px;display:inline-block;color:var(--text-tertiary)">Add items below to get started</span></div>';
+        } else {
+            actions.style.display = 'flex';
+            const sections = groupIngredients(allIngredients);
 
-        body.innerHTML = Object.entries(sections).map(([section, items]) => `
-            <div class="grocery-section">
-                <div class="grocery-section-title">${section}</div>
-                ${items.map(i => {
-                    const isChecked = checked.includes(i);
-                    const displayText = targetSystem && typeof convertIngredientLine === 'function' ? convertIngredientLine(i, targetSystem) : i;
-                    return `<label class="grocery-item ${isChecked ? 'checked' : ''}">
-                        <input type="checkbox" ${isChecked ? 'checked' : ''} data-grocery-text="${escapeHtml(i)}">
-                        <span class="grocery-item-text">${escapeHtml(displayText)}</span>
-                    </label>`;
-                }).join('')}
-            </div>
-        `).join('');
+            // Insert unit toggle into the actions row
+            let existingToggle = document.getElementById('groceryUnitToggle');
+            if (existingToggle) existingToggle.remove();
+            const toggleBtn = document.createElement('button');
+            toggleBtn.className = 'unit-toggle-btn grocery-unit-toggle';
+            toggleBtn.id = 'groceryUnitToggle';
+            toggleBtn.setAttribute('data-units', currentUnit);
+            toggleBtn.title = 'Convert units';
+            toggleBtn.innerHTML = `
+                <svg class="unit-toggle-scale" viewBox="0 0 24 20" width="18" height="15">
+                    <line x1="12" y1="2" x2="12" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <line x1="6" y1="18" x2="18" y2="18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <g class="scale-beam">
+                        <line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M1 6 L3 12 L5 12 Z" fill="currentColor" opacity="0.6"/>
+                        <path d="M19 6 L21 12 L23 12 Z" fill="currentColor" opacity="0.6"/>
+                    </g>
+                </svg>
+                <span class="unit-toggle-label">${unitLabels[currentUnit]}</span>`;
+            actions.appendChild(toggleBtn);
 
-        // Bind unit toggle
-        document.getElementById('groceryUnitToggle').addEventListener('click', () => {
-            if (typeof cycleUnits === 'function') cycleUnits();
-            openGroceryList(); // Re-render with new units
-        });
+            body.innerHTML = Object.entries(sections).map(([section, items]) => `
+                <div class="grocery-section">
+                    <div class="grocery-section-title">${section}</div>
+                    ${items.map(i => {
+                        const isChecked = checked.includes(i);
+                        const customEntry = customItems.find(c => c.text === i);
+                        const displayText = targetSystem && typeof convertIngredientLine === 'function' ? convertIngredientLine(i, targetSystem) : i;
+                        return `<label class="grocery-item ${isChecked ? 'checked' : ''}">
+                            <input type="checkbox" ${isChecked ? 'checked' : ''} data-grocery-text="${escapeHtml(i)}">
+                            <span class="grocery-item-text">${escapeHtml(displayText)}</span>
+                            ${customEntry ? `<button class="grocery-remove-custom" data-custom-id="${customEntry.id}" title="Remove">×</button>` : ''}
+                        </label>`;
+                    }).join('')}
+                </div>
+            `).join('');
 
-        // Bind checkboxes
-        body.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-            cb.addEventListener('change', () => {
-                const text = cb.dataset.groceryText;
-                let checked = getGroceryChecked();
-                if (cb.checked) {
-                    if (!checked.includes(text)) checked.push(text);
-                    cb.closest('.grocery-item').classList.add('checked');
-                } else {
-                    checked = checked.filter(t => t !== text);
-                    cb.closest('.grocery-item').classList.remove('checked');
-                }
-                setGroceryChecked(checked);
+            // Bind unit toggle
+            document.getElementById('groceryUnitToggle').addEventListener('click', () => {
+                if (typeof cycleUnits === 'function') cycleUnits();
+                openGroceryList();
             });
-        });
+
+            // Bind checkboxes
+            body.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const text = cb.dataset.groceryText;
+                    let checked = getGroceryChecked();
+                    if (cb.checked) {
+                        if (!checked.includes(text)) checked.push(text);
+                        cb.closest('.grocery-item').classList.add('checked');
+                    } else {
+                        checked = checked.filter(t => t !== text);
+                        cb.closest('.grocery-item').classList.remove('checked');
+                    }
+                    setGroceryChecked(checked);
+                });
+            });
+
+            // Bind custom item remove buttons
+            body.querySelectorAll('.grocery-remove-custom').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    await removeCustomItemFromServer(btn.dataset.customId);
+                    openGroceryList();
+                });
+            });
+        }
+
+        // Bind Add Item input (persistent in DOM — bind once)
+        const addInput = document.getElementById('groceryAddInput');
+        const addBtn = document.getElementById('groceryAddBtn');
+        addInput.value = '';
+        addBtn.disabled = true;
+
+        if (!addInput.dataset.bound) {
+            addInput.dataset.bound = '1';
+
+            addInput.addEventListener('input', () => {
+                addBtn.disabled = !addInput.value.trim();
+            });
+
+            const doAdd = async () => {
+                const text = addInput.value.trim();
+                if (!text) return;
+                addBtn.disabled = true;
+                addInput.value = '';
+                await addCustomItemToServer(text, formatDate(mpWeekStart));
+                openGroceryList();
+            };
+
+            addInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') doAdd();
+            });
+
+            addBtn.addEventListener('click', doAdd);
+        }
     } catch (e) {
         body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary)">Failed to load</div>';
     }
