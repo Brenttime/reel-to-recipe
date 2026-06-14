@@ -140,9 +140,37 @@ def login():
         'response_type': 'code',
         'scope': SCOPES,
         'state': state,
+        'prompt': 'none',  # Skip consent screen if already authorized
     }
     auth_url = f"{AUTHORIZE_URL}?{urlencode(params)}"
-    return redirect(auth_url)
+
+    # Show a loading page instead of raw redirect — prevents white screen
+    # while Discord's heavy OAuth page loads
+    return f'''<!DOCTYPE html>
+<html><head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="3;url={auth_url}">
+<style>
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);
+         font-family:-apple-system,BlinkMacSystemFont,sans-serif; color:#fff; }}
+  .card {{ text-align:center; padding:48px 32px; }}
+  .spinner {{ width:48px; height:48px; border:3px solid rgba(255,255,255,.15);
+              border-top-color:#5865F2; border-radius:50%;
+              animation:spin .8s linear infinite; margin:0 auto 24px; }}
+  @keyframes spin {{ to {{ transform:rotate(360deg); }} }}
+  h2 {{ font-size:1.2rem; font-weight:500; opacity:.9; margin-bottom:8px; }}
+  .sub {{ font-size:.85rem; opacity:.5; }}
+</style>
+</head><body>
+<div class="card">
+  <div class="spinner"></div>
+  <h2>Connecting to Discord...</h2>
+  <p class="sub">You'll be redirected in a moment</p>
+</div>
+<script>window.location.replace("{auth_url}");</script>
+</body></html>'''
 
 
 @auth_bp.route('/callback')
