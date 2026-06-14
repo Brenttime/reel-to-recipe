@@ -762,12 +762,12 @@
 }
 
 .grocery-item {
-    font-size: 0.85rem;
-    padding: 8px 4px;
+    font-size: 1rem;
+    padding: 12px 8px;
     color: var(--text-primary);
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     cursor: pointer;
     border-radius: 8px;
     transition: background 0.15s ease;
@@ -778,9 +778,9 @@
 }
 
 .grocery-item input[type="checkbox"] {
-    width: 20px;
-    height: 20px;
-    border-radius: 6px;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
     border: 2px solid var(--text-tertiary);
     appearance: none;
     -webkit-appearance: none;
@@ -803,7 +803,7 @@
     left: 50%;
     transform: translate(-50%, -50%);
     color: white;
-    font-size: 12px;
+    font-size: 15px;
     font-weight: 700;
 }
 
