@@ -71,7 +71,7 @@ def add_custom_item(page: Page, text: str):
     add_input = page.locator("#groceryAddInput")
     add_input.fill(text)
     add_input.press("Enter")
-    page.wait_for_timeout(800)  # Wait for server round-trip + re-render
+    page.wait_for_timeout(1200)  # Wait for server round-trip + re-render
 
 
 def add_custom_item_button(page: Page, text: str):
@@ -79,7 +79,7 @@ def add_custom_item_button(page: Page, text: str):
     add_input = page.locator("#groceryAddInput")
     add_input.fill(text)
     page.locator("#groceryAddBtn").click()
-    page.wait_for_timeout(800)
+    page.wait_for_timeout(1200)
 
 
 def get_grocery_body_text(page: Page) -> str:
