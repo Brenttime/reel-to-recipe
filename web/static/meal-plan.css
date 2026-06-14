@@ -707,7 +707,7 @@
 .grocery-panel {
     width: 100%;
     max-width: 440px;
-    max-height: 75vh;
+    max-height: 90vh;
     padding: 28px;
     display: flex;
     flex-direction: column;
