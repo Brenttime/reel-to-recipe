@@ -13,7 +13,7 @@ import requests
 from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 from auth import auth_bp, init_auth_db
-from ingredient_merge import merge_ingredients
+from ingredient_merge import merge_ingredients, parse_ingredient, _normalize_name
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "onlypans-dev-key-change-in-prod")
@@ -924,6 +924,17 @@ def remove_from_meal_plan(entry_id):
     return jsonify({"status": "ok"})
 
 
+def _ingredient_matches_merged(original: str, merged: str) -> bool:
+    """Check if an original ingredient text contributed to a merged result.
+
+    Compares normalized names — if the normalized name from the original
+    is contained in the merged text's normalized name, they match.
+    """
+    _, _, orig_name, _ = parse_ingredient(original)
+    _, _, merged_name, _ = parse_ingredient(merged)
+    return _normalize_name(orig_name) == _normalize_name(merged_name)
+
+
 @app.route("/api/meal-plan/grocery-list")
 def get_grocery_list():
     """Generate a grocery list for a week. Aggregates ingredients from assigned recipes."""
@@ -945,22 +956,39 @@ def get_grocery_list():
     ).fetchall()
 
     all_ingredients = []
+    ingredient_sources = {}  # ingredient text → list of recipe titles
     recipes_included = []
     for row in rows:
-        recipes_included.append(row["title"])
+        title = row["title"]
+        recipes_included.append(title)
         items = json.loads(row["ingredients"]) if row["ingredients"] else []
         for item in items:
             text = item if isinstance(item, str) else (item.get("text", "") if isinstance(item, dict) else str(item))
             if text:
                 all_ingredients.append(text)
+                ingredient_sources.setdefault(text, []).append(title)
 
     # Merge duplicate/similar ingredients (sum quantities for same item+unit)
     merged_ingredients = merge_ingredients(all_ingredients)
 
+    # Build source mapping for merged ingredients
+    # After merging, map each merged string back to all recipe sources
+    merged_sources = {}
+    for merged_text in merged_ingredients:
+        sources = set()
+        # Check which original ingredients contributed to this merged text
+        for orig_text, titles in ingredient_sources.items():
+            if orig_text == merged_text:
+                sources.update(titles)
+            elif _ingredient_matches_merged(orig_text, merged_text):
+                sources.update(titles)
+        merged_sources[merged_text] = sorted(sources)
+
     return jsonify({
         "week_start": week_start,
         "recipes": recipes_included,
-        "ingredients": merged_ingredients
+        "ingredients": merged_ingredients,
+        "sources": merged_sources
     })
 
 
