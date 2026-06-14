@@ -415,11 +415,11 @@ class TestAuth:
     """Tests for auth endpoints (no full OAuth flow, just structural checks)."""
 
     def test_login_redirects_to_discord(self, http, base_url):
-        """GET /auth/login redirects to Discord OAuth2 URL."""
+        """GET /auth/login returns loading page with Discord OAuth2 URL."""
         resp = requests.get(f"{base_url}/auth/login", allow_redirects=False)
-        assert resp.status_code in (302, 303), f"Expected redirect, got {resp.status_code}"
-        location = resp.headers.get("Location", "")
-        assert "discord.com" in location, f"Should redirect to Discord, got: {location}"
+        assert resp.status_code == 200, f"Expected 200 loading page, got {resp.status_code}"
+        assert "discord.com/oauth2/authorize" in resp.text, "Should contain Discord OAuth URL"
+        assert "Connecting to Discord" in resp.text, "Should show loading message"
 
     @pytest.mark.skip(reason="TEST_MODE=1 disables auth — can't test 401 in test container")
     def test_me_unauthenticated(self, http, base_url):
