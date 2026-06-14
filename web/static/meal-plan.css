@@ -854,6 +854,72 @@
     background: rgba(255, 255, 255, 0.14);
 }
 
+.grocery-add-row {
+    display: flex;
+    gap: 8px;
+    padding: 12px 0;
+    border-top: 1px solid var(--glass-border);
+    margin-top: 8px;
+}
+
+.grocery-add-input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.grocery-add-input:focus {
+    border-color: var(--accent);
+}
+
+.grocery-add-input::placeholder {
+    color: var(--text-tertiary);
+}
+
+.grocery-add-btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+    white-space: nowrap;
+}
+
+.grocery-add-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.grocery-remove-custom {
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    font-size: 1.2rem;
+    padding: 0 4px;
+    cursor: pointer;
+    line-height: 1;
+    margin-left: auto;
+    opacity: 0.6;
+    transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.grocery-remove-custom:hover {
+    opacity: 1;
+    color: #FF453A;
+}
+
 .grocery-copy-btn {
     width: 100%;
     padding: 14px;
