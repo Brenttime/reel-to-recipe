@@ -28,8 +28,8 @@ Everything saves to a self-hosted cookbook with search, ratings, meal planning, 
 - 🏷️ **Auto-tagging** — DoorDash-style category chips (🇯🇵 Japanese, 🍗 Chicken, 💨 Air Fryer, etc.)
 - ⭐ **Ratings & reviews** — 1-5 stars per user, green ✓ badge for 4+ rated recipes
 - 👨‍🍳 **Cook mode** — fullscreen step-by-step with screen wake lock
-- 🛒 **Shopping list** — smart quantity merging, grouped by grocery aisle
-- 📅 **Meal planner** — radial day selector, shared weekly calendar, freeform quick plans, auto grocery aggregation
+- 🛒 **Shared grocery cart** — server-persisted, syncs across devices every 60s. Custom items, smart quantity merging ("1 tsp garlic" × 2 = "2 tsp garlic"), grouped by aisle, shared check-off state
+- 📅 **Meal planner** — radial day selector, shared weekly calendar, freeform quick plans, auto grocery aggregation with ingredient merging
 - ⚖️ **Unit converter** — toggle between metric/imperial/original with a balance-scale icon
 - 🌙 **Dark mode** — system/light/dark with Apple-inspired deep purple gradients
 - 🔗 **Share** — native share sheet (iOS/Android) or clipboard copy
