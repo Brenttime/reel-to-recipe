@@ -13,6 +13,7 @@ import requests
 from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 from auth import auth_bp, init_auth_db
+from ingredient_merge import merge_ingredients
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "onlypans-dev-key-change-in-prod")
@@ -949,10 +950,13 @@ def get_grocery_list():
             if text:
                 all_ingredients.append(text)
 
+    # Merge duplicate/similar ingredients (sum quantities for same item+unit)
+    merged_ingredients = merge_ingredients(all_ingredients)
+
     return jsonify({
         "week_start": week_start,
         "recipes": recipes_included,
-        "ingredients": all_ingredients
+        "ingredients": merged_ingredients
     })
 
 
