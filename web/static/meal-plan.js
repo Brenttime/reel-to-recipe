@@ -332,7 +332,7 @@ async function renderRadialRing() {
 }
 
 // ─── Grocery List ──────────────────────────────────
-let _grocerySyncInterval = null;
+let _grocerySync = null;
 
 // Server-backed checked items
 async function fetchCheckedItems(week) {
@@ -533,80 +533,70 @@ async function openGroceryList() {
             addBtn.addEventListener('click', doAdd);
         }
 
-        // Start 60s sync interval (refresh grocery list from server)
-        _startGrocerySync();
+        // Start 60s sync via SyncManager
+        if (!_grocerySync) {
+            _grocerySync = window.SyncManager.create({
+                id: 'grocery',
+                interval: 60000,
+                isActive: () => document.getElementById('groceryOverlay').classList.contains('active'),
+                fetch: async () => {
+                    const w = formatDate(mpWeekStart);
+                    const [checked, custom, grocery] = await Promise.all([
+                        fetchCheckedItems(w),
+                        fetchCustomItems(w),
+                        fetch(`/api/meal-plan/grocery-list?week=${w}`).then(r => r.json())
+                    ]);
+                    const customTexts = custom.map(c => c.text);
+                    return { checked, ingredients: [...grocery.ingredients, ...customTexts] };
+                },
+                diff: (server) => {
+                    const body = document.getElementById('groceryBody');
+                    const cbs = [...body.querySelectorAll('input[type="checkbox"]')];
+                    const currentTexts = cbs.map(cb => cb.dataset.groceryText);
+
+                    // Structural change if items differ
+                    const currentSet = new Set(currentTexts);
+                    const serverSet = new Set(server.ingredients);
+                    if (currentTexts.length !== server.ingredients.length ||
+                        [...serverSet].some(t => !currentSet.has(t))) {
+                        return { structural: true };
+                    }
+
+                    // Check for checkbox state diffs
+                    const patches = [];
+                    cbs.forEach(cb => {
+                        const text = cb.dataset.groceryText;
+                        const shouldBeChecked = server.checked.includes(text);
+                        if (cb.checked !== shouldBeChecked) {
+                            patches.push({ el: cb, checked: shouldBeChecked });
+                        }
+                    });
+                    return { structural: false, patches };
+                },
+                apply: (patches) => {
+                    patches.forEach(({ el, checked }) => {
+                        el.checked = checked;
+                        if (checked) {
+                            el.closest('.grocery-item').classList.add('checked');
+                        } else {
+                            el.closest('.grocery-item').classList.remove('checked');
+                        }
+                    });
+                },
+                rerender: () => openGroceryList(),
+            });
+        }
+        _grocerySync.start();
 
     } catch (e) {
         body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary)">Failed to load</div>';
     }
 }
 
-function _startGrocerySync() {
-    _stopGrocerySync();
-    _grocerySyncInterval = setInterval(() => {
-        // Only sync if grocery overlay is still open
-        if (document.getElementById('groceryOverlay').classList.contains('active')) {
-            _syncGroceryState();
-        } else {
-            _stopGrocerySync();
-        }
-    }, 60000); // 60 seconds
-}
-
-function _stopGrocerySync() {
-    if (_grocerySyncInterval) {
-        clearInterval(_grocerySyncInterval);
-        _grocerySyncInterval = null;
-    }
-}
-
-async function _syncGroceryState() {
-    // Fetch latest checked + custom items from server and update DOM without full re-render
-    const week = formatDate(mpWeekStart);
-    try {
-        const [checkedRes, customRes, groceryRes] = await Promise.all([
-            fetchCheckedItems(week),
-            fetchCustomItems(week),
-            fetch(`/api/meal-plan/grocery-list?week=${week}`).then(r => r.json())
-        ]);
-
-        const serverChecked = checkedRes;
-        const serverCustomTexts = customRes.map(c => c.text);
-        const serverIngredients = [...groceryRes.ingredients, ...serverCustomTexts];
-
-        // Get current DOM state
-        const body = document.getElementById('groceryBody');
-        const currentTexts = [...body.querySelectorAll('input[type="checkbox"]')].map(cb => cb.dataset.groceryText);
-
-        // If ingredient list changed (items added/removed by another user), full re-render
-        const currentSet = new Set(currentTexts);
-        const serverSet = new Set(serverIngredients);
-        if (currentTexts.length !== serverIngredients.length ||
-            [...serverSet].some(t => !currentSet.has(t))) {
-            openGroceryList();
-            return;
-        }
-
-        // Otherwise just sync checkbox states
-        body.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-            const text = cb.dataset.groceryText;
-            const shouldBeChecked = serverChecked.includes(text);
-            if (cb.checked !== shouldBeChecked) {
-                cb.checked = shouldBeChecked;
-                if (shouldBeChecked) {
-                    cb.closest('.grocery-item').classList.add('checked');
-                } else {
-                    cb.closest('.grocery-item').classList.remove('checked');
-                }
-            }
-        });
-    } catch { /* silent sync failure — retry next interval */ }
-}
-
 function closeGroceryList() {
     document.getElementById('groceryOverlay').classList.remove('active');
     window._unlockBodyScroll();
-    _stopGrocerySync();
+    if (_grocerySync) _grocerySync.stop();
 }
 
 function groupIngredients(ingredients) {
