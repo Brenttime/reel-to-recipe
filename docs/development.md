@@ -58,7 +58,14 @@ All endpoints except those marked ❌ require Discord authentication (session co
 | `/api/meal-plan/quick` | POST | ❌† | Add a freeform quick plan entry (`{text, date, emoji?}`) |
 | `/api/meal-plan/<id>` | PUT | ❌† | Move a meal plan entry to a different date (`{date}`) |
 | `/api/meal-plan/<id>` | DELETE | ❌† | Remove a meal plan entry |
-| `/api/meal-plan/grocery-list` | GET | ❌† | Aggregated grocery list for a week (`?week=YYYY-MM-DD`) |
+| `/api/meal-plan/grocery-list` | GET | ❌† | Aggregated grocery list for a week — auto-merges duplicate ingredients (`?week=YYYY-MM-DD`) |
+| `/api/meal-plan/grocery-custom` | GET | ❌† | List custom grocery items for a week (`?week=YYYY-MM-DD`) |
+| `/api/meal-plan/grocery-custom` | POST | ❌† | Add custom item (`{text, week}` — case-insensitive dedup) |
+| `/api/meal-plan/grocery-custom/<id>` | DELETE | ❌† | Remove a custom grocery item |
+| `/api/meal-plan/grocery-checked` | GET | ❌† | Get checked-off items for a week (`?week=YYYY-MM-DD`) |
+| `/api/meal-plan/grocery-checked` | POST | ❌† | Mark item as checked (`{text, week}`) |
+| `/api/meal-plan/grocery-checked` | DELETE | ❌† | Uncheck item (`{text, week}`) |
+| `/api/meal-plan/grocery-checked/clear` | POST | ❌† | Clear all checked items for a week (`{week}`) |
 | `/api/rebuild-index` | POST | ✅ | Rebuild FTS5 full-text search index |
 | `/auth/login` | GET | ❌ | Initiate Discord OAuth2 flow |
 | `/auth/callback` | GET | ❌ | OAuth2 callback handler |
@@ -68,7 +75,7 @@ All endpoints except those marked ❌ require Discord authentication (session co
 
 > *\*Partial auth:* `GET /api/recipes` is auth-exempt when called with `?source_url=`, `?q=`, or `?tag=` params (for MCP server use). Bare listing without params requires Discord login.
 >
-> *†Auth-exempt:* All meal plan endpoints are exempt from auth checks to allow the MCP server to read/write the shared meal plan without a Discord session.
+> *†Auth-exempt:* All meal plan and grocery endpoints are exempt from auth checks — shared household access (meal plan, custom items, checked state) without requiring Discord login.
 
 **Permalink routes:**
 | Route | Description |
@@ -106,8 +113,9 @@ reel-to-recipe/
 │
 ├── web/                        # OnlyPans web app
 │   ├── Dockerfile
-│   ├── app.py                  # Flask backend — REST API, FTS5, reviews, auth gate, conversion queue, meal planner, quick plans
+│   ├── app.py                  # Flask backend — REST API, FTS5, reviews, auth gate, conversion queue, meal planner, grocery cart
 │   ├── auth.py                 # Discord OAuth2 module (login, callback, callback/exchange, logout, me, server-side CSRF state)
+│   ├── ingredient_merge.py     # Ingredient aggregation — parse qty/unit/name, merge duplicates (no LLM)
 │   ├── seed.py                 # Database seeder (sample recipes)
 │   ├── requirements.txt        # Flask, Gunicorn, Requests
 │   ├── templates/
@@ -115,14 +123,27 @@ reel-to-recipe/
 │   │   └── login.html          # Discord sign-in page (glass card, no white-flash redirect)
 │   └── static/
 │       ├── app.js              # Frontend — gallery, search, cook mode, reviews, queue tracker, dark mode, share, unit converter
-│       ├── meal-plan.js        # Meal planner — radial menu, calendar panel, grocery list, week navigation, quick plans
-│       ├── meal-plan.css       # Meal planner styles — radial segments, Apple glass, panel layout, dark mode
+│       ├── sync.js             # Generic SyncManager — reusable polling utility (auto-pause on tab hide)
+│       ├── meal-plan.js        # Meal planner — radial menu, calendar panel, grocery list + custom items + server sync
+│       ├── meal-plan.css       # Meal planner + grocery list styles — radial segments, Apple glass, panel layout
 │       ├── style.css           # Apple Liquid Glass design system (light + dark themes)
 │       ├── manifest.json       # PWA manifest (standalone, icons, theme color)
 │       ├── apple-touch-icon.png
 │       ├── favicon.png
 │       ├── icon-192.png        # PWA icon (192x192)
 │       └── icon-512.png        # PWA icon (512x512)
+│
+├── tests/                      # Test suite (279+ tests, pytest + Playwright)
+│   ├── conftest.py             # Shared fixtures (DB seed, container health)
+│   ├── run_tests.sh            # One-shot runner (seed + pytest)
+│   ├── test_grocery_custom.py  # Grocery custom items + checked state (21 Playwright tests)
+│   ├── test_ingredient_merge.py # Ingredient parser + aggregation (36 unit tests)
+│   ├── test_ui.py              # Core UI flows (gallery, search, modal, cook mode)
+│   ├── test_ui_bugs.py         # Regression tests for fixed UI bugs
+│   ├── test_dynamic_island.py  # Dynamic Island queue bar tests
+│   ├── test_url_normalization.py # URL dedup logic tests
+│   ├── test_web_api.py         # REST API endpoint tests
+│   └── test_mcp_server.py      # MCP server integration tests
 │
 └── docs/
     ├── agent-setup.md          # Full install guide for AI agents (6 steps, troubleshooting)
@@ -196,6 +217,23 @@ meal_plan (
     quick_plan_emoji TEXT DEFAULT NULL, -- emoji icon for quick plans (default: 🍽️)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
+)
+
+-- Grocery custom items (shared, week-scoped)
+grocery_custom_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_start TEXT NOT NULL,         -- ISO date of Monday
+    text TEXT NOT NULL,               -- item text ("lemons", "sriracha")
+    added_by_name TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+
+-- Grocery checked items (shared, week-scoped)
+grocery_checked_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_start TEXT NOT NULL,         -- ISO date of Monday
+    text TEXT NOT NULL,               -- ingredient text (exact match from grocery list)
+    checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 ```
 
