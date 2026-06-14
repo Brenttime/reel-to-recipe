@@ -1,0 +1,32 @@
+FROM python:3.11-slim
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Python dependencies
+# NOTE: These mirror pyproject.toml [project].dependencies.
+# Keep both in sync when adding/updating packages.
+RUN pip install --no-cache-dir \
+    "curl-cffi>=0.10,<0.15" \
+    "httpx>=0.28.1" \
+    "mcp>=1.27.2" \
+    "faster-whisper>=1.1.0" \
+    "imagehash>=4.3.1" \
+    "pillow>=12.2.0" \
+    "pytesseract>=0.3.13" \
+    "yt-dlp>=2026.3.17" \
+    "openai>=1.0,<3"
+
+# Copy application files
+COPY mcp_server.py .
+COPY import_likes.py .
+
+EXPOSE 8001 8002
+
+CMD ["python", "mcp_server.py"]

@@ -43,6 +43,30 @@ const spotlightOverlay = document.getElementById('spotlightOverlay');
 let allRecipes = [];
 let currentRecipe = null;
 let isEditMode = false;
+
+// ─── Scroll Lock Helpers (shared across all overlays) ────────
+// Checks if ANY overlay is still active before unlocking body scroll.
+// This prevents stacked overlays (e.g. spotlight on modal, grocery on meal plan)
+// from unlocking scroll when the top one closes.
+function lockBodyScroll() {
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+}
+function unlockBodyScroll() {
+    // Only unlock if no other overlay is currently active
+    const activeOverlays = document.querySelectorAll(
+        '.modal-overlay.active, .shopping-overlay.active, .meal-plan-overlay.active, .radial-overlay.active, .grocery-overlay.active, .spotlight-overlay.active, .cook-mode.active'
+    );
+    if (activeOverlays.length === 0) {
+        document.body.style.overflow = '';
+        document.documentElement.style.overflow = '';
+        document.body.style.touchAction = '';
+    }
+}
+// Expose globally so meal-plan.js can use them
+window._lockBodyScroll = lockBodyScroll;
+window._unlockBodyScroll = unlockBodyScroll;
 let editFormSnapshot = null;
 let debounceTimer = null;
 let currentMultiplier = 1;
@@ -442,6 +466,10 @@ function parseServingsNumber(servingsStr) {
 let hasLoadedOnce = false;
 
 async function init() {
+    // Prevent browser from auto-scrolling on history navigation (we manage scroll ourselves)
+    if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+    }
     await loadUserProfile();
     await loadRecipes();
     await loadCategories();
@@ -602,8 +630,18 @@ async function openRecipeFromUrl() {
 // ─── Data Loading ───────────────────────────────
 async function loadRecipes(query = '') {
     const url = query ? `/api/recipes?q=${encodeURIComponent(query)}` : '/api/recipes';
-    const res = await fetch(url);
-    allRecipes = await res.json();
+    try {
+        const res = await fetch(url);
+        if (!res.ok) {
+            console.warn(`loadRecipes: server returned ${res.status}`);
+            return;
+        }
+        allRecipes = await res.json();
+    } catch (e) {
+        // Network failure — keep existing recipes displayed, don't crash
+        console.warn('loadRecipes: network error, keeping cached results');
+        return;
+    }
     // Normalize tags: API returns comma-separated string, UI expects array
     allRecipes.forEach(r => {
         if (typeof r.tags === 'string') {
@@ -640,9 +678,15 @@ async function pollForNewRecipes() {
     }
 }
 async function loadCategories() {
-    const res = await fetch('/api/categories');
-    const categories = await res.json();
-    renderCategoryChips(categories);
+    try {
+        const res = await fetch('/api/categories');
+        if (!res.ok) return;
+        const categories = await res.json();
+        renderCategoryChips(categories);
+    } catch (e) {
+        // Network failure — keep existing chips, don't crash
+        console.warn('loadCategories failed:', e);
+    }
 }
 
 // ─── Category Emoji Map ─────────────────────────
@@ -1504,14 +1548,14 @@ function openCookMode(recipe) {
     cookModeRecipe = recipe;
     cookModeStep = 0;
     cookModeEl.classList.add('active');
-    document.body.style.overflow = 'hidden';
+    lockBodyScroll();
     renderCookModeStep();
     requestWakeLock();
 }
 
 function closeCookMode() {
     cookModeEl.classList.remove('active');
-    document.body.style.overflow = '';
+    unlockBodyScroll();
     cookModeRecipe = null;
     releaseWakeLock();
 }
@@ -1765,7 +1809,7 @@ async function shareRecipe(recipe) {
 // ─── Spotlight (macOS-style convert overlay) ─────
 function openSpotlight() {
     spotlightOverlay.classList.add('active');
-    document.body.style.overflow = 'hidden';
+    lockBodyScroll();
     const input = document.getElementById('convertInput');
     // Clear previous state
     input.value = '';
@@ -1778,7 +1822,18 @@ function openSpotlight() {
 
 function closeSpotlight() {
     spotlightOverlay.classList.remove('active');
-    document.body.style.overflow = '';
+    unlockBodyScroll();
+    // iOS WebKit compositor fix: after a sibling with backdrop-filter is shown/hidden,
+    // fixed elements can get stuck on a stale compositor layer and jitter during scroll.
+    // Force iOS to destroy and recreate the bar's layer by toggling visibility.
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+        const bar = document.getElementById('convertQueueBar');
+        if (bar && bar.classList.contains('queue-bar-visible')) {
+            bar.style.visibility = 'hidden';
+            void bar.offsetHeight;
+            bar.style.visibility = '';
+        }
+    }
 }
 
 function toggleSpotlight() {
@@ -1906,9 +1961,9 @@ function updateQueueBar() {
     const count = activeJobs.size;
 
     if (count === 0) {
-        bar.style.display = 'none';
+        bar.classList.remove('queue-bar-visible');
     } else {
-        bar.style.display = 'flex';
+        bar.classList.add('queue-bar-visible');
         text.textContent = count === 1 ? 'Converting…' : `Converting ${count}…`;
     }
 }
@@ -1917,7 +1972,7 @@ function updateQueueBarDetail(detail) {
     const bar = document.getElementById('convertQueueBar');
     const text = document.getElementById('queueBarText');
     if (activeJobs.size > 0) {
-        bar.style.display = 'flex';
+        bar.classList.add('queue-bar-visible');
         text.textContent = detail;
     }
 }
@@ -1926,7 +1981,7 @@ function showRecipeAdded(recipe) {
     const bar = document.getElementById('convertQueueBar');
     const text = document.getElementById('queueBarText');
 
-    bar.style.display = 'flex';
+    bar.classList.add('queue-bar-visible');
     bar.classList.add('queue-bar-success');
     // Truncate title for compact island display
     const title = recipe.title.length > 18 ? recipe.title.slice(0, 16) + '…' : recipe.title;
@@ -1935,7 +1990,7 @@ function showRecipeAdded(recipe) {
     setTimeout(() => {
         bar.classList.remove('queue-bar-success');
         if (activeJobs.size === 0) {
-            bar.style.display = 'none';
+            bar.classList.remove('queue-bar-visible');
         } else {
             updateQueueBar();
         }
@@ -1946,7 +2001,7 @@ function showQueueError(error) {
     const bar = document.getElementById('convertQueueBar');
     const text = document.getElementById('queueBarText');
 
-    bar.style.display = 'flex';
+    bar.classList.add('queue-bar-visible');
     bar.classList.add('queue-bar-error');
 
     // Check for age-restricted error with doc link
@@ -1961,7 +2016,7 @@ function showQueueError(error) {
     setTimeout(() => {
         bar.classList.remove('queue-bar-error');
         if (activeJobs.size === 0) {
-            bar.style.display = 'none';
+            bar.classList.remove('queue-bar-visible');
         } else {
             updateQueueBar();
         }
@@ -2136,22 +2191,23 @@ function setupListeners() {
 
 let _modalTouchHandler = null;
 let _modalVVHandler = null;
-let _modalFocusOutHandler = null;
 let _modalSavedScroll = 0;
+let _modalOpenRAF = null;
 
 function openModal() {
-    // iOS PWA: freeze body at current scroll position (gallery stays visually in place)
+    // Save scroll position for restoration on close
     _modalSavedScroll = window.scrollY;
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${_modalSavedScroll}px`;
-    document.body.style.left = '0';
-    document.body.style.right = '0';
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    modalOverlay.classList.add('active');
+    // Lock background scroll without repositioning body (avoids iOS repaint jump)
+    lockBodyScroll();
     // Reset modal scroll to top for fresh recipe view
     const modal = modalOverlay.querySelector('.glass-modal');
     if (modal) modal.scrollTop = 0;
+    // Reveal overlay
+    if (_modalOpenRAF) cancelAnimationFrame(_modalOpenRAF);
+    _modalOpenRAF = requestAnimationFrame(() => {
+        _modalOpenRAF = null;
+        modalOverlay.classList.add('active');
+    });
     // Prevent background scroll: block touchmove on overlay except inside .glass-modal
     _modalTouchHandler = function(e) {
         const modal = modalOverlay.querySelector('.glass-modal');
@@ -2165,28 +2221,13 @@ function openModal() {
         var fullHeight = window.visualViewport.height;
         _modalVVHandler = function() {
             if (window.visualViewport.height >= fullHeight * 0.9) {
-                // Keyboard dismissed — force iOS to recalculate position:fixed layout
-                // 1. Reset any rogue document scroll (iOS may have scrolled it)
-                if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
-                // 2. Force reflow on overlay without visible flicker
+                // Keyboard dismissed — nudge overlay to prevent drift
                 modalOverlay.style.transform = 'translateZ(0)';
                 void modalOverlay.offsetHeight;
                 modalOverlay.style.transform = '';
             }
         };
         window.visualViewport.addEventListener('resize', _modalVVHandler);
-    }
-    // Backup: focusout on inputs also resets scroll (catches cases where visualViewport doesn't fire)
-    if (!_modalFocusOutHandler) {
-        _modalFocusOutHandler = function(e) {
-            var tag = e.target && e.target.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-                setTimeout(function() {
-                    if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
-                }, 150);
-            }
-        };
-        modalOverlay.addEventListener('focusout', _modalFocusOutHandler);
     }
     // Update URL to permalink
     if (currentRecipe) {
@@ -2196,6 +2237,8 @@ function openModal() {
 }
 
 function closeModal() {
+    // No-op if modal isn't open
+    if (!modalOverlay.classList.contains('active') && !_modalOpenRAF) return;
     if (isEditMode && hasEditFormChanged()) {
         showEditDiscardDialog();
         return;
@@ -2206,6 +2249,11 @@ function closeModal() {
 function doCloseModal() {
     isEditMode = false;
     editFormSnapshot = null;
+    // Cancel pending open animation (prevents race if close fires before rAF)
+    if (_modalOpenRAF) {
+        cancelAnimationFrame(_modalOpenRAF);
+        _modalOpenRAF = null;
+    }
     modalOverlay.classList.remove('active');
     // Reset modal scroll so next open starts fresh
     const modal = modalOverlay.querySelector('.glass-modal');
@@ -2215,33 +2263,23 @@ function doCloseModal() {
         modalOverlay.removeEventListener('touchmove', _modalTouchHandler);
         _modalTouchHandler = null;
     }
-    // iOS PWA scroll unlock: unfreeze body and restore gallery scroll
-    document.body.style.position = '';
-    document.body.style.top = '';
-    document.body.style.left = '';
-    document.body.style.right = '';
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    document.body.style.overscrollBehavior = '';
-    window.scrollTo(0, _modalSavedScroll);
+    // Restore gallery URL BEFORE unfreezing body (prevents browser scroll reset)
+    if (location.pathname.startsWith('/recipe/')) {
+        history.pushState({}, '', '/');
+    }
+    // Unlock background scroll (only if no other overlay is active)
+    unlockBodyScroll();
+    // Restore scroll position if scroll was actually unlocked
+    if (!document.body.style.overflow) window.scrollTo(0, _modalSavedScroll);
     // Remove visualViewport listener
     if (_modalVVHandler && window.visualViewport) {
         window.visualViewport.removeEventListener('resize', _modalVVHandler);
         _modalVVHandler = null;
     }
-    // Remove focusout handler
-    if (_modalFocusOutHandler) {
-        modalOverlay.removeEventListener('focusout', _modalFocusOutHandler);
-        _modalFocusOutHandler = null;
-    }
     currentRecipe = null;
     // Remove discard dialog if present
     const dialog = document.getElementById('discardEditDialog');
     if (dialog) dialog.remove();
-    // Restore gallery URL
-    if (location.pathname.startsWith('/recipe/')) {
-        history.pushState({}, '', '/');
-    }
 }
 
 function confirmDiscardEdit(recipe) {
@@ -2311,12 +2349,9 @@ var _shoppingScrollLockPos = 0;
 
 function openShoppingPanel() {
     shoppingOverlay.classList.add('active');
-    // iOS scroll lock: freeze body at current scroll position to prevent jump
+    // Lock background scroll without repositioning body (avoids iOS jump)
     _shoppingScrollLockPos = window.scrollY;
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${_shoppingScrollLockPos}px`;
-    document.body.style.width = '100%';
-    document.body.style.overflow = 'hidden';
+    lockBodyScroll();
     // Prevent background scroll on iOS: block touchmove outside panel
     _shoppingTouchHandler = function(e) {
         const panel = shoppingOverlay.querySelector('.glass-modal');
@@ -2333,12 +2368,9 @@ function closeShoppingPanel() {
         shoppingOverlay.removeEventListener('touchmove', _shoppingTouchHandler);
         _shoppingTouchHandler = null;
     }
-    // iOS scroll restore: unfreeze body and restore exact scroll position
-    document.body.style.position = '';
-    document.body.style.top = '';
-    document.body.style.width = '';
-    document.body.style.overflow = '';
-    window.scrollTo(0, _shoppingScrollLockPos);
+    // Unlock background scroll and restore position
+    unlockBodyScroll();
+    if (!document.body.style.overflow) window.scrollTo(0, _shoppingScrollLockPos);
 }
 
 // ─── Util ───────────────────────────────────────
@@ -2673,4 +2705,7 @@ document.addEventListener('DOMContentLoaded', () => {
     init();
     // Slight delay so it doesn't compete with page load
     setTimeout(showInstallBanner, 1500);
+
+    // ─── Standalone PWA: compositor layer reset is handled in closeSpotlight() ───
+    // position:fixed is kept; the display toggle trick resets corrupted layers.
 });

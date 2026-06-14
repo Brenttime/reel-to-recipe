@@ -33,7 +33,7 @@ _oauth_states = {}  # {state_token: expiry_timestamp}
 _oauth_lock = threading.Lock()  # Guard concurrent access
 _STATE_TTL = 300  # 5 minutes
 
-# RFC3986 unreserved characters + percent-encoded (safe for OAuth codes/states)
+# OAuth code/state tokens: alphanumeric + hyphen + underscore + dot + tilde
 _TOKEN_RE = re.compile(r'^[A-Za-z0-9_.~\-]+$')
 
 
@@ -205,10 +205,11 @@ def callback():
   <a class="retry" id="retry" href="/auth/login" style="display:none">Try Again</a>
 </div>
 <script>
+const params = new URLSearchParams(window.location.search);
 fetch("/auth/callback/exchange", {{
   method: "POST",
   headers: {{ "Content-Type": "application/json" }},
-  body: JSON.stringify({{ code: "{code}", state: "{state}" }})
+  body: JSON.stringify({{ code: params.get("code"), state: params.get("state") }})
 }})
 .then(r => r.json().then(d => ({{ ok: r.ok, data: d }})))
 .then(({{ ok, data }}) => {{

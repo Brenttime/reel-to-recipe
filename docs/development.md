@@ -93,14 +93,15 @@ All endpoints except those marked ❌ require Discord authentication (session co
 
 ```
 reel-to-recipe/
-├── mcp_server.py               # MCP server + HTTP API + auto-tagger + conversion pipelines (~1900 lines)
+├── mcp_server.py               # MCP server + HTTP API + auto-tagger + conversion pipelines
+├── Dockerfile.mcp              # MCP server Docker image (python:3.11-slim + system deps)
 ├── export-ig-cookie.sh         # Helper script to set up Instagram session cookie
-├── reel-to-recipe.service      # systemd user service file (uses %h for portability)
-├── docker-compose.yml          # OnlyPans container (requires .env — fails fast if missing)
+├── docker-compose.yml          # Both services: reel-cookbook + mcp-server
 ├── pyproject.toml              # Python dependencies (uv)
 ├── uv.lock
+├── cookies.txt                 # Instagram session cookie (bind-mounted into MCP container)
 ├── LICENSE                     # PolyForm Noncommercial 1.0.0
-├── .env                        # Discord OAuth + config (gitignored, required)
+├── .env                        # Discord OAuth + LLM config (gitignored, required)
 ├── .gitignore
 │
 ├── web/                        # OnlyPans web app
@@ -202,11 +203,12 @@ meal_plan (
 
 ## Dependencies
 
-### MCP Server (Python, managed by uv)
+### MCP Server (Docker: `onlypans-mcp`)
 
 | Package | Purpose |
 |---------|---------|
 | `faster-whisper` | Audio transcription (CTranslate2, int8 quantization — 4x faster than openai-whisper) |
+| `openai` | OpenAI Python client for LLM formatting (any OpenAI-compatible API) |
 | `imagehash` / `pillow` | Perceptual frame deduplication (pHash) |
 | `pytesseract` | OCR from video frames |
 | `yt-dlp` | Instagram Reel/video downloads |
@@ -214,7 +216,8 @@ meal_plan (
 | `curl_cffi` | TLS fingerprint impersonation for bot-protected sites |
 | `mcp` | MCP protocol server (streamable-http) |
 
-**System:** `ffmpeg`, `tesseract-ocr`, [Hermes Agent](https://github.com/nousresearch/hermes-agent) (LLM formatting via `hermes chat -q -m gpt-4o-mini`)
+**System (inside container):** `ffmpeg`, `tesseract-ocr`
+**External:** Any OpenAI-compatible LLM API (local Gemma/llama.cpp, OpenAI, OpenRouter)
 
 ### OnlyPans (Docker)
 
@@ -229,7 +232,7 @@ meal_plan (
 ## Design Decisions
 
 - **Single gunicorn worker + threads** — In-memory `convert_jobs` dict requires single process; gthread provides concurrency without the state-splitting bug of multiple workers.
-- **gpt-4o-mini for formatting** — Structured extraction doesn't need large models; 4x faster than Claude for the same quality on recipe parsing.
+- **OpenAI-compatible LLM for formatting** — Uses the `openai` Python client with any compatible API (local Gemma, GPT-4o-mini, OpenRouter). Local models are free but slow (~150s); cloud models cost per-token but are fast (~10s). Configured via `OPENAI_BASE_URL` + `LLM_MODEL` env vars. Timeout is 300s to support slow local models.
 - **Caption priority** — Captions are the highest-quality source (creators type them carefully). The full pipeline merges caption + audio + OCR with caption taking precedence.
 - **Caption link following** — When a reel caption contains a URL to the creator's recipe page, the pipeline follows it for exact measurements instead of guessing from OCR fragments. ~3x faster than full video pipeline.
 - **No-audio video handling** — Pipeline probes for audio stream via ffprobe before attempting extraction; silent reels (text overlay only) rely on OCR + caption.
@@ -273,13 +276,13 @@ Tags are applied at conversion time by scanning the recipe title, ingredients, a
 
 ## Conversion Pipelines
 
-| Source | Pipeline | Speed |
-|--------|----------|-------|
-| **Instagram Reel** | Combined download (yt-dlp) → caption link check → faster-whisper audio + OCR frames → gpt-4o-mini format | ~35-50s |
-| **TikTok** | TikWM API → caption + audio + OCR → gpt-4o-mini format | ~35-50s |
-| **Recipe blog** | Fetch HTML → JSON-LD extraction → gpt-4o-mini format (for aisle tags) | ~10s |
-| **Caption link follow** | Reel caption URL → blog pipeline (skips video entirely) | ~17s |
-| **Other web URL** | Fetch HTML → strip to text → gpt-4o-mini format | ~15s |
+| Source | Pipeline | Speed (cloud LLM) | Speed (local Gemma) |
+|--------|----------|-------|-------|
+| **Instagram Reel** | Combined download (yt-dlp) → caption link check → faster-whisper audio + OCR frames → LLM format | ~35-50s | ~180s |
+| **TikTok** | TikWM API → caption + audio + OCR → LLM format | ~35-50s | ~180s |
+| **Recipe blog** | Fetch HTML → JSON-LD extraction → LLM format (for aisle tags) | ~10s | ~150s |
+| **Caption link follow** | Reel caption URL → blog pipeline (skips video entirely) | ~17s | ~150s |
+| **Other web URL** | Fetch HTML → strip to text → LLM format | ~15s | ~160s |
 
 **Smart optimizations:**
 - Caption link detection — follows recipe URLs in captions for exact data (skips video pipeline entirely)

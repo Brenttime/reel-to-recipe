@@ -8,24 +8,16 @@ Complete setup instructions for getting OnlyPans + MCP Server running from scrat
 
 | Requirement | Version | Check |
 |-------------|---------|-------|
+| Docker + Compose | any | `docker compose version` |
+| An OpenAI-compatible LLM API | any | Local (llama.cpp, Gemma) or cloud (OpenAI, OpenRouter) |
+
+That's it! Everything else (Python, ffmpeg, tesseract, yt-dlp) is bundled in the Docker containers.
+
+For development/testing only:
+| Requirement | Version | Check |
+|-------------|---------|-------|
 | Python | 3.11+ | `python3 --version` |
 | uv | any | `uv --version` (install: `curl -LsSf https://astral.sh/uv/install.sh \| sh`) |
-| Docker + Compose | any | `docker compose version` |
-| ffmpeg | any | `ffmpeg -version` |
-| tesseract | any | `tesseract --version` |
-| Hermes Agent | any | `hermes --version` (needed for LLM formatting) |
-
-### Install system dependencies (Debian/Ubuntu)
-
-```bash
-sudo apt update && sudo apt install -y ffmpeg tesseract-ocr
-```
-
-### Install uv (if missing)
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
 
 ---
 
@@ -45,74 +37,80 @@ This creates `.venv/` with all Python dependencies (faster-whisper, yt-dlp, http
 
 ```bash
 cat > .env << 'EOF'
+# Discord OAuth (required for web app login)
 DISCORD_CLIENT_ID=your_discord_client_id
 DISCORD_CLIENT_SECRET=your_discord_client_secret
 DISCORD_REDIRECT_URI=http://YOUR_HOST_IP:5100/auth/callback
 SECRET_KEY=any-random-string-here
+
+# LLM for recipe formatting (required for MCP server)
+# Option A: Local Gemma / llama.cpp (free, slow ~150s per recipe)
+OPENAI_BASE_URL=http://YOUR_LLM_HOST:8080/v1
+OPENAI_API_KEY=not-needed
+LLM_MODEL=gemma-4-12b-it
+
+# Option B: OpenAI (paid, fast ~10s per recipe)
+# OPENAI_BASE_URL=https://api.openai.com/v1
+# OPENAI_API_KEY=sk-...
+# LLM_MODEL=gpt-4o-mini
+
 SHOW_KOFI=false
 EOF
 ```
 
 Replace `YOUR_HOST_IP` with the machine's LAN IP (e.g., `192.168.1.50`). Use `hostname -I | awk '{print $1}'` to find it.
+Replace `YOUR_LLM_HOST` with the IP of your LLM server (same machine = `localhost`, or another host on your LAN).
 
 For Discord app setup, see [docs/discord-auth-setup.md](discord-auth-setup.md).
 
 ---
 
-## Step 3: Start the MCP Server
+## Step 3: Start Everything (Docker)
 
-The MCP server handles all recipe conversions (video download, transcription, OCR, LLM formatting).
-
-### Option A: Direct run (foreground)
-
-```bash
-uv run mcp_server.py
-```
-
-### Option B: systemd user service (recommended)
-
-```bash
-# Install as user service (service file uses %h — no path editing needed)
-mkdir -p ~/.config/systemd/user
-cp reel-to-recipe.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now reel-to-recipe
-```
-
-Verify:
-```bash
-systemctl --user status reel-to-recipe
-# Should show: active (running)
-
-# Test the HTTP API
-curl -s http://localhost:8002/convert \
-  -X POST -H "Content-Type: application/json" \
-  -d '{"url": "https://www.budgetbytes.com/dragon-noodles/"}'
-# Should return JSON with the formatted recipe (~10s)
-```
-
-**Ports exposed:**
-- `8001` — MCP protocol (streamable-http transport)
-- `8002` — Plain HTTP API (`POST /convert`)
-
----
-
-## Step 4: Start OnlyPans (Docker)
+Both the web app and MCP server run as Docker containers:
 
 ```bash
 docker compose up -d
 ```
 
+This starts two containers:
+- **`reel-cookbook`** — OnlyPans web app on port 5100
+- **`onlypans-mcp`** — MCP server on ports 8001 (MCP protocol) + 8002 (HTTP API)
+
 Verify:
 ```bash
-docker ps | grep reel-cookbook
-# Should show: reel-cookbook running on 0.0.0.0:5100
+docker ps
+# Should show both containers running
 
+# Test MCP HTTP API
+curl -s http://localhost:8002/convert \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"url": "https://www.budgetbytes.com/dragon-noodles/"}'
+# Should return JSON with the formatted recipe
+
+# Test web app
 curl -s http://localhost:5100/ | head -1
-# Should redirect to Discord auth (302) or return HTML
+# Should return HTML or redirect to Discord auth
 ```
 
-**Data persistence:** Recipes are stored in a Docker volume (`cookbook-data` → `/data/recipes.db`). Survives container rebuilds.
+**Ports exposed:**
+- `5100` — OnlyPans web app
+- `8001` — MCP protocol (streamable-http transport)
+- `8002` — Plain HTTP API (`POST /convert`)
+
+---
+
+## Step 4: Instagram Cookies (optional)
+
+Only needed for age-restricted reels. Place a Netscape-format cookie file at `./cookies.txt`:
+
+```bash
+./export-ig-cookie.sh
+```
+
+The cookie file is bind-mounted into the MCP container (read-write — yt-dlp updates expiry timestamps).
+
+**Data persistence:** Recipes are stored in a Docker volume (`cookbook-data` → `/data/recipes.db`). Survives container rebuilds. Never run `docker compose down -v` unless you want to wipe the database.
 
 ---
 
@@ -231,34 +229,45 @@ Six tools available:
 
 ## Troubleshooting
 
-### MCP server won't start
+### MCP container won't start
 
 ```bash
-# Check Python version (needs 3.11+)
-.venv/bin/python --version
-
-# Check dependencies installed
-.venv/bin/python -c "import mcp, httpx, faster_whisper; print('OK')"
-
-# Check system deps
-which ffmpeg tesseract
+docker compose logs mcp-server
+# Check for missing env vars or import errors
 ```
 
-### Conversion returns error
+### Conversion returns "LLM API error: Connection error"
 
+The MCP container can't reach the LLM API. Check:
 ```bash
-# Check Hermes is available (needed for LLM formatting)
-hermes chat -q "hello" -m gpt-4o-mini -t ""
-
-# Check MCP server logs
-journalctl --user -u reel-to-recipe -n 30 --no-pager
+# Verify OPENAI_BASE_URL is reachable FROM the container
+docker exec onlypans-mcp python -c "
+import httpx, os
+r = httpx.get(os.environ['OPENAI_BASE_URL'] + '/models', timeout=5)
+print(r.status_code, r.json()['data'][0]['id'])
+"
+# If this fails, your LLM host may not be reachable from Docker (firewall, wrong IP)
 ```
+
+### Conversion times out
+
+Local Gemma at ~9 tok/s needs ~150s for recipe formatting. The timeout is set to 300s. If you're hitting timeouts:
+- Check if the LLM is under heavy load: `curl http://LLM_HOST:8080/slots`
+- Consider switching to a cloud LLM (update `OPENAI_BASE_URL` in `.env`, recreate container)
 
 ### OnlyPans container won't start
 
 ```bash
 docker compose logs reel-cookbook
 # Common issue: missing .env file or wrong DISCORD_CLIENT_ID
+```
+
+### Instagram reels fail with "Read-only file system"
+
+The `cookies.txt` mount must be read-write (not `:ro`). Check `docker-compose.yml`:
+```yaml
+volumes:
+  - ./cookies.txt:/app/cookies.txt  # NO :ro flag
 ```
 
 ### Instagram reels fail with 400 error
@@ -277,16 +286,19 @@ The server uses `streamable-http` (MCP SDK 1.27+). If your client only supports 
 User pastes URL in OnlyPans (browser :5100)
          │
          ▼
-OnlyPans queues job → POST http://localhost:8002/convert
-         │
+reel-cookbook container queues job → POST http://onlypans-mcp:8002/convert
+         │                                (inter-container Docker DNS)
          ▼
-MCP Server routes by URL type:
+onlypans-mcp container routes by URL type:
   ├─ instagram.com/reel/* → yt-dlp download → whisper + OCR → LLM format
   ├─ tiktok.com/*         → TikWM API      → whisper + OCR → LLM format
   └─ anything else        → fetch HTML     → JSON-LD or LLM extract
-         │
+         │                        │
+         │                        ▼
+         │               OpenAI-compatible LLM API
+         │               (local Gemma or cloud)
          ▼
-Formatted recipe → POST http://localhost:5100/api/recipes (auto-save)
+Formatted recipe → POST http://reel-cookbook:5100/api/recipes (auto-save)
          │
          ▼
 Recipe appears in OnlyPans gallery (auto-refresh)
@@ -298,14 +310,18 @@ Recipe appears in OnlyPans gallery (auto-refresh)
 
 ```
 reel-to-recipe/
-├── mcp_server.py            # All conversion logic lives here (~1400 lines)
-├── docker-compose.yml       # OnlyPans container config
-├── .env                     # Secrets (gitignored)
+├── mcp_server.py            # All conversion logic lives here
+├── Dockerfile.mcp           # MCP server Docker image
+├── docker-compose.yml       # Both services (reel-cookbook + mcp-server)
+├── .env                     # Secrets + LLM config (gitignored)
+├── cookies.txt              # Instagram session cookie (bind-mounted into MCP)
 ├── pyproject.toml           # Python deps
 ├── web/
+│   ├── Dockerfile           # Web app Docker image
 │   ├── app.py               # Flask backend (REST API, auth, DB)
 │   ├── auth.py              # Discord OAuth2
 │   ├── static/app.js        # Frontend SPA logic
 │   └── static/style.css     # Apple Liquid Glass styles
+├── tests/                   # 217+ tests (run via ./tests/run_tests.sh)
 └── docs/                    # You are here
 ```
