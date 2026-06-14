@@ -139,6 +139,9 @@ AUTH_EXEMPT_ENDPOINTS = (
     'move_meal_plan_entry', # MCP meal plan update
     'remove_from_meal_plan',# MCP meal plan delete
     'get_grocery_list',     # MCP grocery list read
+    'get_grocery_custom_items',   # Grocery custom items read (shared)
+    'add_grocery_custom_item',    # Grocery custom items write (shared)
+    'delete_grocery_custom_item', # Grocery custom items delete (shared)
 )
 
 # TEST_MODE=1 disables auth for automated testing (set via docker-compose.test.yml)
@@ -953,6 +956,69 @@ def get_grocery_list():
     })
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Custom Grocery Items (server-persisted, shared across all users/sessions)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/meal-plan/grocery-custom", methods=["GET"])
+def get_grocery_custom_items():
+    """Get custom grocery items for a given week."""
+    week_start = request.args.get("week")
+    if not week_start:
+        today = dt_date.today()
+        monday = today - timedelta(days=today.weekday())
+        week_start = monday.isoformat()
+
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, text, added_by_name FROM grocery_custom_items WHERE week_start = ? ORDER BY created_at",
+        (week_start,)
+    ).fetchall()
+
+    return jsonify([{"id": row["id"], "text": row["text"], "added_by": row["added_by_name"]} for row in rows])
+
+
+@app.route("/api/meal-plan/grocery-custom", methods=["POST"])
+def add_grocery_custom_item():
+    """Add a custom item to a week's grocery list."""
+    data = request.get_json(force=True)
+    text = (data.get("text") or "").strip()
+    week_start = data.get("week")
+    added_by = data.get("added_by", "")
+
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    if not week_start:
+        today = dt_date.today()
+        monday = today - timedelta(days=today.weekday())
+        week_start = monday.isoformat()
+
+    db = get_db()
+    # Prevent duplicates (case-insensitive) for same week
+    existing = db.execute(
+        "SELECT id FROM grocery_custom_items WHERE week_start = ? AND LOWER(text) = LOWER(?)",
+        (week_start, text)
+    ).fetchone()
+    if existing:
+        return jsonify({"id": existing["id"], "text": text, "duplicate": True}), 200
+
+    cur = db.execute(
+        "INSERT INTO grocery_custom_items (week_start, text, added_by_name) VALUES (?, ?, ?)",
+        (week_start, text, added_by)
+    )
+    db.commit()
+    return jsonify({"id": cur.lastrowid, "text": text, "added_by": added_by}), 201
+
+
+@app.route("/api/meal-plan/grocery-custom/<int:item_id>", methods=["DELETE"])
+def delete_grocery_custom_item(item_id):
+    """Remove a custom grocery item by ID."""
+    db = get_db()
+    db.execute("DELETE FROM grocery_custom_items WHERE id = ?", (item_id,))
+    db.commit()
+    return jsonify({"deleted": item_id}), 200
+
+
 # Initialize database on startup
 with app.app_context():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -1014,4 +1080,15 @@ with app.app_context():
             ALTER TABLE meal_plan_new RENAME TO meal_plan;
             CREATE INDEX IF NOT EXISTS idx_meal_plan_date ON meal_plan(date);
         """)
+    # Custom grocery items table (shared between all users, week-scoped)
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS grocery_custom_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_start TEXT NOT NULL,
+            text TEXT NOT NULL,
+            added_by_name TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_grocery_custom_week ON grocery_custom_items(week_start);
+    """)
     conn.close()
