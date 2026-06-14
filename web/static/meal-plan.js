@@ -422,6 +422,7 @@ async function openGroceryList() {
 
         const customTexts = customItems.map(c => c.text);
         const allIngredients = [...data.ingredients, ...customTexts];
+        const ingredientSources = data.sources || {};  // {text: [recipe1, recipe2, ...]}
 
         subtitle.textContent = `${data.recipes.length} recipe${data.recipes.length !== 1 ? 's' : ''} this week`;
 
@@ -463,9 +464,12 @@ async function openGroceryList() {
                         const isChecked = checked.includes(i);
                         const customEntry = customItems.find(c => c.text === i);
                         const displayText = targetSystem && typeof convertIngredientLine === 'function' ? convertIngredientLine(i, targetSystem) : i;
+                        const sources = ingredientSources[i] || [];
+                        const sourcesAttr = sources.length ? escapeHtml(sources.join(', ')) : '';
                         return `<label class="grocery-item ${isChecked ? 'checked' : ''}">
                             <input type="checkbox" ${isChecked ? 'checked' : ''} data-grocery-text="${escapeHtml(i)}">
-                            <span class="grocery-item-text">${escapeHtml(displayText)}</span>
+                            <span class="grocery-item-text" ${sourcesAttr ? `data-sources="${sourcesAttr}"` : ''}>${escapeHtml(displayText)}</span>
+                            <span class="grocery-item-source" style="display:none">${sourcesAttr}</span>
                             ${customEntry ? `<button class="grocery-remove-custom" data-custom-id="${customEntry.id}" title="Remove">×</button>` : ''}
                         </label>`;
                     }).join('')}
@@ -500,6 +504,25 @@ async function openGroceryList() {
                     e.stopPropagation();
                     await removeCustomItemFromServer(btn.dataset.customId);
                     openGroceryList();
+                });
+            });
+
+            // Bind tap-to-show-source on item text (not checkbox)
+            body.querySelectorAll('.grocery-item-text').forEach(span => {
+                span.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const sourceEl = span.nextElementSibling;
+                    if (!sourceEl || !sourceEl.classList.contains('grocery-item-source')) return;
+                    if (!sourceEl.textContent.trim()) return;
+
+                    // Toggle visibility
+                    const isVisible = sourceEl.style.display !== 'none';
+                    // Hide all other open sources first
+                    body.querySelectorAll('.grocery-item-source').forEach(s => s.style.display = 'none');
+                    if (!isVisible) {
+                        sourceEl.style.display = 'block';
+                    }
                 });
             });
         }
