@@ -133,6 +133,56 @@ function formatDateAdded(dateStr) {
     return created.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+// ─── Instagram Embed Helpers ────────────────────
+function extractInstagramShortcode(url) {
+    if (!url) return null;
+    // Match Instagram reel URLs: https://www.instagram.com/reel/DXKEKyxAMXY/ or https://instagram.com/reel/DXKEKyxAMXY/
+    const match = url.match(/instagram\.com\/reel\/([A-Za-z0-9_-]+)/);
+    return match ? match[1] : null;
+}
+
+function toggleInstagramEmbed(shortcode) {
+    const container = document.getElementById('instagramEmbedContainer');
+    const toggleBtn = document.getElementById('instagramToggleBtn');
+    if (!container || !toggleBtn) return;
+
+    const isExpanded = container.classList.contains('expanded');
+    
+    if (isExpanded) {
+        // Collapse
+        container.classList.remove('expanded');
+        toggleBtn.innerHTML = `
+            <svg class="instagram-play-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+            </svg>
+            <span>Watch Reel</span>
+        `;
+    } else {
+        // Expand
+        container.classList.add('expanded');
+        // Lazy load iframe on first expand
+        const placeholder = container.querySelector('.instagram-embed-placeholder');
+        if (placeholder && !container.querySelector('iframe')) {
+            const iframe = document.createElement('iframe');
+            iframe.src = `https://www.instagram.com/reel/${shortcode}/embed/`;
+            iframe.frameBorder = '0';
+            iframe.scrolling = 'no';
+            iframe.allowTransparency = 'true';
+            iframe.allow = 'encrypted-media';
+            iframe.style.opacity = '0';
+            iframe.style.transition = 'opacity 0.4s ease';
+            iframe.onload = () => { iframe.style.opacity = '1'; };
+            placeholder.replaceWith(iframe);
+        }
+        toggleBtn.innerHTML = `
+            <svg class="instagram-chevron-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>
+            </svg>
+            <span>Hide</span>
+        `;
+    }
+}
+
 // ─── Shopping List State ─────────────────────────
 const CART_KEY = 'reel-cookbook-cart';
 const CHECKED_KEY = 'reel-cookbook-checked';
@@ -856,8 +906,25 @@ function renderModal(recipe) {
         <p class="modal-creator">
             ${recipe.creator ? `by <strong>${escapeHtml(recipe.creator)}</strong>` : ''}
             ${recipe.source_url ? ` · <a href="${escapeHtml(recipe.source_url)}" target="_blank" rel="noopener">View original</a>` : ''}
+            ${(() => {
+                const sc = extractInstagramShortcode(recipe.source_url);
+                return sc ? ` · <button class="instagram-toggle-btn" id="instagramToggleBtn" onclick="toggleInstagramEmbed('${sc}')"><svg class="instagram-play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><span>Watch Reel</span></button>` : '';
+            })()}
         </p>
         ${recipe.created_at ? `<p class="modal-date-added">${isNewRecipe(recipe) ? '<span class="new-badge-inline">NEW</span> ' : ''}Added ${formatDateAdded(recipe.created_at)}${recipe.added_by ? ` by <strong>${escapeHtml(recipe.added_by)}</strong>` : ''}</p>` : ''}
+
+        <!-- Instagram Embed Container (collapsible) -->
+        ${(() => {
+            const shortcode = extractInstagramShortcode(recipe.source_url);
+            if (!shortcode) return '';
+            return `
+                <div class="instagram-embed-wrapper">
+                    <div class="instagram-embed-container" id="instagramEmbedContainer">
+                        <div class="instagram-embed-placeholder"></div>
+                    </div>
+                </div>
+            `;
+        })()}
 
         <!-- Rating & Reviews Section -->
         <div class="reviews-section" id="reviewsSection">
