@@ -39,36 +39,81 @@ Everything saves to a self-hosted cookbook with search, ratings, meal planning, 
 
 ---
 
-## Quick Start
+## Screenshots
 
-### 1. MCP Server
+### 🏠 Recipe Gallery
+Browse your collection with full-text search, category filters, and rating badges.
+
+![Recipe Gallery](docs/screenshots/home-gallery.png)
+
+### 📖 Recipe Detail & Cook Mode
+Fullscreen step-by-step instructions with screen wake lock.
+
+![Recipe Detail](docs/screenshots/recipe-detail.png)
+
+![Cook Mode Instructions](docs/screenshots/recipe-instructions.png)
+
+### 📅 Meal Planner
+Radial day selector, shared weekly calendar, and auto-generated grocery lists.
+
+![Meal Planner](docs/screenshots/meal-planner.png)
+
+### 🛒 Shopping List
+Smart quantity merging, grouped by grocery aisle.
+
+![Shopping List](docs/screenshots/shopping-list.png)
+
+### 🌙 Dark Mode
+Apple Liquid Glass design with deep purple gradients and glassmorphism.
+
+![Dark Mode](docs/screenshots/dark-mode.png)
+
+### 📱 Mobile PWA (iPhone)
+Optimized for iPhone 17 Pro Max — install on home screen for standalone mode.
+
+![Mobile PWA](docs/screenshots/mobile-pwa.png)
+
+---
+
+## Quick Start
 
 ```bash
 git clone https://github.com/Brenttime/reel-to-recipe.git
 cd reel-to-recipe
-uv sync
-
-# System dependencies
-sudo apt install ffmpeg tesseract-ocr
-
-# Run
-uv run mcp_server.py
 ```
 
-### 2. OnlyPans (Docker)
+### 1. Configure Environment
 
 ```bash
-# Create .env with your Discord app credentials (all required)
 cat > .env << 'EOF'
+# Discord OAuth (required)
 DISCORD_CLIENT_ID=your_client_id_here
 DISCORD_CLIENT_SECRET=your_client_secret_here
 DISCORD_REDIRECT_URI=http://YOUR_HOST_IP:5100/auth/callback
 SECRET_KEY=any-random-secret-string
-EOF
 
-# Start (fails fast with clear error if any required env var is missing)
+# LLM for recipe formatting (required)
+# Local Gemma/llama.cpp:
+OPENAI_BASE_URL=http://YOUR_LLM_HOST:8080/v1
+OPENAI_API_KEY=not-needed
+LLM_MODEL=gemma-4-12b-it
+# Or OpenAI:
+# OPENAI_BASE_URL=https://api.openai.com/v1
+# OPENAI_API_KEY=sk-...
+# LLM_MODEL=gpt-4o-mini
+EOF
+```
+
+### 2. Start Everything (Docker)
+
+```bash
+# Both services start with one command
 docker compose up -d
 ```
+
+This starts:
+- **OnlyPans** web app on port 5100
+- **MCP Server** on ports 8001 (MCP protocol) / 8002 (HTTP API)
 
 Open **http://localhost:5100** — login with Discord and start converting.
 
@@ -111,21 +156,28 @@ Real Let's Encrypt cert, auto-renews, zero maintenance.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  OnlyPans (Docker :5100)                                  │
+│  OnlyPans Web App (Docker :5100)                          │
+│  Container: reel-cookbook                                  │
 │  Flask + SQLite/FTS5 + Discord OAuth2 + Liquid Glass UI   │
 └────────────────────────────┬─────────────────────────────┘
                              │ REST API + progress webhook
 ┌────────────────────────────┴─────────────────────────────┐
-│  MCP Server (:8001 MCP / :8002 HTTP)                      │
-│  yt-dlp → faster-whisper → Tesseract OCR → gpt-4o-mini   │
-│  6 tools: convert, meal plan, grocery list, search        │
+│  MCP Server (Docker :8001 MCP / :8002 HTTP)               │
+│  Container: onlypans-mcp                                  │
+│  yt-dlp → faster-whisper → Tesseract OCR → LLM format    │
+│  LLM: any OpenAI-compatible API (local Gemma, GPT, etc.)  │
+│  7 tools: convert, meal plan, grocery list, search        │
+└──────────────────────────────────────────────────────────┘
+         │ shared Docker volume (cookbook-data)
+┌────────┴─────────────────────────────────────────────────┐
+│  SQLite DB (/data/recipes.db)                             │
 └──────────────────────────────────────────────────────────┘
 ```
 
-| Component | Port | Purpose |
-|-----------|------|---------|
-| **MCP Server** | 8001 / 8002 | Convert reels + blog URLs → structured recipes; meal planning; search |
-| **OnlyPans** | 5100 | Browse, search, rate, cook, plan, and share recipes |
+| Component | Container | Port | Purpose |
+|-----------|-----------|------|---------|
+| **OnlyPans** | `reel-cookbook` | 5100 | Browse, search, rate, cook, plan, and share recipes |
+| **MCP Server** | `onlypans-mcp` | 8001 / 8002 | Convert reels + blog URLs → structured recipes; meal planning; search |
 
 ---
 

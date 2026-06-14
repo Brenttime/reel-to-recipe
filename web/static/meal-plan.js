@@ -115,13 +115,13 @@ async function removeEntry(entryId) {
 // ─── Meal Plan Panel ───────────────────────────────
 function openMealPlan() {
     document.getElementById('mealPlanOverlay').classList.add('active');
-    document.body.style.overflow = 'hidden';
+    window._lockBodyScroll();
     refreshMealPlan();
 }
 
 function closeMealPlan() {
     document.getElementById('mealPlanOverlay').classList.remove('active');
-    document.body.style.overflow = '';
+    window._unlockBodyScroll();
     cancelReassign();
 }
 
@@ -241,13 +241,13 @@ function openRadialMenu(recipeId, recipeTitle) {
 
     document.getElementById('radialRecipeTitle').textContent = recipeTitle;
     document.getElementById('radialOverlay').classList.add('active');
-    document.body.style.overflow = 'hidden';
+    window._lockBodyScroll();
     renderRadialRing();
 }
 
 function closeRadialMenu() {
     document.getElementById('radialOverlay').classList.remove('active');
-    document.body.style.overflow = '';
+    window._unlockBodyScroll();
     radialRecipeId = null;
 }
 
@@ -345,6 +345,7 @@ function setGroceryChecked(items) {
 
 async function openGroceryList() {
     document.getElementById('groceryOverlay').classList.add('active');
+    window._lockBodyScroll();
     const body = document.getElementById('groceryBody');
     const subtitle = document.getElementById('grocerySubtitle');
     const actions = document.getElementById('groceryActions');
@@ -433,6 +434,7 @@ async function openGroceryList() {
 
 function closeGroceryList() {
     document.getElementById('groceryOverlay').classList.remove('active');
+    window._unlockBodyScroll();
 }
 
 function groupIngredients(ingredients) {
@@ -463,13 +465,13 @@ function groupIngredients(ingredients) {
 
 function copyGroceryList() {
     const body = document.getElementById('groceryBody');
-    const checked = getGroceryChecked();
     const lines = [];
     body.querySelectorAll('.grocery-section').forEach(s => {
         lines.push(`\n${s.querySelector('.grocery-section-title').textContent}`);
         s.querySelectorAll('.grocery-item').forEach(i => {
             const text = i.querySelector('.grocery-item-text').textContent;
-            const mark = checked.includes(text) ? '✓' : '•';
+            const isChecked = i.querySelector('input[type="checkbox"]')?.checked || i.classList.contains('checked');
+            const mark = isChecked ? '✓' : '•';
             lines.push(`${mark} ${text}`);
         });
     });

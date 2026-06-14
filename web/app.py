@@ -42,6 +42,21 @@ convert_jobs = {}  # job_id -> {status, url, added_by, recipe, error, created_at
 convert_lock = threading.Lock()
 
 
+def _normalize_source_url(url):
+    """Normalize URL for consistent source_url matching (mirrors MCP _normalize_url)."""
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(url)
+    # Case-insensitive domain check with www. stripping (mirrors MCP)
+    domain = parsed.netloc.lower().replace("www.", "")
+    if "instagram.com" in domain or "tiktok.com" in domain:
+        # Normalize: lowercase scheme + netloc, strip www., strip query params,
+        # guarantee exactly one trailing slash on path
+        netloc = parsed.netloc.lower().replace("www.", "")
+        clean = urlunparse((parsed.scheme.lower(), netloc, parsed.path.rstrip("/") + "/", "", "", ""))
+        return clean
+    return url
+
+
 def _conversion_worker(job_id, url, added_by):
     """Background worker: calls MCP, saves recipe, updates job status."""
     try:
@@ -67,8 +82,12 @@ def _conversion_worker(job_id, url, added_by):
         conn = sqlite3.connect(DB_PATH)
         try:
             conn.row_factory = sqlite3.Row
+            normalized_url = _normalize_source_url(url)
+            # Query both normalized and original URL for backward compat
+            # (older rows may have stored source_url with query params)
             new_recipe = conn.execute(
-                "SELECT * FROM recipes WHERE source_url = ? ORDER BY id DESC LIMIT 1", (url,)
+                "SELECT * FROM recipes WHERE source_url = ? OR source_url = ? ORDER BY id DESC LIMIT 1",
+                (normalized_url, url)
             ).fetchone()
 
             if new_recipe:
@@ -122,10 +141,16 @@ AUTH_EXEMPT_ENDPOINTS = (
     'get_grocery_list',     # MCP grocery list read
 )
 
+# TEST_MODE=1 disables auth for automated testing (set via docker-compose.test.yml)
+TEST_MODE = os.environ.get("TEST_MODE", "0") == "1"
+
 
 @app.before_request
 def require_login():
     """Redirect unauthenticated users to Discord login."""
+    # TEST_MODE: skip all auth (test container only)
+    if TEST_MODE:
+        return None
     # Skip auth check for exempt paths
     path = request.path
     if any(path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES):
@@ -220,6 +245,7 @@ def init_db():
         conn.execute("ALTER TABLE recipes ADD COLUMN added_by TEXT DEFAULT ''")
     if "serving_size" not in cols:
         conn.execute("ALTER TABLE recipes ADD COLUMN serving_size TEXT DEFAULT ''")
+    conn.commit()
     conn.close()
     # Initialize auth tables
     init_auth_db(DB_PATH)
@@ -652,10 +678,12 @@ def api_convert():
     if not url.startswith("http://") and not url.startswith("https://"):
         return jsonify({"error": "URL must start with http:// or https://"}), 400
 
-    # Check for duplicates first
+    # Check for duplicates first (both normalized and original for backward compat)
     db = get_db()
+    normalized_url = _normalize_source_url(url)
     existing = db.execute(
-        "SELECT id, title FROM recipes WHERE source_url = ?", (url,)
+        "SELECT id, title FROM recipes WHERE source_url = ? OR source_url = ? ORDER BY id DESC LIMIT 1",
+        (normalized_url, url)
     ).fetchone()
     if existing:
         return jsonify({
