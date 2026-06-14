@@ -39,6 +39,42 @@ Everything saves to a self-hosted cookbook with search, ratings, meal planning, 
 
 ---
 
+## Screenshots
+
+### 🏠 Recipe Gallery
+Browse your collection with full-text search, category filters, and rating badges.
+
+![Recipe Gallery](docs/screenshots/home-gallery.png)
+
+### 📖 Recipe Detail & Cook Mode
+Fullscreen step-by-step instructions with screen wake lock.
+
+![Recipe Detail](docs/screenshots/recipe-detail.png)
+
+![Cook Mode Instructions](docs/screenshots/recipe-instructions.png)
+
+### 📅 Meal Planner
+Radial day selector, shared weekly calendar, and auto-generated grocery lists.
+
+![Meal Planner](docs/screenshots/meal-planner.png)
+
+### 🛒 Shopping List
+Smart quantity merging, grouped by grocery aisle.
+
+![Shopping List](docs/screenshots/shopping-list.png)
+
+### 🌙 Dark Mode
+Apple Liquid Glass design with deep purple gradients and glassmorphism.
+
+![Dark Mode](docs/screenshots/dark-mode.png)
+
+### 📱 Mobile PWA (iPhone)
+Optimized for iPhone 17 Pro Max — install on home screen for standalone mode.
+
+![Mobile PWA](docs/screenshots/mobile-pwa.png)
+
+---
+
 ## Quick Start
 
 ```bash
