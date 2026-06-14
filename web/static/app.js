@@ -149,7 +149,12 @@ function toggleInstagramEmbed(shortcode) {
     const isExpanded = container.classList.contains('expanded');
     
     if (isExpanded) {
-        // Collapse
+        // Collapse — remove iframe src to stop video playback
+        const iframe = container.querySelector('iframe');
+        if (iframe) {
+            iframe.dataset.src = iframe.src;
+            iframe.src = 'about:blank';
+        }
         container.classList.remove('expanded');
         toggleBtn.innerHTML = `
             <svg class="instagram-play-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -160,19 +165,26 @@ function toggleInstagramEmbed(shortcode) {
     } else {
         // Expand
         container.classList.add('expanded');
-        // Lazy load iframe on first expand
-        const placeholder = container.querySelector('.instagram-embed-placeholder');
-        if (placeholder && !container.querySelector('iframe')) {
-            const iframe = document.createElement('iframe');
-            iframe.src = `https://www.instagram.com/reel/${shortcode}/embed/`;
-            iframe.frameBorder = '0';
-            iframe.scrolling = 'no';
-            iframe.allowTransparency = 'true';
-            iframe.allow = 'encrypted-media';
-            iframe.style.opacity = '0';
-            iframe.style.transition = 'opacity 0.4s ease';
-            iframe.onload = () => { iframe.style.opacity = '1'; };
-            placeholder.replaceWith(iframe);
+        // Lazy load iframe on first expand, or restore src
+        const existingIframe = container.querySelector('iframe');
+        if (existingIframe && existingIframe.dataset.src) {
+            existingIframe.style.opacity = '0';
+            existingIframe.src = existingIframe.dataset.src;
+            existingIframe.onload = () => { existingIframe.style.opacity = '1'; };
+        } else {
+            const placeholder = container.querySelector('.instagram-embed-placeholder');
+            if (placeholder) {
+                const iframe = document.createElement('iframe');
+                iframe.src = `https://www.instagram.com/reel/${shortcode}/embed/`;
+                iframe.frameBorder = '0';
+                iframe.scrolling = 'no';
+                iframe.allowTransparency = 'true';
+                iframe.allow = 'encrypted-media';
+                iframe.style.opacity = '0';
+                iframe.style.transition = 'opacity 0.4s ease';
+                iframe.onload = () => { iframe.style.opacity = '1'; };
+                placeholder.replaceWith(iframe);
+            }
         }
         toggleBtn.innerHTML = `
             <svg class="instagram-chevron-icon" viewBox="0 0 24 24" fill="currentColor">
