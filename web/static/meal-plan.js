@@ -332,15 +332,45 @@ async function renderRadialRing() {
 }
 
 // ─── Grocery List ──────────────────────────────────
-const GROCERY_CHECKED_KEY = 'reel-cookbook-grocery-checked';
+let _grocerySyncInterval = null;
 
-function getGroceryChecked() {
-    try { return JSON.parse(localStorage.getItem(GROCERY_CHECKED_KEY)) || []; }
-    catch { return []; }
+// Server-backed checked items
+async function fetchCheckedItems(week) {
+    try {
+        const res = await fetch(`/api/meal-plan/grocery-checked?week=${week}`);
+        if (!res.ok) return [];
+        return await res.json();
+    } catch { return []; }
 }
 
-function setGroceryChecked(items) {
-    localStorage.setItem(GROCERY_CHECKED_KEY, JSON.stringify(items));
+async function checkItemOnServer(text, week) {
+    try {
+        await fetch('/api/meal-plan/grocery-checked', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, week })
+        });
+    } catch { /* silent */ }
+}
+
+async function uncheckItemOnServer(text, week) {
+    try {
+        await fetch('/api/meal-plan/grocery-checked', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, week })
+        });
+    } catch { /* silent */ }
+}
+
+async function clearCheckedOnServer(week) {
+    try {
+        await fetch('/api/meal-plan/grocery-checked/clear', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ week })
+        });
+    } catch { /* silent */ }
 }
 
 // Server-backed custom items
@@ -383,9 +413,10 @@ async function openGroceryList() {
     const week = formatDate(mpWeekStart);
 
     try {
-        const [res, customItems] = await Promise.all([
+        const [res, customItems, checked] = await Promise.all([
             fetch(`/api/meal-plan/grocery-list?week=${week}`),
-            fetchCustomItems(week)
+            fetchCustomItems(week),
+            fetchCheckedItems(week)
         ]);
         const data = await res.json();
 
@@ -394,7 +425,6 @@ async function openGroceryList() {
 
         subtitle.textContent = `${data.recipes.length} recipe${data.recipes.length !== 1 ? 's' : ''} this week`;
 
-        const checked = getGroceryChecked();
         const targetSystem = (typeof unitSystem !== 'undefined' && unitSystem !== 'original') ? unitSystem : null;
         const unitLabels = { original: 'As Written', imperial: 'oz · lb · cups', metric: 'g · ml · °C' };
         const currentUnit = (typeof unitSystem !== 'undefined') ? unitSystem : 'original';
@@ -448,19 +478,18 @@ async function openGroceryList() {
                 openGroceryList();
             });
 
-            // Bind checkboxes
+            // Bind checkboxes — sync to server on change
             body.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                 cb.addEventListener('change', () => {
                     const text = cb.dataset.groceryText;
-                    let checked = getGroceryChecked();
+                    const w = formatDate(mpWeekStart);
                     if (cb.checked) {
-                        if (!checked.includes(text)) checked.push(text);
                         cb.closest('.grocery-item').classList.add('checked');
+                        checkItemOnServer(text, w);
                     } else {
-                        checked = checked.filter(t => t !== text);
                         cb.closest('.grocery-item').classList.remove('checked');
+                        uncheckItemOnServer(text, w);
                     }
-                    setGroceryChecked(checked);
                 });
             });
 
@@ -503,14 +532,81 @@ async function openGroceryList() {
 
             addBtn.addEventListener('click', doAdd);
         }
+
+        // Start 60s sync interval (refresh grocery list from server)
+        _startGrocerySync();
+
     } catch (e) {
         body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary)">Failed to load</div>';
     }
 }
 
+function _startGrocerySync() {
+    _stopGrocerySync();
+    _grocerySyncInterval = setInterval(() => {
+        // Only sync if grocery overlay is still open
+        if (document.getElementById('groceryOverlay').classList.contains('active')) {
+            _syncGroceryState();
+        } else {
+            _stopGrocerySync();
+        }
+    }, 60000); // 60 seconds
+}
+
+function _stopGrocerySync() {
+    if (_grocerySyncInterval) {
+        clearInterval(_grocerySyncInterval);
+        _grocerySyncInterval = null;
+    }
+}
+
+async function _syncGroceryState() {
+    // Fetch latest checked + custom items from server and update DOM without full re-render
+    const week = formatDate(mpWeekStart);
+    try {
+        const [checkedRes, customRes, groceryRes] = await Promise.all([
+            fetchCheckedItems(week),
+            fetchCustomItems(week),
+            fetch(`/api/meal-plan/grocery-list?week=${week}`).then(r => r.json())
+        ]);
+
+        const serverChecked = checkedRes;
+        const serverCustomTexts = customRes.map(c => c.text);
+        const serverIngredients = [...groceryRes.ingredients, ...serverCustomTexts];
+
+        // Get current DOM state
+        const body = document.getElementById('groceryBody');
+        const currentTexts = [...body.querySelectorAll('input[type="checkbox"]')].map(cb => cb.dataset.groceryText);
+
+        // If ingredient list changed (items added/removed by another user), full re-render
+        const currentSet = new Set(currentTexts);
+        const serverSet = new Set(serverIngredients);
+        if (currentTexts.length !== serverIngredients.length ||
+            [...serverSet].some(t => !currentSet.has(t))) {
+            openGroceryList();
+            return;
+        }
+
+        // Otherwise just sync checkbox states
+        body.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            const text = cb.dataset.groceryText;
+            const shouldBeChecked = serverChecked.includes(text);
+            if (cb.checked !== shouldBeChecked) {
+                cb.checked = shouldBeChecked;
+                if (shouldBeChecked) {
+                    cb.closest('.grocery-item').classList.add('checked');
+                } else {
+                    cb.closest('.grocery-item').classList.remove('checked');
+                }
+            }
+        });
+    } catch { /* silent sync failure — retry next interval */ }
+}
+
 function closeGroceryList() {
     document.getElementById('groceryOverlay').classList.remove('active');
     window._unlockBodyScroll();
+    _stopGrocerySync();
 }
 
 function groupIngredients(ingredients) {
@@ -857,8 +953,8 @@ function init() {
         if (e.target === e.currentTarget) closeGroceryList();
     });
     document.getElementById('groceryCopyBtn').addEventListener('click', copyGroceryList);
-    document.getElementById('groceryClearCheckedBtn').addEventListener('click', () => {
-        setGroceryChecked([]);
+    document.getElementById('groceryClearCheckedBtn').addEventListener('click', async () => {
+        await clearCheckedOnServer(formatDate(mpWeekStart));
         openGroceryList();
     });
 

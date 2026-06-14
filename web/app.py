@@ -143,6 +143,10 @@ AUTH_EXEMPT_ENDPOINTS = (
     'get_grocery_custom_items',   # Grocery custom items read (shared)
     'add_grocery_custom_item',    # Grocery custom items write (shared)
     'delete_grocery_custom_item', # Grocery custom items delete (shared)
+    'get_grocery_checked',        # Grocery checked state read (shared)
+    'set_grocery_checked',        # Grocery checked state write (shared)
+    'uncheck_grocery_item',       # Grocery uncheck (shared)
+    'clear_grocery_checked',      # Grocery clear checked (shared)
 )
 
 # TEST_MODE=1 disables auth for automated testing (set via docker-compose.test.yml)
@@ -1023,6 +1027,98 @@ def delete_grocery_custom_item(item_id):
     return jsonify({"deleted": item_id}), 200
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Grocery Checked Items (server-persisted, shared across all users/sessions)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/meal-plan/grocery-checked", methods=["GET"])
+def get_grocery_checked():
+    """Get all checked item texts for a given week."""
+    week_start = request.args.get("week")
+    if not week_start:
+        today = dt_date.today()
+        monday = today - timedelta(days=today.weekday())
+        week_start = monday.isoformat()
+
+    db = get_db()
+    rows = db.execute(
+        "SELECT text FROM grocery_checked_items WHERE week_start = ?",
+        (week_start,)
+    ).fetchall()
+
+    return jsonify([row["text"] for row in rows])
+
+
+@app.route("/api/meal-plan/grocery-checked", methods=["POST"])
+def set_grocery_checked():
+    """Check an item (add to checked list)."""
+    data = request.get_json(force=True)
+    text = (data.get("text") or "").strip()
+    week_start = data.get("week")
+
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    if not week_start:
+        today = dt_date.today()
+        monday = today - timedelta(days=today.weekday())
+        week_start = monday.isoformat()
+
+    db = get_db()
+    # Prevent duplicates
+    existing = db.execute(
+        "SELECT id FROM grocery_checked_items WHERE week_start = ? AND text = ?",
+        (week_start, text)
+    ).fetchone()
+    if not existing:
+        db.execute(
+            "INSERT INTO grocery_checked_items (week_start, text) VALUES (?, ?)",
+            (week_start, text)
+        )
+        db.commit()
+
+    return jsonify({"checked": text}), 200
+
+
+@app.route("/api/meal-plan/grocery-checked", methods=["DELETE"])
+def uncheck_grocery_item():
+    """Uncheck an item (remove from checked list)."""
+    data = request.get_json(force=True)
+    text = (data.get("text") or "").strip()
+    week_start = data.get("week")
+
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    if not week_start:
+        today = dt_date.today()
+        monday = today - timedelta(days=today.weekday())
+        week_start = monday.isoformat()
+
+    db = get_db()
+    db.execute(
+        "DELETE FROM grocery_checked_items WHERE week_start = ? AND text = ?",
+        (week_start, text)
+    )
+    db.commit()
+    return jsonify({"unchecked": text}), 200
+
+
+@app.route("/api/meal-plan/grocery-checked/clear", methods=["POST"])
+def clear_grocery_checked():
+    """Clear all checked items for a week."""
+    data = request.get_json(force=True)
+    week_start = data.get("week")
+
+    if not week_start:
+        today = dt_date.today()
+        monday = today - timedelta(days=today.weekday())
+        week_start = monday.isoformat()
+
+    db = get_db()
+    db.execute("DELETE FROM grocery_checked_items WHERE week_start = ?", (week_start,))
+    db.commit()
+    return jsonify({"cleared": week_start}), 200
+
+
 # Initialize database on startup
 with app.app_context():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -1094,5 +1190,15 @@ with app.app_context():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_grocery_custom_week ON grocery_custom_items(week_start);
+    """)
+    # Grocery checked items table (shared between all users, week-scoped)
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS grocery_checked_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_start TEXT NOT NULL,
+            text TEXT NOT NULL,
+            checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_grocery_checked_week ON grocery_checked_items(week_start);
     """)
     conn.close()

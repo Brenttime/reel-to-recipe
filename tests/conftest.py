@@ -52,10 +52,10 @@ db_path = os.environ.get('DB_PATH', '/data/recipes.db')
 conn = sqlite3.connect(db_path)
 cur = conn.cursor()
 # Clear all data tables (keep schema)
-for table in ['grocery_custom_items', 'meal_plan', 'reviews', 'recipes', 'users']:
+for table in ['grocery_custom_items', 'grocery_checked_items', 'meal_plan', 'reviews', 'recipes', 'users']:
     cur.execute(f'DELETE FROM {table}')
 # Reset autoincrement
-cur.execute("DELETE FROM sqlite_sequence WHERE name IN ('recipes', 'users', 'reviews', 'meal_plan', 'grocery_custom_items')")
+cur.execute("DELETE FROM sqlite_sequence WHERE name IN ('recipes', 'users', 'reviews', 'meal_plan', 'grocery_custom_items', 'grocery_checked_items')")
 conn.commit()
 conn.close()
 """
