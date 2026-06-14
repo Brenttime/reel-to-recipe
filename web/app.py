@@ -397,9 +397,20 @@ def api_recipes():
     source_url = request.args.get("source_url", "").strip()
 
     # Exact match by source_url (used for duplicate detection)
+    # Normalize and also check www./non-www. variants to catch duplicates
     if source_url:
+        normalized = _normalize_source_url(source_url)
+        # Build www. variant: if normalized has no www., add it; if it does, strip it
+        from urllib.parse import urlparse, urlunparse
+        parsed = urlparse(normalized)
+        if parsed.netloc.startswith("www."):
+            alt_netloc = parsed.netloc[4:]
+        else:
+            alt_netloc = "www." + parsed.netloc
+        www_variant = urlunparse((parsed.scheme, alt_netloc, parsed.path, "", "", ""))
         rows = db.execute(
-            "SELECT * FROM recipes WHERE source_url = ?", (source_url,)
+            "SELECT * FROM recipes WHERE source_url IN (?, ?, ?)",
+            (normalized, source_url, www_variant)
         ).fetchall()
     elif query:
         # Try FTS5 first, fall back to LIKE on error
