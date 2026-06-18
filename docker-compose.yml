@@ -13,6 +13,7 @@ services:
       - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET:?Set DISCORD_CLIENT_SECRET in .env}
       - DISCORD_REDIRECT_URI=${DISCORD_REDIRECT_URI:?Set DISCORD_REDIRECT_URI in .env}
       - SECRET_KEY=${SECRET_KEY:-onlypans-change-me-in-prod}
+      - SERVICE_TOKEN=${SERVICE_TOKEN:?Set SERVICE_TOKEN in .env}
       - SHOW_KOFI=${SHOW_KOFI:-true}
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -33,6 +34,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
     environment:
       - RECIPE_GLASS_URL=http://reel-cookbook:5100
+      - SERVICE_TOKEN=${SERVICE_TOKEN:?Set SERVICE_TOKEN in .env}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - OPENAI_API_KEY=${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env (use 'not-needed' for local models)}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:?Set OPENAI_BASE_URL in .env (e.g. http://YOUR_LLM_HOST:8080/v1)}

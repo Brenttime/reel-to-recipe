@@ -61,6 +61,14 @@ def _check_ig_age_gate(stderr: str) -> bool:
 
 # Recipe Glass integration — save converted recipes to the web viewer
 RECIPE_GLASS_URL = os.environ.get("RECIPE_GLASS_URL", "http://localhost:5100")
+SERVICE_TOKEN = os.environ.get("SERVICE_TOKEN", "")
+
+def _service_headers() -> dict:
+    """Auth headers for internal web app calls."""
+    h = {"Content-Type": "application/json"}
+    if SERVICE_TOKEN:
+        h["Authorization"] = f"Bearer {SERVICE_TOKEN}"
+    return h
 
 # LLM model for recipe formatting (passed to hermes chat -m)
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
@@ -77,6 +85,7 @@ def _report_progress(job_id: str, step: str, detail: str = ""):
         httpx.post(
             f"{RECIPE_GLASS_URL}/api/convert/progress",
             json={"job_id": job_id, "step": step, "detail": detail},
+            headers=_service_headers(),
             timeout=2
         )
     except Exception:
@@ -111,6 +120,7 @@ def _check_duplicate(url: str) -> dict | None:
         resp = httpx.get(
             f"{RECIPE_GLASS_URL}/api/recipes",
             params={"source_url": normalized},
+            headers=_service_headers(),
             timeout=5
         )
         if resp.status_code == 200:
@@ -125,6 +135,7 @@ def _check_duplicate(url: str) -> dict | None:
             resp = httpx.get(
                 f"{RECIPE_GLASS_URL}/api/recipes",
                 params={"source_url": url},
+                headers=_service_headers(),
                 timeout=5
             )
             if resp.status_code == 200:
@@ -1391,6 +1402,7 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, force: bool
                 existing = httpx.get(
                     f"{RECIPE_GLASS_URL}/api/recipes",
                     params={"source_url": _normalize_url(url)},
+                    headers=_service_headers(),
                     timeout=5
                 )
             except Exception:
@@ -1405,6 +1417,7 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, force: bool
                             resp = httpx.put(
                                 f"{RECIPE_GLASS_URL}/api/recipes/{existing_id}",
                                 json=payload,
+                                headers=_service_headers(),
                                 timeout=10
                             )
                             if resp.status_code == 200:
@@ -1422,6 +1435,7 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, force: bool
         resp = httpx.post(
             f"{RECIPE_GLASS_URL}/api/recipes",
             json=payload,
+            headers=_service_headers(),
             timeout=10
         )
         if resp.status_code == 201:
@@ -1814,7 +1828,7 @@ def get_meal_plan(week: str = "") -> str:
         params["week"] = week
 
     try:
-        resp = httpx.get(f"{RECIPE_GLASS_URL}/api/meal-plan", params=params, timeout=10)
+        resp = httpx.get(f"{RECIPE_GLASS_URL}/api/meal-plan", params=params, headers=_service_headers(), timeout=10)
         data = resp.json()
     except Exception as e:
         return f"Error fetching meal plan: {e}"
@@ -1861,6 +1875,7 @@ def add_to_meal_plan(recipe_id: int, date: str) -> str:
         resp = httpx.post(
             f"{RECIPE_GLASS_URL}/api/meal-plan",
             json={"recipe_id": recipe_id, "date": date},
+            headers=_service_headers(),
             timeout=10
         )
         data = resp.json()
@@ -1883,7 +1898,7 @@ def remove_from_meal_plan(entry_id: int) -> str:
         Confirmation message.
     """
     try:
-        resp = httpx.delete(f"{RECIPE_GLASS_URL}/api/meal-plan/{entry_id}", timeout=10)
+        resp = httpx.delete(f"{RECIPE_GLASS_URL}/api/meal-plan/{entry_id}", headers=_service_headers(), timeout=10)
         if resp.status_code == 200:
             return f"✅ Removed entry #{entry_id} from meal plan."
         else:
@@ -1908,7 +1923,7 @@ def get_grocery_list(week: str = "") -> str:
         params["week"] = week
 
     try:
-        resp = httpx.get(f"{RECIPE_GLASS_URL}/api/meal-plan/grocery-list", params=params, timeout=10)
+        resp = httpx.get(f"{RECIPE_GLASS_URL}/api/meal-plan/grocery-list", params=params, headers=_service_headers(), timeout=10)
         data = resp.json()
     except Exception as e:
         return f"Error fetching grocery list: {e}"
@@ -1947,7 +1962,7 @@ def search_recipes(query: str = "", category: str = "") -> str:
         params["tag"] = category
 
     try:
-        resp = httpx.get(f"{RECIPE_GLASS_URL}/api/recipes", params=params, timeout=10)
+        resp = httpx.get(f"{RECIPE_GLASS_URL}/api/recipes", params=params, headers=_service_headers(), timeout=10)
         if resp.status_code == 401:
             # Fallback: query DB directly since auth is required for full list
             return _search_recipes_direct(query, category)

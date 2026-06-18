@@ -127,27 +127,13 @@ def _conversion_worker(job_id, url, added_by):
             convert_jobs[job_id]["error"] = str(e)
 
 # --- Gate the entire app behind Discord login ---
-# Exceptions: auth flow itself, static files, and the MCP save endpoint
+# Only auth flow and static assets are exempt from authentication.
+# Machine-to-machine callers (MCP server, Hermes) use SERVICE_TOKEN via
+# the Authorization header: "Bearer <token>".
 AUTH_EXEMPT_PREFIXES = ('/auth/', '/static/')
-AUTH_EXEMPT_ENDPOINTS = (
-    'api_add_recipe',       # MCP server pushes recipes without login
-    'api_update_recipe',    # MCP server updates recipes on force-reprocess
-    'api_convert',          # Reprocess pipeline (force flag for batch jobs)
-    'api_convert_progress', # MCP server reports conversion progress
-    'get_meal_plan',        # MCP meal plan read
-    'add_to_meal_plan',     # MCP meal plan write
-    'add_quick_plan',       # MCP quick plan write
-    'move_meal_plan_entry', # MCP meal plan update
-    'remove_from_meal_plan',# MCP meal plan delete
-    'get_grocery_list',     # MCP grocery list read
-    'get_grocery_custom_items',   # Grocery custom items read (shared)
-    'add_grocery_custom_item',    # Grocery custom items write (shared)
-    'delete_grocery_custom_item', # Grocery custom items delete (shared)
-    'get_grocery_checked',        # Grocery checked state read (shared)
-    'set_grocery_checked',        # Grocery checked state write (shared)
-    'uncheck_grocery_item',       # Grocery uncheck (shared)
-    'clear_grocery_checked',      # Grocery clear checked (shared)
-)
+
+# Service token for internal API access (MCP, Hermes, scripts)
+SERVICE_TOKEN = os.environ.get("SERVICE_TOKEN", "")
 
 # TEST_MODE=1 disables auth for automated testing (set via docker-compose.test.yml)
 TEST_MODE = os.environ.get("TEST_MODE", "0") == "1"
@@ -155,24 +141,19 @@ TEST_MODE = os.environ.get("TEST_MODE", "0") == "1"
 
 @app.before_request
 def require_login():
-    """Redirect unauthenticated users to Discord login."""
+    """Gate all requests behind Discord OAuth or service token."""
     # TEST_MODE: skip all auth (test container only)
     if TEST_MODE:
         return None
-    # Skip auth check for exempt paths
+    # Skip auth check for exempt paths (auth flow, static files)
     path = request.path
     if any(path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES):
         return None
-    # Skip for exempt endpoints (MCP save)
-    if request.endpoint in AUTH_EXEMPT_ENDPOINTS:
+    # Service token auth — machine-to-machine (MCP, Hermes, scripts)
+    auth_header = request.headers.get('Authorization', '')
+    if SERVICE_TOKEN and auth_header == f'Bearer {SERVICE_TOKEN}':
         return None
-    # Allow duplicate-check queries from MCP (source_url lookup only)
-    if path == '/api/recipes' and request.method == 'GET' and request.args.get('source_url'):
-        return None
-    # Allow MCP recipe search (GET /api/recipes with q= or tag= params)
-    if path == '/api/recipes' and request.method == 'GET' and (request.args.get('q') or request.args.get('tag')):
-        return None
-    # Check if logged in
+    # Check if logged in via Discord session
     if not session.get('user_id'):
         # API calls get 401, browser navigation gets redirected
         if (request.is_json
