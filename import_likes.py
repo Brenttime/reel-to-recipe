@@ -17,7 +17,7 @@ from curl_cffi import requests as curl_requests
 # ── Config ──
 MAX_PAGES = 50
 BRAIN_URL = "http://192.168.4.55:8080/v1/chat/completions"
-BATCH_SIZE = 25
+BATCH_SIZE = 15
 COOKIES_PATH = Path(__file__).parent / "cookies.txt"
 
 YT_DLP_UA = (
@@ -106,13 +106,18 @@ def classify_reels(reels):
 
         lines = []
         for i, r in enumerate(batch):
-            cap = r["caption"][:120].replace("\n", " ").strip()
+            # Smart caption truncation: strip hashtags and emojis first for better signal
+            cap = re.sub(r'#\w+', '', r["caption"])  # remove hashtags
+            cap = re.sub(r'[\U0001F000-\U0001FFFF\U00002600-\U000027BF\U0000FE00-\U0000FE0F\U0001FA00-\U0001FAFF]', '', cap)  # remove emojis
+            cap = cap[:120].replace("\n", " ").strip()
             lines.append(f"{i+1}. @{r['user']}: {cap}")
 
         prompt = (
-            "Classify each reel: RECIPE (teaching how to make food/drinks at home) "
-            "or SKIP (restaurants, travel, non-food, just eating).\n"
-            "Reply ONLY number and label:\n1. RECIPE\n2. SKIP\n\n"
+            "Classify each reel as RECIPE or SKIP.\n"
+            "- RECIPE = teaches how to make food/drinks at home (shows ingredients OR steps)\n"
+            "- SKIP = restaurants, travel, eating out, food reviews, just showing food without recipe, non-food\n"
+            "- When uncertain, say RECIPE (false positives are filtered downstream)\n\n"
+            "Respond with ONLY the number and label for each, one per line:\n\n"
             + "\n".join(lines)
         )
 
@@ -123,7 +128,7 @@ def classify_reels(reels):
                     "model": "gemma-4-12b-it",
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 250,
-                    "temperature": 0.1,
+                    "temperature": 0.0,
                 },
                 timeout=90,
             )

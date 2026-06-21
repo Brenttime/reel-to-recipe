@@ -1154,7 +1154,7 @@ def transcribe(audio_path: str) -> str:
 
 
 
-def _call_llm(prompt: str) -> str:
+def _call_llm(prompt: str, temperature: float = 0.2) -> str:
     """Call an OpenAI-compatible LLM API for recipe formatting.
 
     Uses OPENAI_API_KEY and OPENAI_BASE_URL from environment.
@@ -1189,6 +1189,7 @@ def _call_llm(prompt: str) -> str:
                 {"role": "system", "content": "You are a recipe formatting assistant."},
                 {"role": "user", "content": prompt},
             ],
+            temperature=temperature,
         )
         if not response.choices:
             raise RuntimeError("LLM returned no choices in response")
@@ -1665,7 +1666,7 @@ def format_recipe_combined(caption: str, transcript: str, ocr_text: str) -> str:
     if total_content < 20:
         raise RuntimeError("Not enough content to extract a recipe (caption, transcript, and OCR are all empty or too short)")
 
-    prompt = f"""You are a recipe formatter. Extract and structure a recipe from the sources below.
+    prompt = f"""Extract and structure a recipe from the sources below.
 
 ## SOURCES (in priority order for ingredients/quantities):
 1. CAPTION (most authoritative):
@@ -1688,12 +1689,12 @@ Serving Size: what ONE portion is (e.g. "1 sandwich", "1 bowl", "2 pieces") — 
 Prep Time: Xm
 Cook Time: Xm
 
-## Macros
+## Macros (ONLY include if calories/protein/carbs/fat are explicitly stated in sources — if not found, OMIT THIS ENTIRE SECTION)
 Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
 
 ## Ingredients
-- ingredient [section]
-- quantity ingredient [section]
+- quantity ingredient, prep [section]
+- quantity ingredient, prep [section]
 
 ## Instructions
 1. Step one
@@ -1705,13 +1706,45 @@ Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
 
 ## RULES:
 - Every ingredient line MUST end with a section tag in brackets. Valid tags: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [bar], [other]
-- [bar] = spirits, liqueurs, bitters, cocktail ingredients. [beverages] = non-alcoholic mixers. [produce] = fresh garnishes. [pantry] = flour, sugar, oil, canned goods. [spices] = dried herbs and spices. [condiments] = sauces and dressings.
+- Section definitions: [produce] = fresh fruits, vegetables, herbs, garnishes. [meat] = beef, pork, chicken, etc. [seafood] = fish, shellfish. [dairy] = milk, cheese, butter, eggs. [bakery] = bread, tortillas, buns. [pantry] = flour, sugar, oil, canned goods, rice, pasta. [spices] = dried herbs and spices. [frozen] = frozen vegetables, ice cream. [condiments] = sauces, dressings, mustard, ketchup. [beverages] = non-alcoholic drinks, mixers. [bar] = spirits, liqueurs, bitters, cocktail ingredients.
 - If the recipe is a cocktail/drink: steps may be shake/stir/muddle/strain/garnish. Include glassware in Tips.
 - NEVER invent, guess, or fabricate quantities/measurements. If the source says "chicken broth" with no amount, write ONLY "Chicken broth [pantry]" — do NOT add "3 cups" or any number. Only include measurements that are EXPLICITLY stated in a source.
 - Omit any section (Macros, Prep Time, etc.) if the data isn't available — do NOT guess or fabricate numbers.
 - Start response with the recipe title. NO preamble ("Here's the recipe", "Sure!", etc.).
 - If a source is empty, ignore it. Combine all non-empty sources for the most complete recipe.
-- Ingredients section is REQUIRED even if you must infer from instructions."""
+- Ingredients section is REQUIRED even if you must infer from instructions.
+- Quantities: use numbers (not words). Prefer: tbsp, tsp, cup, oz, g, lb, ml.
+- Vague amounts: use "to taste" for seasonings, "as needed" for oil/water/ice.
+- Ingredient name format: base ingredient first, prep after comma — "garlic, minced" not "minced garlic".
+- CRITICAL: Only include ingredients that appear in at least one source. If a source says "season well" without naming specific seasonings, write "salt and pepper, to taste [spices]" — do NOT invent specific spices not mentioned.
+
+## EXAMPLE OUTPUT:
+Spicy Garlic Noodles
+
+Source: @cookingwithjohn
+
+Servings: 2
+Serving Size: 1 bowl
+Prep Time: 5m
+Cook Time: 10m
+
+## Ingredients
+- 200g ramen noodles [pantry]
+- 4 cloves garlic, minced [produce]
+- 2 tbsp soy sauce [condiments]
+- 1 tbsp chili oil [condiments]
+- salt and pepper, to taste [spices]
+- 1 green onion, sliced [produce]
+
+## Instructions
+1. Cook noodles according to package directions. Drain and set aside.
+2. Sauté garlic in chili oil over medium heat until fragrant, about 30 seconds.
+3. Toss noodles with garlic oil and soy sauce. Season to taste.
+4. Garnish with sliced green onion.
+
+## Tips
+- Add a fried egg for extra protein.
+- Use any long noodle — spaghetti works too."""
 
     output = _call_llm(prompt)
 
@@ -1846,7 +1879,7 @@ def import_liked_reels(max_pages: int = 50, dry_run: bool = True) -> str:
 
     # ── Phase 2: Classify via Brain (local Gemma 4) ──
     BRAIN_URL = "http://192.168.4.55:8080/v1/chat/completions"
-    BATCH_SIZE = 25
+    BATCH_SIZE = 15
     recipe_reels = []
     skip_reels = []
 
@@ -1855,13 +1888,18 @@ def import_liked_reels(max_pages: int = 50, dry_run: bool = True) -> str:
 
         lines = []
         for i, r in enumerate(batch):
-            cap = r["caption"][:120].replace("\n", " ").strip()
+            # Smart caption truncation: strip hashtags and emojis first for better signal
+            cap = _re.sub(r'#\w+', '', r["caption"])  # remove hashtags
+            cap = _re.sub(r'[\U0001F000-\U0001FFFF\U00002600-\U000027BF\U0000FE00-\U0000FE0F\U0001FA00-\U0001FAFF]', '', cap)  # remove emojis
+            cap = cap[:120].replace("\n", " ").strip()
             lines.append(f"{i+1}. @{r['user']}: {cap}")
 
         prompt = (
-            "Classify each reel: RECIPE (teaching how to make food/drinks at home) "
-            "or SKIP (restaurants, travel, non-food, just eating).\n"
-            "Reply ONLY number and label:\n1. RECIPE\n2. SKIP\n\n"
+            "Classify each reel as RECIPE or SKIP.\n"
+            "- RECIPE = teaches how to make food/drinks at home (shows ingredients OR steps)\n"
+            "- SKIP = restaurants, travel, eating out, food reviews, just showing food without recipe, non-food\n"
+            "- When uncertain, say RECIPE (false positives are filtered downstream)\n\n"
+            "Respond with ONLY the number and label for each, one per line:\n\n"
             + "\n".join(lines)
         )
 
@@ -1872,7 +1910,7 @@ def import_liked_reels(max_pages: int = 50, dry_run: bool = True) -> str:
                     "model": "gemma-4-12b-it",
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 250,
-                    "temperature": 0.1,
+                    "temperature": 0.0,
                 },
                 timeout=90,
             )
