@@ -23,3 +23,9 @@ cookies.txt
 cookbook-data/
 .env
 AGENTS.md
+
+# Hermes agent state
+.hermes/
+
+# Cache files
+liked_reels_cache.json

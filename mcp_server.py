@@ -688,7 +688,17 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
     For TikTok URLs, falls through to TikWM-based functions (different API).
     """
     if is_tiktok_url(url):
-        # TikWM handles TikTok — single API call is already cached internally
+        # Check if this is a slideshow/photo post
+        if is_tiktok_slideshow(url):
+            # Slideshow: return images list instead of video/audio paths
+            result = {
+                "caption": tiktok_get_caption(url),
+                "slideshow_images": tiktok_download_slideshow_images(url),
+                "slideshow_cover": tiktok_get_slideshow_cover(url),
+            }
+            return result
+
+        # TikWM handles TikTok videos — single API call is already cached internally
         result = {"caption": tiktok_get_caption(url)}
         if need_audio:
             result["audio_path"] = tiktok_download_audio(url)
@@ -697,6 +707,10 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
         return result
 
     yt_dlp = "yt-dlp"
+
+    # Check if this is an Instagram carousel (sidecar) before attempting video download
+    if "instagram.com" in url and is_instagram_carousel(url):
+        return ig_download_carousel_images(url)
 
     if need_video:
         # Download full video + print description in one call
@@ -718,6 +732,12 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
         if proc.returncode != 0:
             stderr = proc.stderr.strip()
             if "no video in this post" in stderr.lower():
+                # Might be a carousel — try instaloader fallback
+                if "instagram.com" in url:
+                    try:
+                        return ig_download_carousel_images(url)
+                    except Exception:
+                        pass
                 raise RuntimeError("This is a photo post, not a video/reel. Only video content can be converted.")
             if _check_ig_age_gate(stderr):
                 raise RuntimeError(AGE_RESTRICTED_MSG)
@@ -780,6 +800,12 @@ def combined_download(url: str, need_audio=True, need_video=True) -> dict:
         if proc.returncode != 0:
             stderr = proc.stderr.strip()
             if "no video in this post" in stderr.lower():
+                # Might be a carousel — try instaloader fallback
+                if "instagram.com" in url:
+                    try:
+                        return ig_download_carousel_images(url)
+                    except Exception:
+                        pass
                 raise RuntimeError("This is a photo post, not a video/reel. Only video content can be converted.")
             if _check_ig_age_gate(stderr):
                 raise RuntimeError(AGE_RESTRICTED_MSG)
@@ -811,6 +837,188 @@ def _tikwm_fetch(url: str) -> dict:
         raise RuntimeError(f"TikWM failed: {data.get('msg', 'unknown error')}")
     _tikwm_cache[url] = data['data']
     return data['data']
+
+
+def is_tiktok_slideshow(url: str) -> bool:
+    """Check if a TikTok URL is a slideshow/photo post (not a video)."""
+    if not is_tiktok_url(url):
+        return False
+    try:
+        data = _tikwm_fetch(url)
+        return bool(data.get('images')) and data.get('duration', 0) == 0
+    except Exception:
+        return False
+
+
+def tiktok_download_slideshow_images(url: str) -> list:
+    """Download all slideshow images from a TikTok photo post.
+
+    Returns list of local file paths (JPEG/PNG).
+    """
+    data = _tikwm_fetch(url)
+    images = data.get('images', [])
+    if not images:
+        raise RuntimeError("No images found in TikTok slideshow")
+
+    paths = []
+    for i, img_url in enumerate(images):
+        tmp = tempfile.mktemp(suffix=f"_slide_{i}.jpg")
+        try:
+            resp = httpx.get(img_url, timeout=30, follow_redirects=True)
+            if resp.status_code == 200:
+                with open(tmp, 'wb') as f:
+                    f.write(resp.content)
+                paths.append(tmp)
+        except Exception:
+            continue  # Skip failed images, continue with others
+
+    if not paths:
+        raise RuntimeError("Failed to download any slideshow images")
+    return paths
+
+
+def extract_text_from_slideshow(image_paths: list) -> str:
+    """OCR text from slideshow images using tesseract.
+
+    Similar to extract_text_from_video but operates on pre-downloaded image files
+    instead of extracting frames from video. Uses pHash dedup to skip visually-
+    identical slides (some slideshows repeat frames).
+    """
+    import imagehash
+    import pytesseract
+    from PIL import Image
+
+    HASH_THRESHOLD = 8
+    texts = []
+    prev_text = ""
+    prev_hash = None
+
+    for img_path in image_paths:
+        try:
+            img = Image.open(img_path)
+
+            # Perceptual hash check — skip if slide looks the same as previous
+            frame_hash = imagehash.phash(img)
+            if prev_hash is not None and (frame_hash - prev_hash) < HASH_THRESHOLD:
+                continue
+            prev_hash = frame_hash
+
+            # Pre-processing: improve OCR on stylized fonts / busy backgrounds
+            img_gray = img.convert("L")
+            img_bin = img_gray.point(lambda x: 0 if x < 140 else 255)
+            text = pytesseract.image_to_string(img_bin).strip()
+            if text and text != prev_text:
+                texts.append(text)
+                prev_text = text
+        except Exception:
+            continue
+
+    return "\n---\n".join(texts)
+
+
+def tiktok_get_slideshow_cover(url: str) -> str:
+    """Get the first slideshow image URL for use as recipe thumbnail."""
+    try:
+        data = _tikwm_fetch(url)
+        images = data.get('images', [])
+        if images:
+            return images[0]
+        # Fallback to cover image
+        return data.get('cover', '') or data.get('origin_cover', '')
+    except Exception:
+        return ""
+
+
+# ── Instagram Carousel (Slideshow) Support ─────────────────────────────────────
+
+def _get_instaloader():
+    """Get a configured instaloader instance with cookies loaded."""
+    import instaloader
+    import http.cookiejar
+
+    L = instaloader.Instaloader()
+    if COOKIES_FILE.exists():
+        cj = http.cookiejar.MozillaCookieJar(str(COOKIES_FILE))
+        cj.load(ignore_discard=True, ignore_expires=True)
+        for cookie in cj:
+            L.context._session.cookies.set_cookie(cookie)
+    return L
+
+
+def _extract_ig_shortcode(url: str) -> str:
+    """Extract shortcode from an Instagram URL (/p/, /reel/, /tv/)."""
+    match = re.search(r'instagram\.com/(?:p|reel|tv)/([A-Za-z0-9_-]+)', url)
+    return match.group(1) if match else ""
+
+
+def is_instagram_carousel(url: str) -> bool:
+    """Check if an Instagram URL is a carousel/sidecar post (multiple images)."""
+    if "instagram.com" not in url:
+        return False
+    shortcode = _extract_ig_shortcode(url)
+    if not shortcode:
+        return False
+    try:
+        import instaloader
+        L = _get_instaloader()
+        post = instaloader.Post.from_shortcode(L.context, shortcode)
+        return post.typename == "GraphSidecar"
+    except Exception:
+        return False
+
+
+def ig_download_carousel_images(url: str) -> dict:
+    """Download all carousel images from an Instagram sidecar post.
+
+    Returns dict with:
+        - caption: post caption text
+        - slideshow_images: list of local file paths
+        - slideshow_cover: URL of first image for thumbnail
+    """
+    import instaloader
+
+    shortcode = _extract_ig_shortcode(url)
+    if not shortcode:
+        raise RuntimeError("Could not extract shortcode from Instagram URL")
+
+    L = _get_instaloader()
+    post = instaloader.Post.from_shortcode(L.context, shortcode)
+
+    if post.typename != "GraphSidecar":
+        raise RuntimeError("Not a carousel post")
+
+    caption = post.caption or ""
+    paths = []
+    cover_url = ""
+
+    for i, node in enumerate(post.get_sidecar_nodes()):
+        if node.is_video:
+            continue  # Skip video slides, only OCR images
+        img_url = node.display_url
+        if i == 0:
+            cover_url = img_url
+
+        tmp = tempfile.mktemp(suffix=f"_igslide_{i}.jpg")
+        try:
+            resp = httpx.get(img_url, timeout=30, follow_redirects=True)
+            if resp.status_code == 200:
+                with open(tmp, 'wb') as f:
+                    f.write(resp.content)
+                paths.append(tmp)
+        except Exception:
+            continue
+
+    if not paths:
+        raise RuntimeError("Failed to download any carousel images")
+
+    if not cover_url:
+        cover_url = post.url  # fallback to post display_url
+
+    return {
+        "caption": caption,
+        "slideshow_images": paths,
+        "slideshow_cover": cover_url,
+    }
 
 
 def tiktok_download_video(url: str) -> str:
@@ -996,11 +1204,12 @@ def _call_llm(prompt: str) -> str:
         raise RuntimeError(f"LLM call failed: {e}") from e
 
 
-def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, force: bool = False) -> None:
+def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, force: bool = False, image_url: str = "") -> None:
     """Parse recipe text and POST to Recipe Glass for persistent storage.
 
     Best-effort: failures are logged but don't break the MCP response.
     When force=True, updates the existing recipe instead of skipping duplicates.
+    image_url: Optional URL for a cover/thumbnail image (e.g. from slideshows).
     """
     try:
         lines = recipe_text.strip().split("\n")
@@ -1394,6 +1603,8 @@ def _save_to_recipe_glass(recipe_text: str, url: str, platform: str, force: bool
             "macros": macros,
             "tags": tags,
         }
+        if image_url:
+            payload["image_url"] = image_url
 
         # Check for duplicate by source_url (normalized)
         if url:
@@ -1481,7 +1692,7 @@ Cook Time: Xm
 Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
 
 ## Ingredients
-- quantity ingredient [section]
+- ingredient [section]
 - quantity ingredient [section]
 
 ## Instructions
@@ -1496,6 +1707,7 @@ Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
 - Every ingredient line MUST end with a section tag in brackets. Valid tags: [produce], [meat], [seafood], [dairy], [bakery], [pantry], [spices], [frozen], [condiments], [beverages], [bar], [other]
 - [bar] = spirits, liqueurs, bitters, cocktail ingredients. [beverages] = non-alcoholic mixers. [produce] = fresh garnishes. [pantry] = flour, sugar, oil, canned goods. [spices] = dried herbs and spices. [condiments] = sauces and dressings.
 - If the recipe is a cocktail/drink: steps may be shake/stir/muddle/strain/garnish. Include glassware in Tips.
+- NEVER invent, guess, or fabricate quantities/measurements. If the source says "chicken broth" with no amount, write ONLY "Chicken broth [pantry]" — do NOT add "3 cups" or any number. Only include measurements that are EXPLICITLY stated in a source.
 - Omit any section (Macros, Prep Time, etc.) if the data isn't available — do NOT guess or fabricate numbers.
 - Start response with the recipe title. NO preamble ("Here's the recipe", "Sure!", etc.).
 - If a source is empty, ignore it. Combine all non-empty sources for the most complete recipe.
@@ -1773,11 +1985,45 @@ def convert_reel_to_recipe(url: str, force: bool = False) -> str:
                 os.unlink(dl["audio_path"])
             if dl.get("video_path"):
                 os.unlink(dl["video_path"])
+            for p in dl.get("slideshow_images", []):
+                os.unlink(p)
             platform = "TikTok" if is_tiktok_url(url) else "Instagram"
             return convert_blog_to_recipe(recipe_link, source_url=url, platform=platform, force=force)
         except Exception:
             pass  # Link failed — fall through to normal pipeline
 
+    # ── Slideshow path: OCR images directly (no audio/video) ──
+    if dl.get("slideshow_images"):
+        image_paths = dl["slideshow_images"]
+        slideshow_cover = dl.get("slideshow_cover", "")
+
+        # OCR all slideshow images
+        t0 = time.time()
+        ocr_text = extract_text_from_slideshow(image_paths)
+        timings["ocr"] = time.time() - t0
+
+        # Clean up downloaded images
+        for p in image_paths:
+            try:
+                os.unlink(p)
+            except Exception:
+                pass
+
+        # Format recipe from caption + OCR (no transcript for slideshows)
+        t0 = time.time()
+        recipe = format_recipe_combined(caption, "", ocr_text)
+        timings["format"] = time.time() - t0
+
+        # Save to Recipe Glass with cover image
+        _save_to_recipe_glass(
+            recipe, url, "TikTok",
+            force=force, image_url=slideshow_cover
+        )
+
+        timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
+        return f"{recipe}\n\n---\n⏱️ Slideshow ({len(image_paths)} slides) | {timing_str}"
+
+    # ── Standard video path ──
     audio_path = dl.get("audio_path")  # None if video has no audio stream
     video_path = dl["video_path"]
 
@@ -2122,6 +2368,36 @@ if __name__ == "__main__":
                 dl = combined_download(url, need_audio=True, need_video=False)
                 timings["download"] = time.time() - t0
 
+                # Slideshow override: even with skip_ocr, slideshows need OCR since there's no audio
+                if dl.get("slideshow_images"):
+                    image_paths = dl["slideshow_images"]
+                    slideshow_cover = dl.get("slideshow_cover", "")
+
+                    _report_progress(job_id, "ocr", f"Reading {len(image_paths)} slides…")
+                    t0 = time.time()
+                    ocr_text = extract_text_from_slideshow(image_paths)
+                    timings["ocr"] = time.time() - t0
+
+                    for p in image_paths:
+                        try:
+                            os.unlink(p)
+                        except Exception:
+                            pass
+
+                    _report_progress(job_id, "formatting", "Formatting…")
+                    t0 = time.time()
+                    recipe = format_recipe_combined(preloaded_caption, "", ocr_text)
+                    timings["format"] = time.time() - t0
+
+                    _report_progress(job_id, "saving", "Saving…")
+                    _save_to_recipe_glass(
+                        recipe, url, "TikTok",
+                        force=force, image_url=slideshow_cover
+                    )
+
+                    timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
+                    return f"{recipe}\n\n---\n⏱️ Slideshow ({len(image_paths)} slides) | {timing_str}"
+
                 audio_path = dl.get("audio_path")
 
                 _report_progress(job_id, "transcribing", "Transcribing…")
@@ -2144,6 +2420,38 @@ if __name__ == "__main__":
                 dl = combined_download(url, need_audio=True, need_video=True)
                 timings["download"] = time.time() - t0
 
+                # ── Slideshow path: OCR images directly (no audio/video) ──
+                if dl.get("slideshow_images"):
+                    image_paths = dl["slideshow_images"]
+                    slideshow_cover = dl.get("slideshow_cover", "")
+
+                    _report_progress(job_id, "ocr", f"Reading {len(image_paths)} slides…")
+                    t0 = time.time()
+                    ocr_text = extract_text_from_slideshow(image_paths)
+                    timings["ocr"] = time.time() - t0
+
+                    # Clean up downloaded images
+                    for p in image_paths:
+                        try:
+                            os.unlink(p)
+                        except Exception:
+                            pass
+
+                    _report_progress(job_id, "formatting", "Formatting…")
+                    t0 = time.time()
+                    recipe = format_recipe_combined(preloaded_caption, "", ocr_text)
+                    timings["format"] = time.time() - t0
+
+                    _report_progress(job_id, "saving", "Saving…")
+                    _save_to_recipe_glass(
+                        recipe, url, "TikTok",
+                        force=force, image_url=slideshow_cover
+                    )
+
+                    timing_str = " | ".join(f"{k}: {v:.1f}s" for k, v in timings.items())
+                    return f"{recipe}\n\n---\n⏱️ Slideshow ({len(image_paths)} slides) | {timing_str}"
+
+                # ── Standard video path ──
                 audio_path = dl.get("audio_path")
                 video_path = dl["video_path"]
 

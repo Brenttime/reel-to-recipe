@@ -3,10 +3,6 @@
    ============================================ */
 
 /* ─── Meal Plan Badge ─── */
-.meal-plan-btn {
-    width: 32px;
-    height: 32px;
-}
 
 .meal-plan-badge {
     position: absolute;

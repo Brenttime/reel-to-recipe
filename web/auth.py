@@ -342,7 +342,8 @@ def callback_exchange():
 
     db.commit()
 
-    # Set session
+    # Set session — mark permanent so it survives PWA restarts (30-day cookie)
+    session.permanent = True
     session['user_id'] = user_id
     session['discord_id'] = discord_id
     session['username'] = username

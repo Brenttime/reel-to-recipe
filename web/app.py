@@ -27,6 +27,9 @@ HTTPS_MODE = os.environ.get("HTTPS_ENABLED", "false").lower() in ("1", "true", "
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = HTTPS_MODE
 app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_PERMANENT'] = True
+from datetime import timedelta
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 if HTTPS_MODE:
     app.config['PREFERRED_URL_SCHEME'] = 'https'
 
@@ -495,7 +498,7 @@ def api_update_recipe(recipe_id):
             title = ?, creator = ?, source_url = ?, platform = ?,
             servings = ?, serving_size = ?, prep_time = ?, cook_time = ?, total_time = ?,
             ingredients = ?, instructions = ?, tips = ?, macros = ?, tags = ?,
-            added_by = ?
+            image_url = ?, added_by = ?
         WHERE id = ?
     """, (
         data.get("title", row["title"]),
@@ -512,6 +515,7 @@ def api_update_recipe(recipe_id):
         data.get("tips", row["tips"]),
         data.get("macros", row["macros"]),
         json.dumps(data["tags"]) if "tags" in data else row["tags"],
+        data.get("image_url", row["image_url"]),
         data.get("added_by", row["added_by"]),
         recipe_id,
     ))
@@ -551,8 +555,8 @@ def api_add_recipe():
     db.execute("""
         INSERT INTO recipes (title, creator, source_url, platform, servings,
                            serving_size, prep_time, cook_time, total_time, ingredients,
-                           instructions, tips, macros, tags, added_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           instructions, tips, macros, tags, image_url, added_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data.get("title", "Untitled"),
         data.get("creator", ""),
@@ -568,6 +572,7 @@ def api_add_recipe():
         data.get("tips", ""),
         data.get("macros", ""),
         json.dumps(data.get("tags", [])),
+        data.get("image_url", ""),
         added_by,
     ))
     db.commit()
