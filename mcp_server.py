@@ -39,6 +39,11 @@ WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "auto")
 WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "")  # auto-selected at model load
 FFMPEG_HWACCEL = os.environ.get("FFMPEG_HWACCEL", "auto")
 FFMPEG_HWACCEL_DEVICE = os.environ.get("FFMPEG_HWACCEL_DEVICE", "")
+OCR_VIDEO_FPS = float(os.environ.get("OCR_VIDEO_FPS", "2"))
+OCR_MAX_VIDEO_FRAMES = int(os.environ.get("OCR_MAX_VIDEO_FRAMES", "24"))
+OCR_MAX_VARIANTS_PER_IMAGE = int(os.environ.get("OCR_MAX_VARIANTS_PER_IMAGE", "2"))
+OCR_OPTIONAL_ENGINE_VARIANTS = int(os.environ.get("OCR_OPTIONAL_ENGINE_VARIANTS", "1"))
+OCR_TESSERACT_TIMEOUT = int(os.environ.get("OCR_TESSERACT_TIMEOUT", "5"))
 
 # Age-restricted content error message (links to setup docs)
 AGE_RESTRICTED_MSG = (
@@ -1251,6 +1256,7 @@ def _ocr_image_variants(img):
         (int(width * 0.05), int(height * 0.45), int(width * 0.95), int(height * 0.78)),
     ]
 
+    emitted = 0
     for index, box in enumerate(boxes):
         crop = img.crop(box)
         gray = crop.convert("L")
@@ -1263,11 +1269,20 @@ def _ocr_image_variants(img):
         # single 140-threshold pass frequently erased these glyphs; thresholding
         # for bright pixels and inverting gives Tesseract black text on white.
         yield gray.point(_bright_text_threshold)
+        emitted += 1
+        if emitted >= OCR_MAX_VARIANTS_PER_IMAGE:
+            return
         # A cropped grayscale pass recovers colored/dimmer overlays without the
         # full-frame grayscale noise and keeps runtime reasonable.
         if index > 0:
             yield gray
+            emitted += 1
+            if emitted >= OCR_MAX_VARIANTS_PER_IMAGE:
+                return
             yield ImageOps.invert(gray)
+            emitted += 1
+            if emitted >= OCR_MAX_VARIANTS_PER_IMAGE:
+                return
 
 
 
@@ -1294,7 +1309,7 @@ def _ocr_read_variant_with_engines(img, engines: list[str], config: str = "--oem
     if "tesseract" in engines:
         try:
             import pytesseract
-            text = pytesseract.image_to_string(img, config=config).strip()
+            text = pytesseract.image_to_string(img, config=config, timeout=OCR_TESSERACT_TIMEOUT).strip()
             if text:
                 results.append(("tesseract", text))
         except Exception:
@@ -1352,8 +1367,15 @@ def _ocr_candidates_from_image(img, engines: list[str] | None = None) -> list[st
     engines = engines or _ocr_available_engines()
     candidates = []
 
-    for variant in _ocr_image_variants(img):
-        for _engine, text in _ocr_read_variant_with_engines(variant, engines):
+    for variant_index, variant in enumerate(_ocr_image_variants(img)):
+        # Optional OCR engines improve recall, but running every engine over
+        # every crop on every sampled video frame can exceed the web worker's
+        # conversion timeout. Use them on the strongest early variants, then let
+        # Tesseract cover the remaining fallbacks.
+        variant_engines = engines
+        if variant_index >= OCR_OPTIONAL_ENGINE_VARIANTS:
+            variant_engines = [engine for engine in engines if engine == "tesseract"]
+        for _engine, text in _ocr_read_variant_with_engines(variant, variant_engines):
             for raw_line in text.splitlines():
                 line = _extract_ocr_recipe_fragment(_clean_ocr_line(raw_line))
                 if _ocr_line_has_recipe_signal(line):
@@ -1388,6 +1410,50 @@ def extract_text_from_images(image_paths: list[str], source: str = "image") -> s
 
     return "\n---\n".join(_dedupe_ocr_lines(frame_texts))
 
+
+def _select_ocr_video_frames(frames: list[str], max_frames: int = OCR_MAX_VIDEO_FRAMES) -> list[str]:
+    """Select a bounded, deduped frame set from a denser video sample.
+
+    We still sample video above 1fps so short overlays between whole seconds can
+    be represented, but OCR is the expensive part. This selector keeps visually
+    distinct frames first, then uniformly thins the set if a reel has constant
+    motion/background changes that would otherwise make pHash dedupe ineffective.
+    """
+    if max_frames <= 0 or len(frames) <= max_frames:
+        return frames
+
+    try:
+        import imagehash
+        from PIL import Image
+
+        selected: list[str] = []
+        selected_hashes = []
+        for frame in frames:
+            try:
+                with Image.open(frame) as img:
+                    frame_hash = imagehash.phash(img)
+            except Exception:
+                continue
+            if any((frame_hash - existing) < 6 for existing in selected_hashes):
+                continue
+            selected.append(frame)
+            selected_hashes.append(frame_hash)
+
+        frames = selected or frames
+    except Exception:
+        pass
+
+    if len(frames) <= max_frames:
+        return frames
+
+    # Uniformly preserve beginning/middle/end coverage rather than taking only
+    # the first N frames. This keeps short later overlays visible to OCR.
+    if max_frames == 1:
+        return [frames[0]]
+    step = (len(frames) - 1) / (max_frames - 1)
+    indexes = sorted({round(i * step) for i in range(max_frames)})
+    return [frames[i] for i in indexes]
+
 def _dedupe_ocr_lines(lines: list[str]) -> list[str]:
     """Drop near-duplicate OCR lines while preserving first-seen video order."""
     from difflib import SequenceMatcher
@@ -1413,18 +1479,20 @@ def extract_text_from_video(video_path: str) -> str:
     frames_dir = tempfile.mkdtemp(prefix="reel_frames_")
 
     try:
-        # Sample at 2fps so short ingredient overlays between whole seconds are
+        # Sample above 1fps so short ingredient overlays between whole seconds are
         # not missed. The shared OCR platform still pHash-dedupes near-identical
-        # frames, so repeated title/ingredient cards don't explode downstream.
+        # frames, then caps work to prevent imports from timing out.
         ffmpeg_cmd = ["ffmpeg", "-y"] + _ffmpeg_hwaccel_args() + [
             "-i", video_path,
-            "-vf", "fps=2",
+            "-vf", f"fps={OCR_VIDEO_FPS:g}",
             os.path.join(frames_dir, "frame_%05d.png")
         ]
         subprocess.run(ffmpeg_cmd, capture_output=True, timeout=180)
 
         frames = sorted(os.path.join(frames_dir, f) for f in os.listdir(frames_dir) if f.endswith(".png"))
-        return extract_text_from_images(frames, source="video")
+        selected_frames = _select_ocr_video_frames(frames)
+        print(f"[OCR] video frames sampled={len(frames)} selected={len(selected_frames)} fps={OCR_VIDEO_FPS:g} engines={_ocr_available_engines()}")
+        return extract_text_from_images(selected_frames, source="video")
     finally:
         import shutil
         shutil.rmtree(frames_dir, ignore_errors=True)

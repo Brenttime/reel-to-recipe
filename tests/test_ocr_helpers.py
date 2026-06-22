@@ -11,7 +11,9 @@ from mcp_server import (  # noqa: E402
     _caption_has_recipe_signals,
     _clean_ocr_line,
     _extract_ocr_recipe_fragment,
+    _ocr_image_variants,
     _ocr_line_has_recipe_signal,
+    _select_ocr_video_frames,
 )
 
 
@@ -68,3 +70,23 @@ def test_ocr_available_engines_always_includes_tesseract():
     engines = _ocr_available_engines()
     assert engines[0] == "tesseract"
     assert "tesseract" in engines
+
+
+def test_ocr_image_variants_are_bounded_for_runtime(monkeypatch):
+    from PIL import Image
+    import mcp_server
+
+    monkeypatch.setattr(mcp_server, "OCR_MAX_VARIANTS_PER_IMAGE", 2)
+    img = Image.new("RGB", (320, 568), "white")
+
+    assert len(list(_ocr_image_variants(img))) == 2
+
+
+def test_select_ocr_video_frames_preserves_full_timeline_when_capping():
+    frames = [f"frame_{i:05d}.png" for i in range(120)]
+    selected = _select_ocr_video_frames(frames, max_frames=5)
+
+    assert selected[0] == frames[0]
+    assert selected[-1] == frames[-1]
+    assert len(selected) == 5
+    assert selected == sorted(selected)
