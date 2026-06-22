@@ -22,7 +22,8 @@ RUN pip install --no-cache-dir \
     "pytesseract>=0.3.13" \
     "yt-dlp>=2026.3.17" \
     "openai>=1.0,<3" \
-    "instaloader>=4.13"
+    "instaloader>=4.13" \
+    "rapidocr-onnxruntime>=1.4.4,<2"
 
 # Copy application files
 COPY mcp_server.py .
