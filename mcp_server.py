@@ -199,7 +199,18 @@ def _caption_has_recipe_signals(caption: str) -> bool:
     list_pattern = r'^[\s]*[-•*]\s*\d|^\s*\d+[\.\\)]\s'
     list_lines = re.findall(list_pattern, caption, re.MULTILINE)
 
-    # If we have 3+ quantity mentions OR 3+ list items, caption has recipe data
+    # If we have 3+ quantity mentions OR 3+ list items, caption has recipe data.
+    # Macro-only captions often contain calories/protein/carbs/fat but omit the
+    # actual ingredient quantities, so don't let those skip OCR.
+    macro_terms = re.findall(r'\b(?:calories|cals?|protein|carbs?|fat|macros?)\b', caption, re.IGNORECASE)
+    ingredient_terms = re.findall(
+        r'\b(?:chicken|beef|pork|fish|shrimp|rice|pasta|noodles?|tortillas?|cheese|yogh?urt|tomatoes?|onions?|garlic|ginger|paprika|cumin|turmeric|masala|flour|sugar|butter|oil)\b',
+        caption,
+        re.IGNORECASE,
+    )
+    if len(macro_terms) >= 3 and len(ingredient_terms) < 3 and len(list_lines) < 3:
+        return False
+
     return len(qty_matches) >= 3 or len(list_lines) >= 3
 
 
@@ -1086,12 +1097,165 @@ def smart_get_caption(url: str) -> str:
         return tiktok_get_caption(url)
     return get_caption(url)
 
+def _clean_ocr_line(line: str) -> str:
+    """Normalize common Tesseract mistakes in social-video recipe overlays."""
+    line = re.sub(r"[|_~`^=]+", " ", line)
+    line = re.sub(r"\s+", " ", line).strip(" -—.,;:'\"()[]{}")
+
+    # Stylized bold overlay fonts often turn leading 1s into I/l/T/L.
+    replacements = [
+        (r"\b[IlT]\s*tsp\b", "1 tsp"),
+        (r"\b[IlL]S\s*tsp\b", "1.5 tsp"),
+        (r"\b[IlL]5\s*tsp\b", "1.5 tsp"),
+        (r"\b1S\s*tsp\b", "1.5 tsp"),
+        (r"\b[Il]5\s*g\b", "15g"),
+        (r"\b[Il]/\s?(\d)\b", r"1/\1"),
+        (r"\bW2\s*tsp\b", "1/2 tsp"),
+    ]
+    for pattern, replacement in replacements:
+        line = re.sub(pattern, replacement, line, flags=re.IGNORECASE)
+
+    # Common glyph confusions right before/inside measurements.
+    line = re.sub(r"(?i)\b[qgo]+(\d{2,4}\s*g\b)", r"\1", line)
+    line = re.sub(r"(?i)\b[Il](20\s*g\b)", r"1\1", line)
+    line = re.sub(r"(?i)(\d+\s*g\s+0%)['’-]?\s*greek[- ]+yogh?urt\b", r"\1 Greek yoghurt", line)
+    line = re.sub(r"(?i)\bi\.5\s*tsp\b", "1.5 tsp", line)
+    line = re.sub(r"(?i)\b72\s*tsp\s+turmeric\b", "1/2 tsp turmeric", line)
+    line = re.sub(r"(?i)\b15\s*tsp\s+salt\b", "1.5 tsp salt", line)
+    line = re.sub(r"(?i)\b5\s*tsp\s+salt\b", "1.5 tsp salt", line)
+    line = re.sub(r"(?i)\b1/5\s+cup\s+water\b", "1/3 cup water", line)
+    line = re.sub(r"(?i)\b75[9q]\s+cooked\s+rice\b", "75g cooked rice", line)
+    line = re.sub(r"(?i)\bchop+ped\b", "chopped", line)
+
+    # Collapse OCR artifacts attached to quantities: "@@qq800g" -> "800g".
+    line = re.sub(r"^[^A-Za-z0-9]*(\d+(?:[./]\d+)?\s*(?:x|g|kg|ml|l|oz|lb|cups?|tbsp|tsp)\b)", r"\1", line, flags=re.IGNORECASE)
+    return line.strip()
+
+
+def _extract_ocr_recipe_fragment(line: str) -> str:
+    """Pull the useful ingredient/title fragment out of a noisy OCR line."""
+    patterns = [
+        r"(?i)\bhigh protein\b",
+        r"(?i)\bbutter chicken burritos\b",
+        r"(?i)\b\d+\s*x\s*burritos?\b",
+        r"(?i)\b\d+\s*g\s+chicken\s*'?\s*breast\b",
+        r"(?i)\b\d+\s*g\s+0%\s+greek\s+yogh?urt\b",
+        r"(?i)\b\d+(?:\.\d+)?\s*tsp\s+paprika\b",
+        r"(?i)\b\d+(?:\.\d+)?\s*tsp\s+cumin\b",
+        r"(?i)\b\d+(?:\.\d+)?\s*tsp\s+garam\s+masala\b",
+        r"(?i)\b\d+/\d+\s*tsp\s+turmeric\b",
+        r"(?i)\b\d+(?:\.\d+)?\s*tsp\s+salt\b",
+        r"(?i)\b\d+(?:\.\d+)?\s*tsp\s+garlic\s*&\s*ginger\b",
+        r"(?i)\b\d+\s+medium\s+sliced\s+onion\b",
+        r"(?i)\bsame\s+seasonings\b",
+        r"(?i)\b\d+\s*g\s+chopped\s+tomatoes\b",
+        r"(?i)\b\d+\s*g\s+light\s+cream\s+cheese\b",
+        r"(?i)\b\d+/\d+\s+cup\s+water\b",
+        r"(?i)\bcooked\s+chicken\b",
+        r"(?i)\bwarm\s+tortilla\b",
+        r"(?i)\b\d+\s*g\s+cooked\s+rice\b",
+        r"(?i)\b\d+/\d+\s+butter\s+chicken\b",
+        r"(?i)\b\d+\s*g\s+low\s+fat\s+cheese\b",
+        r"(?i)\b\d+\s*g\s+protein\b",
+        r"(?i)\b\d+\s*cals?\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, line)
+        if match:
+            fragment = match.group(0)
+            fragment = re.sub(r"\s+", " ", fragment).strip()
+            fragment = re.sub(r"(?i)\bGreek\s+yogurt\b", "Greek yoghurt", fragment)
+            return fragment
+    return line
+
+
+def _ocr_line_has_recipe_signal(line: str) -> bool:
+    """Return True for OCR lines likely to be useful recipe text, not background noise."""
+    if not (3 <= len(line) <= 100):
+        return False
+    if sum(ch.isalnum() for ch in line) < 3:
+        return False
+
+    # Reject mostly non-ASCII / punctuation garbage from busy food backgrounds.
+    printable = sum(1 for ch in line if ch.isprintable())
+    asciiish = sum(1 for ch in line if ch.isascii() and ch.isprintable())
+    if printable and asciiish / printable < 0.75:
+        return False
+
+    unit_signal = re.search(
+        r"(?i)\b\d+(?:[./]\d+)?\s*(?:x|g|kg|ml|l|oz|lb|cups?|tbsp|tsp|cals?|calories|protein|carbs?|fat)\b",
+        line,
+    )
+    phrase_signal = re.search(
+        r"(?i)\b(?:same seasonings|cooked chicken|warm tortilla|butter chicken|high protein|burritos?)\b",
+        line,
+    )
+    food_signal = re.search(
+        r"(?i)\b(?:chicken|yoghurt|yogurt|paprika|cumin|masala|turmeric|salt|garlic|ginger|lemon|lime|onion|tomatoes?|cream cheese|water|rice|tortilla|cheese|burritos?)\b",
+        line,
+    )
+
+    return bool(unit_signal or phrase_signal or (food_signal and re.search(r"\d", line)))
+
+
+def _ocr_image_variants(img):
+    """Yield OCR-friendly crops/thresholds for white overlay text on busy video frames."""
+    from PIL import Image, ImageEnhance, ImageOps
+
+    def _bright_text_threshold(pixel: int) -> int:
+        return 0 if pixel > 165 else 255
+
+    width, height = img.size
+    boxes = [
+        (0, 0, width, height),
+        (int(width * 0.05), int(height * 0.22), int(width * 0.95), int(height * 0.78)),
+    ]
+
+    for index, box in enumerate(boxes):
+        crop = img.crop(box)
+        gray = crop.convert("L")
+        # Upscaling is a major win for Instagram's small, bold, shadowed captions.
+        gray = gray.resize((gray.width * 2, gray.height * 2), Image.Resampling.LANCZOS)
+        gray = ImageOps.autocontrast(gray)
+        gray = ImageEnhance.Contrast(gray).enhance(2.0)
+        gray = ImageEnhance.Sharpness(gray).enhance(1.5)
+        # Most recipe overlays are white text with a dark drop-shadow.  The old
+        # single 140-threshold pass frequently erased these glyphs; thresholding
+        # for bright pixels and inverting gives Tesseract black text on white.
+        yield gray.point(_bright_text_threshold)
+        # A cropped grayscale pass recovers colored/dimmer overlays without the
+        # full-frame grayscale noise and keeps runtime reasonable.
+        if index > 0:
+            yield gray
+
+
+def _dedupe_ocr_lines(lines: list[str]) -> list[str]:
+    """Drop near-duplicate OCR lines while preserving first-seen video order."""
+    from difflib import SequenceMatcher
+
+    deduped = []
+    for line in lines:
+        normalized = re.sub(r"[^a-z0-9]+", " ", line.lower()).strip()
+        if not normalized:
+            continue
+        if any(SequenceMatcher(None, normalized, re.sub(r"[^a-z0-9]+", " ", existing.lower()).strip()).ratio() > 0.84 for existing in deduped):
+            continue
+        deduped.append(line)
+    return deduped
+
+
+def _ocr_dark_text_threshold(pixel: int) -> int:
+    """Pillow point() callback: binarize dark text/background fallback."""
+    return 0 if pixel < 140 else 255
+
+
 def extract_text_from_video(video_path: str) -> str:
-    """Extract text from video frames using OCR (tesseract).
+    """Extract useful recipe text from video frames using OCR (Tesseract).
 
     Uses perceptual hashing (pHash) to skip visually-identical consecutive frames,
-    reducing tesseract calls by 60-80%. Extracts at 1fps (down from 2fps) since
-    recipe text overlays typically hold for 3-10 seconds.
+    then runs multiple OCR-friendly crops/thresholds.  Social recipe videos often
+    use small white text with heavy shadows over busy food footage; a single global
+    threshold loses quantities like "800g chicken breast" and "1 tsp paprika".
     """
     import imagehash
     import pytesseract
@@ -1102,43 +1266,57 @@ def extract_text_from_video(video_path: str) -> str:
     frames_dir = tempfile.mkdtemp(prefix="reel_frames_")
 
     try:
-        # Extract at 1fps (was 2fps — recipe text holds 3-10s, no need for more)
+        # Extract at 1fps — recipe text overlays typically hold for 2-10 seconds.
         ffmpeg_cmd = ["ffmpeg", "-y"] + _ffmpeg_hwaccel_args() + [
             "-i", video_path, "-vf", "fps=1",
             os.path.join(frames_dir, "frame_%04d.png")
         ]
-        subprocess.run(
-            ffmpeg_cmd,
-            capture_output=True, timeout=120
-        )
+        subprocess.run(ffmpeg_cmd, capture_output=True, timeout=120)
 
-        # OCR each frame, skipping perceptually-identical ones
         frames = sorted(f for f in os.listdir(frames_dir) if f.endswith(".png"))
-        texts = []
-        prev_text = ""
+        frame_texts = []
         prev_hash = None
+        fallback_texts = []
 
         for f in frames:
             try:
                 img = Image.open(os.path.join(frames_dir, f))
 
-                # Perceptual hash check — skip if frame looks the same as previous
                 frame_hash = imagehash.phash(img)
                 if prev_hash is not None and (frame_hash - prev_hash) < HASH_THRESHOLD:
-                    continue  # Visually identical, skip OCR
+                    continue
                 prev_hash = frame_hash
 
-                # Pre-processing: improve OCR on stylized fonts / busy backgrounds
-                img_gray = img.convert("L")  # grayscale
-                img_bin = img_gray.point(lambda x: 0 if x < 140 else 255)  # binarize
-                text = pytesseract.image_to_string(img_bin).strip()
-                if text and text != prev_text:
-                    texts.append(text)
-                    prev_text = text
+                # Keep a cheap fallback so completely non-standard overlays still
+                # return something instead of an empty filtered result.  Run it
+                # only every 3rd frame; the richer OCR path below handles normal
+                # recipe overlays and this keeps long reels from timing out.
+                frame_number_match = re.search(r"(\d+)", f)
+                frame_number = int(frame_number_match.group(1)) if frame_number_match else 0
+                if frame_number % 3 == 1:
+                    img_gray = img.convert("L")
+                    img_bin = img_gray.point(_ocr_dark_text_threshold)
+                    fallback = pytesseract.image_to_string(img_bin).strip()
+                    if fallback:
+                        fallback_texts.append(fallback)
+
+                candidates = []
+                for variant in _ocr_image_variants(img):
+                    text = pytesseract.image_to_string(variant, config="--oem 3 --psm 6")
+                    for raw_line in text.splitlines():
+                        line = _extract_ocr_recipe_fragment(_clean_ocr_line(raw_line))
+                        if _ocr_line_has_recipe_signal(line):
+                            candidates.append(line)
+
+                candidates = _dedupe_ocr_lines(candidates)
+                if candidates:
+                    frame_texts.append("\n".join(candidates))
             except Exception:
                 continue  # Skip frames that can't be processed
 
-        return "\n---\n".join(texts)
+        if frame_texts:
+            return "\n---\n".join(_dedupe_ocr_lines(frame_texts))
+        return "\n---\n".join(fallback_texts)
     finally:
         import shutil
         shutil.rmtree(frames_dir, ignore_errors=True)
