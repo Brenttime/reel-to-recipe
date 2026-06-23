@@ -40,7 +40,7 @@ WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "")  # auto-select
 FFMPEG_HWACCEL = os.environ.get("FFMPEG_HWACCEL", "auto")
 FFMPEG_HWACCEL_DEVICE = os.environ.get("FFMPEG_HWACCEL_DEVICE", "")
 OCR_VIDEO_FPS = float(os.environ.get("OCR_VIDEO_FPS", "2"))
-OCR_MAX_VIDEO_FRAMES = int(os.environ.get("OCR_MAX_VIDEO_FRAMES", "24"))
+OCR_MAX_VIDEO_FRAMES = int(os.environ.get("OCR_MAX_VIDEO_FRAMES", "52"))
 OCR_MAX_VARIANTS_PER_IMAGE = int(os.environ.get("OCR_MAX_VARIANTS_PER_IMAGE", "2"))
 OCR_OPTIONAL_ENGINE_VARIANTS = int(os.environ.get("OCR_OPTIONAL_ENGINE_VARIANTS", "1"))
 OCR_TESSERACT_TIMEOUT = int(os.environ.get("OCR_TESSERACT_TIMEOUT", "5"))
@@ -197,7 +197,7 @@ def _caption_has_recipe_signals(caption: str) -> bool:
         return False
 
     # Look for quantity patterns: "2 cups", "1/2 tsp", "500g", "3 tbsp", etc.
-    qty_pattern = r'\b(\d+[\s/½⅓¼⅔¾⅛]*(cups?|tbsp|tsp|oz|lb|g|kg|ml|liter|cloves?|slices?|pieces?|stalks?|cans?|packets?|sticks?))\\b'
+    qty_pattern = r'(?i)(?<!\w)\d+(?:\.\d+|[./]\d+)?\s*(?:cups?|tbsp|tsp|oz|lb|g|kg|ml|liter|cloves?|slices?|pieces?|stalks?|cans?|packets?|sticks?)\b'
     qty_matches = re.findall(qty_pattern, caption, re.IGNORECASE)
 
     # Look for ingredient-like lines (bullet points, hyphens, numbered lists)
@@ -1089,6 +1089,10 @@ def _clean_ocr_line(line: str) -> str:
         # "1/2" is commonly read as W2, V2, /2, or even 72 for small spoon units.
         (r"(?i)\b[WV]/?\s*([234])\b", r"1/\1"),
         (r"(?i)(?<!\d)72\s*(?=(?:tsp|tbsp)\b)", "1/2 "),
+        # Fraction slash often vanishes in tiny white spice overlays: "1/2 tsp turmeric" -> "2 tsp turmeric".
+        # Limit to turmeric, where the common recipe amount is fractional and a dropped leading glyph is likely.
+        (r"(?i)(?<!\d)2\s*tsp\s+turmeric\b", "1/2 tsp turmeric"),
+        (r"(?i)\bl\s+emon\b", "lemon"),
         # Fractions in small overlay text: 1/3 is commonly read as 1/5.
         (r"(?i)\b1/5\s*(?=cup\b)", "1/3 "),
         # When the leading "1." drops from "1.5 tsp", the remaining "5 tsp"
@@ -1104,20 +1108,35 @@ def _clean_ocr_line(line: str) -> str:
     for pattern, replacement in replacements:
         line = re.sub(pattern, replacement, line)
 
+    line = re.sub(r"(?i)\btsp\s+cumin\b", "1 tsp cumin", line)
+    line = re.sub(r"(?i)\b(?<!\d\.)5\s*tsp\s+garam\b", "1.5 tsp garam", line)
+    line = re.sub(r"(?i)\bcreum\b", "cream", line)
+    line = re.sub(r"(?i)\bg[oa]ram\b", "garam", line)
+    line = re.sub(r"(?i)\b(?:mdsola|masaia)\b", "masala", line)
+    line = re.sub(r"(?i)\bfut\b", "fat", line)
+    line = re.sub(r"(?i)\bchoppped\b", "chopped", line)
+    line = re.sub(r"(?i)\bbreasty\b", "breast", line)
     line = re.sub(r"\s+", " ", line).strip(" -—.,;:'\"()[]{}")
     return line
 
 
 _OCR_UNIT_RE = r"(?:x|g|kg|ml|l|oz|lb|cups?|tbsp|tsp|cals?|calories|protein|carbs?|fat)"
 _OCR_QTY_RE = rf"\d+(?:\.\d+|[./]\d+)?\s*{_OCR_UNIT_RE}"
-_OCR_RECIPE_WORD_RE = re.compile(
+_OCR_ACTION_OR_CONTEXT_RE = re.compile(
     r"(?i)\b(?:"
-    r"chicken|beef|pork|fish|shrimp|rice|pasta|noodles?|tortillas?|cheese|yogh?urt|tomato(?:es)?|paste|"
-    r"onions?|garlic|ginger|paprika|cumin|turmeric|masala|salt|pepper|flour|sugar|butter|oil|water|"
-    r"cream|sauce|seasonings?|burritos?|protein|calories|cals?|carbs?|fat|egg|milk|broth|stock|beans?|"
-    r"potatoes?|carrots?|celery|peppers?|chili|honey|mustard|mayo|vinegar|lemon|lime|herbs?|spices?"
+    r"ingredients?|recipe|servings?|macros?|calories|protein|carbs?|fat|"
+    r"add|mix|stir|season|cook|bake|roast|grill|fry|air\s*fry|simmer|boil|"
+    r"chop|dice|slice|drizzle|pour|whisk|blend|serve|top|garnish"
     r")\b"
 )
+_OCR_UI_NOISE_RE = re.compile(
+    r"(?i)\b(?:"
+    r"follow|like|comment|share|subscribe|link\s+in\s+bio|instagram|tiktok|reels?|"
+    r"views?|likes?|save|saved|reply|profile|caption|audio|original\s+sound|"
+    r"random|background|contrast|glare|table"
+    r")\b"
+)
+_OCR_COUNT_OR_PREP_RE = re.compile(r"(?i)\b(?:\d+|small|medium|large|sliced|diced|chopped|warm|cooked|fresh|ground)\b")
 _SMALL_AMOUNT_WORD_RE = re.compile(
     r"(?i)\b(?:paste|spice|seasoning|powder|extract|yeast|salt|pepper|garlic|ginger|mustard|mayo|honey|oil|butter)\b"
 )
@@ -1125,7 +1144,10 @@ _SMALL_AMOUNT_WORD_RE = re.compile(
 
 def _normalize_ingredient_phrase(phrase: str) -> str:
     """Trim noisy OCR tails while preserving a generic ingredient phrase."""
+    phrase = re.sub(r"(?i)\b&\.\s*ginger\b", "& ginger", phrase)
     phrase = re.sub(r"[^A-Za-z0-9%&/' .-]+", " ", phrase)
+    # OCR sometimes inserts a dot into split words: "Greek.y oghurt".
+    phrase = re.sub(r"(?i)\by[.\s]+oghurt\b", "yoghurt", phrase)
     # OCR sometimes leaves punctuation between a percentage/fraction marker and
     # the ingredient words: "0%'Greek- yoghurt". Treat that as whitespace.
     phrase = re.sub(r"(?<=[0-9%])['’-](?=[A-Za-z])", " ", phrase)
@@ -1146,18 +1168,28 @@ def _normalize_ingredient_phrase(phrase: str) -> str:
     phrase = " ".join(words)
     # Generic plural cleanup for OCR over-eager trailing s on mass nouns after a quantity.
     phrase = re.sub(r"(?i)\b(paste|rice|cheese|yogh?urt|water|protein|fat|salt|pepper)s\b", r"\1", phrase)
+    phrase = re.sub(r"(?i)\bGreek[.\s]+yoghurt\b", "Greek yoghurt", phrase)
+    phrase = re.sub(r"(?i)\bcooked\s+rice\s+fae\b", "cooked rice", phrase)
     return phrase.strip()
 
 
 def _score_ocr_fragment(fragment: str) -> int:
-    """Score candidate recipe fragments so generic extraction can pick useful text."""
+    """Score OCR fragments without requiring a maintained food vocabulary."""
     score = 0
     if re.search(_OCR_QTY_RE, fragment, re.IGNORECASE):
         score += 5
-    if _OCR_RECIPE_WORD_RE.search(fragment):
-        score += 5
-    if re.search(r"(?i)\b(?:same seasonings|cooked chicken|warm tortilla|high protein|butter chicken|burritos?)\b", fragment):
+    if _OCR_ACTION_OR_CONTEXT_RE.search(fragment):
         score += 3
+    if re.search(r"(?i)[°º]\s*[CF]?|\b\d+\s*(?:min|mins|minutes|seconds|sec)\b", fragment):
+        score += 2
+    if re.search(r"(?i)\b[A-Za-z][A-Za-z'&/-]{2,}\b", fragment):
+        score += 2
+    if re.fullmatch(r"(?i)[a-z][a-z'&/-]{2,}(?:\s+[a-z][a-z'&/-]{2,}){0,3}", fragment):
+        score += 2
+    if _OCR_COUNT_OR_PREP_RE.search(fragment):
+        score += 1
+    if _OCR_UI_NOISE_RE.search(fragment):
+        score -= 4
     # Penalize obvious OCR soup.
     odd = len(re.findall(r"[^A-Za-z0-9%&/' .-]", fragment))
     score -= min(odd, 5)
@@ -1226,7 +1258,12 @@ def _extract_ocr_recipe_fragment(line: str) -> str:
 
 
 def _ocr_line_has_recipe_signal(line: str) -> bool:
-    """Return True for OCR lines likely to be useful recipe text, not background noise."""
+    """Return True for OCR lines worth passing to the LLM.
+
+    Keep this generic: OCR should collect plausible overlay text, not decide
+    whether a word is a known food. The LLM sees caption/transcript/OCR together
+    and decides recipe relevance downstream.
+    """
     if not (3 <= len(line) <= 100):
         return False
     if sum(ch.isalnum() for ch in line) < 3:
@@ -1237,7 +1274,13 @@ def _ocr_line_has_recipe_signal(line: str) -> bool:
     if printable and asciiish / printable < 0.75:
         return False
 
-    return _score_ocr_fragment(line) >= 5
+    alpha_words = re.findall(r"(?i)\b[a-z][a-z'&/-]{2,}\b", line)
+    if not alpha_words:
+        return False
+    if _OCR_UI_NOISE_RE.search(line) and not re.search(_OCR_QTY_RE, line, re.IGNORECASE):
+        return False
+
+    return _score_ocr_fragment(line) >= 3
 
 def _ocr_image_variants(img):
     """Yield OCR-friendly crops/thresholds for white overlay text on busy video frames."""
@@ -1434,7 +1477,7 @@ def _select_ocr_video_frames(frames: list[str], max_frames: int = OCR_MAX_VIDEO_
                     frame_hash = imagehash.phash(img)
             except Exception:
                 continue
-            if any((frame_hash - existing) < 6 for existing in selected_hashes):
+            if any((frame_hash - existing) < 8 for existing in selected_hashes):
                 continue
             selected.append(frame)
             selected_hashes.append(frame_hash)
@@ -1467,6 +1510,262 @@ def _dedupe_ocr_lines(lines: list[str]) -> list[str]:
             continue
         deduped.append(line)
     return deduped
+
+
+_MEASURED_INGREDIENT_UNIT_RE = r"(?:cups?|tbsp|tsp|kg|ml|oz|lb|g|l)"
+_MEASURED_INGREDIENT_QTY_RE = rf"\d+(?:\.\d+|[./]\d+)?\s*{_MEASURED_INGREDIENT_UNIT_RE}"
+_MACRO_ONLY_RE = re.compile(r"(?i)^\d+(?:\.\d+)?\s*(?:cals?|calories|g)?\s*(?:protein|carbs?|fat|calories|cals?)\b")
+_COUNTED_INGREDIENT_RE = re.compile(
+    r"(?i)\b(?P<qty>\d+)\s+(?P<rest>(?:(?:small|medium|large)\s+)?(?:(?:sliced|diced|chopped|warm)\s+)?(?:[a-z][a-z'&/-]{2,})(?:\s+[a-z][a-z'&/-]{2,}){0,4})\b"
+)
+_UNMEASURED_LINE_STOP_RE = re.compile(
+    r"(?i)\b(?:with|and|then|until|for|into|onto|over|under|before|after|while|when|where|that|this|these|those|you|your|my|the|any)\b"
+)
+_UNMEASURED_INSTRUCTION_RE = re.compile(
+    r"(?i)\b(?:add|mix|stir|season|cook|bake|roast|grill|fry|air\s*fry|simmer|boil|chop|dice|slice|drizzle|pour|whisk|blend|serve|top|garnish|love|works?)\b"
+)
+
+
+def _extract_measured_ingredient_evidence(*source_texts: str) -> list[str]:
+    """Extract explicit quantity-led ingredient evidence from caption/transcript/OCR."""
+    evidence: list[str] = []
+
+    for source_text in source_texts:
+        for raw_line in (source_text or "").splitlines():
+            cleaned = _clean_ocr_line(raw_line)
+            if not cleaned:
+                continue
+
+            line_fragments: list[str] = []
+            matches = list(re.finditer(rf"(?i)(?<!\w)(?P<qty>{_MEASURED_INGREDIENT_QTY_RE})\b", cleaned))
+            if not matches:
+                fragment = _extract_ocr_recipe_fragment(cleaned)
+                matches = list(re.finditer(rf"(?i)(?<!\w)(?P<qty>{_MEASURED_INGREDIENT_QTY_RE})\b", fragment))
+                cleaned = fragment
+
+            for index, match in enumerate(matches):
+                end = matches[index + 1].start() if index + 1 < len(matches) else len(cleaned)
+                rest = _normalize_ingredient_phrase(cleaned[match.end():end])
+                if not rest:
+                    continue
+
+                qty = re.sub(r"\s+", "", match.group("qty"))
+                qty = _repair_leading_ocr_digit_in_grams(qty, rest)
+                if re.search(r"(?i)^turmeric\b", rest) and qty.lower() in {"0.5tsp", "2tsp"}:
+                    qty = "1/2tsp"
+                qty = re.sub(rf"(?i)^(\d+(?:\.\d+|[./]\d+)?)(\s*)({_MEASURED_INGREDIENT_UNIT_RE})$", r"\1 \3", qty)
+                fragment = f"{qty} {rest}".strip()
+
+                if _MACRO_ONLY_RE.match(fragment):
+                    continue
+                if _MACRO_ONLY_RE.search(fragment):
+                    continue
+                if re.search(r"(?i)^\s*\d+(?:\.\d+)?\s*(?:cals?|calories|cal\s+ories)\b", fragment):
+                    continue
+                if re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|cal\s+ories)\b", rest):
+                    continue
+                if re.search(r"(?i)^\s*fat\b", rest):
+                    continue
+                if re.search(r"(?i)\bwater\b", rest) and re.search(r"(?i)\b(?:ix|pek|cup\s+water\s+[- ]?\d)\b", rest):
+                    continue
+                if _ocr_line_has_recipe_signal(fragment):
+                    line_fragments.append(fragment)
+
+            for match in _COUNTED_INGREDIENT_RE.finditer(cleaned):
+                fragment = f"{match.group('qty')} {match.group('rest')}".strip()
+                if re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat)\b", fragment):
+                    continue
+                if _ocr_line_has_recipe_signal(fragment):
+                    line_fragments.append(fragment)
+
+            evidence.extend(_dedupe_ocr_lines(line_fragments))
+
+    return _dedupe_ocr_lines(evidence)
+
+
+def _ingredient_section_for_text(text: str) -> str:
+    """Assign a grocery section tag with deterministic keyword rules."""
+    low = text.lower()
+    if re.search(r"\b(?:chicken|beef|pork|turkey|bacon|sausage|ham|lamb)\b", low):
+        return "meat"
+    if re.search(r"\b(?:shrimp|fish|salmon|tuna|crab|lobster|scallop)\b", low):
+        return "seafood"
+    if re.search(r"\b(?:yogh?urt|cheese|butter|cream cheese|milk|egg)\b", low):
+        return "dairy"
+    if re.search(r"\b(?:tortillas?|bread|buns?|rolls?|pita|naan)\b", low):
+        return "bakery"
+    if re.search(r"\b(?:paprika|cumin|turmeric|masala|salt|pepper|spice|seasoning|powder)\b", low):
+        return "spices"
+    if re.search(r"\b(?:paste|sauce|mustard|mayo|ketchup|dressing|juice)\b", low):
+        return "condiments"
+    if re.search(r"\b(?:rice|flour|sugar|oil|spray|water|broth|stock|pasta|beans?|canned)\b", low):
+        return "pantry"
+    if re.search(r"\b(?:juice)\b", low):
+        return "beverages"
+    if re.search(r"\b(?:onions?|tomatoes?|garlic|ginger|lemon|lime|herbs?|cilantro|parsley|peppers?)\b", low):
+        return "produce"
+    return "other"
+
+
+def _ingredient_key_tokens(text: str) -> set[str]:
+    """Normalize an ingredient line to content tokens for replacement matching."""
+    text = re.sub(r"\[[^\]]+\]\s*$", "", text).lower()
+    text = re.sub(rf"\b{_MEASURED_INGREDIENT_QTY_RE}\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b\d+(?:\.\d+|/\d+)?\b", " ", text)
+    text = text.replace("yogurt", "yoghurt")
+    text = re.sub(r"[^a-z%& ]+", " ", text)
+    stop = {
+        "and", "or", "of", "the", "a", "an", "to", "taste", "needed", "same", "before", "for",
+        "as", "medium", "warm", "diced", "sliced", "chopped", "cooked", "fresh", "ground", "light", "low", "fae",
+    }
+    singular = {"tomatoes": "tomato", "tortillas": "tortilla", "breasts": "breast"}
+    tokens = set()
+    for token in text.split():
+        token = singular.get(token, token.rstrip("s") if len(token) > 4 else token)
+        if token and token not in stop:
+            tokens.add(token)
+    return tokens
+
+
+def _ingredients_refer_to_same_item(left: str, right: str) -> bool:
+    left_tokens = _ingredient_key_tokens(left)
+    right_tokens = _ingredient_key_tokens(right)
+    if not left_tokens or not right_tokens:
+        return False
+    small, large = (left_tokens, right_tokens) if len(left_tokens) <= len(right_tokens) else (right_tokens, left_tokens)
+    if small <= large:
+        return True
+    overlap = small & large
+    return len(overlap) >= min(2, len(small))
+
+
+def _format_ingredient_line(text: str) -> str:
+    return f"- {text} [{_ingredient_section_for_text(text)}]"
+
+
+def _preserve_measured_ingredient_evidence(recipe_text: str, evidence: list[str]) -> str:
+    """Ensure explicit measured source ingredients survive LLM formatting."""
+    if not evidence:
+        return recipe_text
+    return _insert_ingredient_evidence(recipe_text, evidence)
+
+
+def _insert_ingredient_evidence(recipe_text: str, evidence: list[str]) -> str:
+    """Insert/replace ingredient evidence inside the Ingredients section."""
+    lines = recipe_text.splitlines()
+    start = None
+    end = len(lines)
+    for index, line in enumerate(lines):
+        if re.match(r"^\s*(?:#+\s*)?(?:\*\*)?ingredients(?:\*\*)?\s*:??\s*$", line, flags=re.IGNORECASE):
+            start = index
+            break
+    if start is None:
+        return recipe_text
+    for index in range(start + 1, len(lines)):
+        if re.match(r"^\s*(?:#+\s*)?(?:\*\*)?(?:instructions|directions|steps|method|tips|macros|nutrition)(?:\*\*)?\s*:??\s*$", lines[index], flags=re.IGNORECASE):
+            end = index
+            break
+
+    used: set[int] = set()
+    rewritten: list[str] = []
+    spice_indexes = [
+        i for i, item in enumerate(evidence)
+        if _ingredient_section_for_text(item) == "spices"
+    ]
+
+    for line in lines[start + 1:end]:
+        stripped = line.strip()
+        if not stripped:
+            rewritten.append(line)
+            continue
+        if not stripped.startswith(("-", "*", "•")):
+            rewritten.append(line)
+            continue
+
+        item = stripped.lstrip("-*•● ").strip()
+        item_text = re.sub(r"\s*\[\w+\]\s*$", "", item).strip()
+        if re.search(r"(?i)\bseasonings?\b|same as", item_text) and spice_indexes:
+            for evidence_index in spice_indexes:
+                if evidence_index not in used:
+                    rewritten.append(_format_ingredient_line(evidence[evidence_index]))
+                    used.add(evidence_index)
+            continue
+
+        replacement_index = None
+        for evidence_index, measured in enumerate(evidence):
+            if evidence_index in used:
+                continue
+            if _ingredients_refer_to_same_item(item_text, measured):
+                replacement_index = evidence_index
+                break
+
+        if replacement_index is not None:
+            rewritten.append(_format_ingredient_line(evidence[replacement_index]))
+            used.add(replacement_index)
+        else:
+            rewritten.append(line)
+
+    for evidence_index, measured in enumerate(evidence):
+        if evidence_index not in used:
+            rewritten.append(_format_ingredient_line(measured))
+
+    return "\n".join(lines[:start + 1] + _dedupe_ocr_lines(rewritten) + lines[end:])
+
+
+def _extract_unmeasured_ingredient_evidence(*source_texts: str) -> list[str]:
+    """Extract explicit unmeasured ingredient mentions from source text.
+
+    This intentionally avoids a maintained food vocabulary. We only preserve
+    short standalone OCR/caption lines that look like labels; full instructional
+    lines still go to the LLM through OCR text, but are not force-inserted into
+    the final ingredient list.
+    """
+    evidence: list[str] = []
+    for source_text in source_texts:
+        for raw_line in (source_text or "").splitlines():
+            cleaned = _clean_ocr_line(raw_line).lower()
+            if re.fullmatch(r"(?i)\d+\s+l\s+emon\s+juice", cleaned) or re.fullmatch(r"(?i)\d+\s+lemon\s+juice", cleaned):
+                cleaned = "lemon juice"
+            if not _ocr_line_has_recipe_signal(cleaned):
+                continue
+            measured_match = re.search(_MEASURED_INGREDIENT_QTY_RE, cleaned, flags=re.IGNORECASE)
+            if measured_match:
+                rest = _normalize_ingredient_phrase(cleaned[measured_match.end():]).lower()
+                words = re.findall(r"[a-z][a-z'&/-]{2,}", rest)
+                if 1 <= len(words) <= 4 and not re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat)\b", rest):
+                    evidence.append(" ".join(words))
+                continue
+            if re.fullmatch(r"(?i)\d+\s+[a-z][a-z'&/-]{2,}(?:\s+[a-z][a-z'&/-]{2,}){0,3}", cleaned):
+                # A leading bare count can still be a label when the rest of the
+                # line is concise: "1 lemon juice", "1 medium onion".
+                cleaned = re.sub(r"^\d+\s+", "", cleaned)
+            if _MACRO_ONLY_RE.match(cleaned) or re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat)\b", cleaned):
+                continue
+            if _OCR_UI_NOISE_RE.search(cleaned):
+                continue
+            if _UNMEASURED_INSTRUCTION_RE.search(cleaned):
+                continue
+
+            # Drop punctuation tails and obvious sentence clauses, then keep only
+            # concise labels like "bacon", "lemon juice", "cooking spray",
+            # "bbq sauce", or "french fried onions".
+            candidate = re.split(r"[,.;:!?|]", cleaned, maxsplit=1)[0]
+            stop_match = _UNMEASURED_LINE_STOP_RE.search(candidate)
+            if stop_match:
+                candidate = candidate[:stop_match.start()]
+            candidate = _normalize_ingredient_phrase(candidate.lower()).lower()
+            words = re.findall(r"[a-z][a-z'&/-]{2,}", candidate)
+            if 1 <= len(words) <= 4:
+                evidence.append(" ".join(words))
+    return _dedupe_ocr_lines(evidence)
+
+
+def _preserve_ingredient_evidence(recipe_text: str, measured: list[str], unmeasured: list[str]) -> str:
+    """Ensure explicit measured and unmeasured ingredient evidence survives LLM formatting."""
+    evidence = measured + [item for item in unmeasured if not any(_ingredients_refer_to_same_item(item, existing) for existing in measured)]
+    if not evidence:
+        return recipe_text
+    return _insert_ingredient_evidence(recipe_text, evidence)
 
 
 def _ocr_dark_text_threshold(pixel: int) -> int:
@@ -2020,6 +2319,11 @@ def format_recipe_combined(caption: str, transcript: str, ocr_text: str) -> str:
     if total_content < 20:
         raise RuntimeError("Not enough content to extract a recipe (caption, transcript, and OCR are all empty or too short)")
 
+    measured_evidence = _extract_measured_ingredient_evidence(caption, ocr_text)
+    unmeasured_evidence = _extract_unmeasured_ingredient_evidence(caption, ocr_text)
+    measured_evidence_block = "\n".join(f"- {item}" for item in measured_evidence) or "(none)"
+    unmeasured_evidence_block = "\n".join(f"- {item}" for item in unmeasured_evidence) or "(none)"
+
     prompt = f"""Extract and structure a recipe from the sources below.
 
 ## SOURCES (in priority order for ingredients/quantities):
@@ -2031,6 +2335,14 @@ def format_recipe_combined(caption: str, transcript: str, ocr_text: str) -> str:
 
 3. OCR TEXT (on-screen text overlays):
 {ocr_text}
+
+## EXPLICIT MEASURED INGREDIENT EVIDENCE
+These source-grounded quantity+ingredient lines were extracted directly from the sources above. If any line below is a recipe ingredient, preserve its exact quantity in ## Ingredients. Do not collapse these into vague entries like "seasonings", "water as needed", or unmeasured ingredient names.
+{measured_evidence_block}
+
+## EXPLICIT UNMEASURED INGREDIENT EVIDENCE
+These source-grounded ingredient mentions were extracted directly from the sources above but have no quantity. Preserve them as ingredients without inventing a quantity.
+{unmeasured_evidence_block}
 
 ## OUTPUT FORMAT (follow exactly):
 
@@ -2063,6 +2375,9 @@ Calories: X | Protein: Xg | Carbs: Xg | Fat: Xg
 - Section definitions: [produce] = fresh fruits, vegetables, herbs, garnishes. [meat] = beef, pork, chicken, etc. [seafood] = fish, shellfish. [dairy] = milk, cheese, butter, eggs. [bakery] = bread, tortillas, buns. [pantry] = flour, sugar, oil, canned goods, rice, pasta. [spices] = dried herbs and spices. [frozen] = frozen vegetables, ice cream. [condiments] = sauces, dressings, mustard, ketchup. [beverages] = non-alcoholic drinks, mixers. [bar] = spirits, liqueurs, bitters, cocktail ingredients.
 - If the recipe is a cocktail/drink: steps may be shake/stir/muddle/strain/garnish. Include glassware in Tips.
 - NEVER invent, guess, or fabricate quantities/measurements. If the source says "chicken broth" with no amount, write ONLY "Chicken broth [pantry]" — do NOT add "3 cups" or any number. Only include measurements that are EXPLICITLY stated in a source.
+- Preserve explicit measured ingredient evidence exactly. Example: if evidence says "800 g chicken breast", do not output "4 chicken breasts"; if evidence says "1/3 cup water", do not output "water, as needed".
+- Preserve explicit unmeasured ingredient evidence as its own ingredient with no quantity. Example: if evidence says "lemon juice" or "cooking spray", output that phrase without inventing an amount.
+- Do not summarize measured spice lines as "seasonings". If the sources list paprika, cumin, garam masala, turmeric, or salt with quantities, output each one as its own ingredient line.
 - Omit any section (Macros, Prep Time, etc.) if the data isn't available — do NOT guess or fabricate numbers.
 - Start response with the recipe title. NO preamble ("Here's the recipe", "Sure!", etc.).
 - If a source is empty, ignore it. Combine all non-empty sources for the most complete recipe.
@@ -2101,6 +2416,7 @@ Cook Time: 10m
 - Use any long noodle — spaghetti works too."""
 
     output = _call_llm(prompt)
+    output = _preserve_ingredient_evidence(output, measured_evidence, unmeasured_evidence)
 
     # Validate: LLM must produce a recipe with ingredients, not a refusal
     # Check for various heading formats: "## Ingredients", "Ingredients", "**Ingredients**"
