@@ -199,6 +199,39 @@ def test_extract_unmeasured_ingredient_evidence_preserves_generic_mentions():
     assert not any("random" in item for item in evidence)
 
 
+def test_tiktok_short_ocr_garbage_is_not_preserved_as_ingredients():
+    """Regression fixture for TikTok 7505186235124665646.
+
+    Busy salmon-bite frames produced short OCR fragments like "7 fon", "2 anh",
+    and "5 Bee". They look count-led enough to pass the old generic scoring, then
+    the preservation pass force-inserted them into Ingredients ahead of the LLM.
+    """
+    ocr_text = """
+    360 g of salmon
+    360 g of salmon into Zsinch cubes
+    2 inch cubes
+    air fry at 400F for 8 10 minutes
+    1 tbsp sriracha
+    2 tbsp greek yogurt
+    2 tsp rice vineoar
+    7 fon
+    7 g wee
+    2 anh
+    2 g Sats se
+    5 Bee
+    7 aoe args
+    """
+
+    measured = _extract_measured_ingredient_evidence(ocr_text)
+    unmeasured = _extract_unmeasured_ingredient_evidence(ocr_text)
+    combined = "\n".join(measured + unmeasured).lower()
+
+    assert "360 g of salmon" in measured
+    assert "1 tbsp sriracha" in measured
+    assert "2 tbsp greek yogurt" in measured
+    assert not any(item in combined for item in ["7 fon", "7 g wee", "2 anh", "2 g sats", "5 bee", "7 aoe", "wee", "sats"])
+
+
 def test_preserve_measured_ingredient_evidence_replaces_vague_llm_ingredients():
     recipe_text = """High Protein Butter Chicken Burritos
 

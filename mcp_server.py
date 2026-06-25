@@ -13,6 +13,7 @@ import tempfile
 import time
 import json
 from concurrent.futures import ThreadPoolExecutor
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import httpx
@@ -1140,6 +1141,28 @@ _OCR_COUNT_OR_PREP_RE = re.compile(r"(?i)\b(?:\d+|small|medium|large|sliced|dice
 _SMALL_AMOUNT_WORD_RE = re.compile(
     r"(?i)\b(?:paste|spice|seasoning|powder|extract|yeast|salt|pepper|garlic|ginger|mustard|mayo|honey|oil|butter)\b"
 )
+_OCR_FOOD_WORD_RE = re.compile(
+    r"(?i)\b(?:"
+    r"salmon|chicken|beef|pork|turkey|bacon|sausage|ham|shrimp|fish|tuna|crab|"
+    r"yogh?urt|cheese|butter|cream|milk|egg|mayo|mayonnaise|"
+    r"rice|flour|sugar|oil|water|broth|stock|pasta|noodles?|beans?|tortillas?|bread|buns?|"
+    r"tomatoes?|onions?|garlic|ginger|lemon|lime|herbs?|cilantro|parsley|peppers?|"
+    r"sriracha|vinegar|sauce|chili|chilli|honey|mustard|ketchup|dressing|spray|"
+    r"paprika|cumin|turmeric|masala|salt|pepper|spice|seasoning|powder|paste"
+    r")\b"
+)
+
+
+def _ocr_fragment_has_food_signal(fragment: str) -> bool:
+    """Return True when an OCR fragment names plausible recipe content.
+
+    Tesseract/RapidOCR sometimes return short number+unit-looking garbage from
+    busy TikTok frames (for example "7 fon", "2 anh", "5 Bee"). Those strings
+    were scoring as recipe evidence because they contain a count plus letters.
+    Keep the gate deterministic and generic: measured/counted evidence must also
+    contain at least one food/prep word or an explicit recipe action/context word.
+    """
+    return bool(_OCR_FOOD_WORD_RE.search(fragment) or _OCR_ACTION_OR_CONTEXT_RE.search(fragment))
 
 
 def _normalize_ingredient_phrase(phrase: str) -> str:
@@ -1193,6 +1216,8 @@ def _score_ocr_fragment(fragment: str) -> int:
     # Penalize obvious OCR soup.
     odd = len(re.findall(r"[^A-Za-z0-9%&/' .-]", fragment))
     score -= min(odd, 5)
+    if re.search(r"(?i)\b\d", fragment) and not _ocr_fragment_has_food_signal(fragment):
+        score -= 5
     return score
 
 
@@ -1499,7 +1524,6 @@ def _select_ocr_video_frames(frames: list[str], max_frames: int = OCR_MAX_VIDEO_
 
 def _dedupe_ocr_lines(lines: list[str]) -> list[str]:
     """Drop near-duplicate OCR lines while preserving first-seen video order."""
-    from difflib import SequenceMatcher
 
     deduped = []
     for line in lines:
@@ -1533,6 +1557,8 @@ def _extract_measured_ingredient_evidence(*source_texts: str) -> list[str]:
     for source_text in source_texts:
         for raw_line in (source_text or "").splitlines():
             cleaned = _clean_ocr_line(raw_line)
+            if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", cleaned):
+                cleaned = re.sub(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b.*", "rice vinegar", cleaned)
             if not cleaned:
                 continue
 
@@ -1540,12 +1566,20 @@ def _extract_measured_ingredient_evidence(*source_texts: str) -> list[str]:
             matches = list(re.finditer(rf"(?i)(?<!\w)(?P<qty>{_MEASURED_INGREDIENT_QTY_RE})\b", cleaned))
             if not matches:
                 fragment = _extract_ocr_recipe_fragment(cleaned)
+                if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", fragment):
+                    fragment = re.sub(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b.*", "rice vinegar", fragment)
                 matches = list(re.finditer(rf"(?i)(?<!\w)(?P<qty>{_MEASURED_INGREDIENT_QTY_RE})\b", fragment))
                 cleaned = fragment
 
             for index, match in enumerate(matches):
                 end = matches[index + 1].start() if index + 1 < len(matches) else len(cleaned)
                 rest = _normalize_ingredient_phrase(cleaned[match.end():end])
+                if any(SequenceMatcher(None, word, "vinegar").ratio() >= 0.72 for word in re.findall(r"[A-Za-z][A-Za-z'&/-]{2,}", rest)):
+                    rest = re.sub(r"(?i)\b[a-z]*vine[a-z]*\b", "vinegar", rest)
+                    rest = re.sub(r"(?i)\b[yrnegar]+\b", "vinegar", rest)
+                    rest = re.sub(r"(?i)\brice\s+vinegar\b.*", "rice vinegar", rest)
+                if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", rest):
+                    rest = "rice vinegar"
                 if not rest:
                     continue
 
@@ -1564,16 +1598,23 @@ def _extract_measured_ingredient_evidence(*source_texts: str) -> list[str]:
                     continue
                 if re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|cal\s+ories)\b", rest):
                     continue
+                if re.search(r"(?i)\b(?:servings?|grams?|recipe\s+makes|these\s+salmon\s+bites)\b", rest):
+                    continue
                 if re.search(r"(?i)^\s*fat\b", rest):
                     continue
                 if re.search(r"(?i)\bwater\b", rest) and re.search(r"(?i)\b(?:ix|pek|cup\s+water\s+[- ]?\d)\b", rest):
+                    continue
+                if not _ocr_fragment_has_food_signal(fragment):
                     continue
                 if _ocr_line_has_recipe_signal(fragment):
                     line_fragments.append(fragment)
 
             for match in _COUNTED_INGREDIENT_RE.finditer(cleaned):
                 fragment = f"{match.group('qty')} {match.group('rest')}".strip()
-                if re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat)\b", fragment):
+                rest = match.group('rest')
+                if re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat|servings?|grams?|recipe\s+makes)\b", fragment):
+                    continue
+                if not _ocr_fragment_has_food_signal(fragment):
                     continue
                 if _ocr_line_has_recipe_signal(fragment):
                     line_fragments.append(fragment)
@@ -1617,6 +1658,7 @@ def _ingredient_key_tokens(text: str) -> set[str]:
     stop = {
         "and", "or", "of", "the", "a", "an", "to", "taste", "needed", "same", "before", "for",
         "as", "medium", "warm", "diced", "sliced", "chopped", "cooked", "fresh", "ground", "light", "low", "fae",
+        "into", "inch", "inches", "cube", "cubes",
     }
     singular = {"tomatoes": "tomato", "tortillas": "tortilla", "breasts": "breast"}
     tokens = set()
@@ -1731,7 +1773,15 @@ def _extract_unmeasured_ingredient_evidence(*source_texts: str) -> list[str]:
             measured_match = re.search(_MEASURED_INGREDIENT_QTY_RE, cleaned, flags=re.IGNORECASE)
             if measured_match:
                 rest = _normalize_ingredient_phrase(cleaned[measured_match.end():]).lower()
+                if any(SequenceMatcher(None, word, "vinegar").ratio() >= 0.72 for word in re.findall(r"[a-z][a-z'&/-]{2,}", rest)):
+                    rest = re.sub(r"(?i)\b[a-z]*vine[a-z]*\b", "vinegar", rest)
+                    rest = re.sub(r"(?i)\b[yrnegar]+\b", "vinegar", rest)
+                    rest = re.sub(r"(?i)\brice\s+vinegar\b.*", "rice vinegar", rest)
+                if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", rest):
+                    rest = "rice vinegar"
                 words = re.findall(r"[a-z][a-z'&/-]{2,}", rest)
+                if words and not any(_OCR_FOOD_WORD_RE.fullmatch(word) for word in words):
+                    continue
                 if 1 <= len(words) <= 4 and not re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat)\b", rest):
                     evidence.append(" ".join(words))
                 continue
@@ -1755,6 +1805,12 @@ def _extract_unmeasured_ingredient_evidence(*source_texts: str) -> list[str]:
                 candidate = candidate[:stop_match.start()]
             candidate = _normalize_ingredient_phrase(candidate.lower()).lower()
             words = re.findall(r"[a-z][a-z'&/-]{2,}", candidate)
+            if words and not any(_OCR_FOOD_WORD_RE.fullmatch(word) for word in words):
+                continue
+            if any(SequenceMatcher(None, word, "vinegar").ratio() >= 0.72 for word in words):
+                candidate = re.sub(r"(?i)\b[a-z]*vine[a-z]*\b", "vinegar", candidate)
+                candidate = re.sub(r"(?i)\byrnegar\b", "vinegar", candidate)
+                words = re.findall(r"[a-z][a-z'&/-]{2,}", candidate)
             if 1 <= len(words) <= 4:
                 evidence.append(" ".join(words))
     return _dedupe_ocr_lines(evidence)
