@@ -15,7 +15,10 @@ from mcp_server import (  # noqa: E402
     _extract_unmeasured_ingredient_evidence,
     _ocr_image_variants,
     _ocr_line_has_recipe_signal,
+    _ocr_text_looks_like_book_page,
     _preserve_ingredient_evidence,
+    _should_use_slideshow_ocr,
+    _slideshow_ocr_has_recipe_signal,
     _preserve_measured_ingredient_evidence,
     _select_ocr_video_frames,
 )
@@ -432,4 +435,129 @@ def test_dzot65qbrle_reel_regression_preserves_bacon_ocr_label():
 
     assert "bacon" in unmeasured
     assert "- bacon [meat]" in fixed
+
+def test_book_page_ocr_block_is_not_preserved_as_ingredient_evidence():
+    """Regression fixture for dense cookbook/page OCR in TikTok end cards."""
+    useful_overlay = """
+    2 low cal tortillas
+    1 laughing cow
+    1/4 tsp ranch seasoning
+    drizzle of Greek yogurt ranch
+    tiny bit of cheese
+    """
+    book_page_ocr = """
+    FART Cente
+    CHICKEN PIZZA AGAR e 8
+    4 X Q flavor FULL
+    Air fry 375F for 5 7 min or until crisp cand o
+    Add sliced pickles and another drizzle of
+    digital cookbooks
+    NASHVILLE
+    CHICKEN PIZZA
+    imgredients
+    Makayte Tgong
+    directions
+    chicken here
+    yourpizza sauce
+    flavor FULL
+    Fat: 9¢ I
+    24 g Go HOME
+    """
+    ocr_text = f"{useful_overlay}\n---\n{book_page_ocr}"
+
+    assert _ocr_text_looks_like_book_page(book_page_ocr)
+    assert not _ocr_text_looks_like_book_page(useful_overlay)
+
+    measured = _extract_measured_ingredient_evidence(ocr_text)
+    unmeasured = _extract_unmeasured_ingredient_evidence(ocr_text)
+    combined = "\n".join(measured + unmeasured).lower()
+
+    assert "1/4 tsp ranch seasoning" in measured
+    assert "ranch seasoning" in combined
+    assert "chicken pizza agar" not in combined
+    assert "chicken pizza" not in combined
+    assert "chicken here" not in combined
+    assert "yourpizza sauce" not in combined
+
+
+def test_tiktok_photo_caption_recipe_ignores_low_signal_decorative_ocr():
+    """Regression fixture for TikTok 7477345219885763845.
+
+    The post has a complete recipe in the TikTok caption, but the single photo is
+    just a plated-food image. Tesseract read plate/background texture as junk
+    like "15 g Ingredients" and "4 cup bell peppers", which contaminated recipe
+    186. Caption-rich slideshows should ignore that low-signal decorative OCR.
+    """
+    caption = """
+    Calories: 520   Protein: 45g   Carbs: 50g   Fat: 15g
+    Ingredients: For the Turkey Meatballs: 1 lb lean ground turkey
+    1/4 cup breadcrumbs 1 egg 2 cloves garlic, minced 1/2 tsp salt
+    1/2 tsp black pepper 1/2 tsp dried oregano 1/2 tsp ground cumin
+    1 tbsp fresh parsley, chopped 1 tbsp olive oil (for cooking)
+    For the Tzatziki Sauce: 1/2 cup Greek yogurt 1/4 cup cucumber, grated and drained
+    1 clove garlic, minced 1 tbsp lemon juice 1 tbsp fresh dill, chopped 1/4 tsp salt
+    For the Bowl: 1 cup cooked rice 1/2 cup cherry tomatoes, halved
+    1/2 cup cucumber, sliced 1/4 cup red onion, diced 1/4 cup bell peppers, diced
+    Fresh dill and black pepper for garnish
+    Instructions: 1. Prepare the Meatballs. 2. Shape & Cook the Meatballs.
+    3. Make the Tzatziki Sauce. 4. Assemble the Bowl. 5. Add the Finishing Touches.
+    """
+    decorative_photo_ocr = """
+    - > .
+    — — -_—
+    = ”
+    ~ . = 7? oe ~ 9
+    > os »
+    15 g Ingredients For the Turkey Meatballs
+    4 cup bell peppers
+    1 tbsp olive oil
+    . 7 \\ ? G os... ~ ee ?
+    Be oe ee ar aig: ver eee ~ (ae Z
+    """
+
+    assert _caption_has_recipe_signals(caption)
+    assert not _slideshow_ocr_has_recipe_signal(decorative_photo_ocr)
+    assert not _should_use_slideshow_ocr(caption, decorative_photo_ocr)
+
+    # The caption itself remains authoritative and still preserves the real bowl
+    # quantity. The decorative-photo OCR must not get a chance to override it.
+    caption_measured = _extract_measured_ingredient_evidence(caption)
+    assert any(item.startswith("1/4 cup bell pepper") for item in caption_measured)
+    assert not _should_use_slideshow_ocr(caption, decorative_photo_ocr)
+
+
+def test_caption_poor_slideshow_still_uses_strong_recipe_ocr():
+    caption = "Mediterranean meal prep bowl #FoodTok"
+    real_recipe_card_ocr = """
+    Ingredients
+    1 lb lean ground turkey
+    1/4 cup breadcrumbs
+    1 egg
+    Instructions
+    Mix and cook meatballs.
+    """
+
+    assert not _caption_has_recipe_signals(caption)
+    assert _slideshow_ocr_has_recipe_signal(real_recipe_card_ocr)
+    assert _should_use_slideshow_ocr(caption, real_recipe_card_ocr)
+
+
+def test_book_page_detector_focuses_on_book_structure_not_single_recipe_heading():
+    normal_overlay = """
+    ingredients
+    800 g chicken breast
+    120 g greek yogurt
+    1 tsp paprika
+    """
+    chapter_page = """
+    Chapter 4
+    Weeknight Dinners
+    Page 42
+    Ingredients
+    Directions
+    Copyright 2025
+    """
+
+    assert not _ocr_text_looks_like_book_page(normal_overlay)
+    assert _ocr_text_looks_like_book_page(chapter_page)
 

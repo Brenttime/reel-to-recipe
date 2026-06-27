@@ -894,6 +894,60 @@ def tiktok_download_slideshow_images(url: str) -> list:
     return paths
 
 
+def _slideshow_ocr_has_recipe_signal(ocr_text: str) -> bool:
+    """Return True only when slideshow OCR has enough signal to help extraction.
+
+    TikTok photo posts can be single decorative food photos where Tesseract reads
+    plate/background texture as short count-led fragments. If the caption already
+    has the full recipe, those fragments can contaminate ingredients. Require at
+    least two independent, source-looking recipe lines before using slideshow OCR.
+    """
+    if not (ocr_text or "").strip():
+        return False
+
+    measured = _extract_measured_ingredient_evidence(ocr_text)
+    unmeasured = _extract_unmeasured_ingredient_evidence(ocr_text)
+    recipe_lines = []
+    non_signal_lines = 0
+    for raw in (ocr_text or "").splitlines():
+        raw_clean = _clean_ocr_line(raw)
+        if not raw_clean:
+            continue
+        cleaned = _extract_ocr_recipe_fragment(raw_clean)
+        if cleaned and _ocr_line_has_recipe_signal(cleaned):
+            recipe_lines.append(cleaned)
+        else:
+            non_signal_lines += 1
+
+    # Decorative photo OCR is usually sparse recipe-looking fragments surrounded
+    # by lots of punctuation/background noise. A real recipe card should have a
+    # better signal-to-noise ratio or an explicit recipe heading/context.
+    noisy_decorative = bool(recipe_lines) and non_signal_lines >= max(4, len(recipe_lines))
+    has_heading = bool(re.search(r"(?i)\b(?:ingredients?|instructions?|directions?|servings?|calories|protein|carbs?|fat)\b", ocr_text))
+
+    if noisy_decorative:
+        return False
+    # One isolated OCR fragment is often a decorative-photo false positive.
+    # Two measured ingredients is strong evidence; otherwise require broader
+    # recipe context/labels before mixing OCR into a caption-rich slideshow.
+    if len(measured) >= 2:
+        return True
+    if len(measured) >= 1 and (len(unmeasured) >= 1 or len(recipe_lines) >= 3):
+        return True
+    if len(recipe_lines) >= 4 and has_heading:
+        return True
+    return False
+
+
+def _should_use_slideshow_ocr(caption: str, ocr_text: str) -> bool:
+    """Decide whether slideshow OCR should be included with the caption."""
+    if not (ocr_text or "").strip():
+        return False
+    if _caption_has_recipe_signals(caption) and not _slideshow_ocr_has_recipe_signal(ocr_text):
+        return False
+    return True
+
+
 def extract_text_from_slideshow(image_paths: list) -> str:
     """OCR text from slideshow/carousel images using the shared OCR platform."""
     return extract_text_from_images(image_paths, source="slideshow")
@@ -1548,6 +1602,80 @@ _UNMEASURED_LINE_STOP_RE = re.compile(
 _UNMEASURED_INSTRUCTION_RE = re.compile(
     r"(?i)\b(?:add|mix|stir|season|cook|bake|roast|grill|fry|air\s*fry|simmer|boil|chop|dice|slice|drizzle|pour|whisk|blend|serve|top|garnish|love|works?)\b"
 )
+_OCR_BOOK_PAGE_MARKER_RE = re.compile(
+    r"(?ix)\b(?:"
+    r"chapters?|chapter\s*\d+|pages?|page\s*\d+|page\s+\d+\s+of\s+\d+|"
+    r"table\s+of\s+contents|contents|index|appendix|foreword|preface|intro(?:duction)?|"
+    r"cookbooks?|e-?books?|digital\s+(?:cook)?books?|book\s+(?:preview|sample|cover)|"
+    r"ingredients?|directions|method|instructions|nutrition\s+facts|"
+    r"copyright|all\s+rights\s+reserved|isbn|publisher|published|edition|"
+    r"volume|vol\.?|section|recipe\s+index"
+    r")\b"
+)
+_OCR_BOOK_STRUCTURAL_MARKER_RE = re.compile(
+    r"(?ix)\b(?:"
+    r"chapters?|chapter\s*\d+|pages?|page\s*\d+|page\s+\d+\s+of\s+\d+|"
+    r"table\s+of\s+contents|contents|index|appendix|foreword|preface|intro(?:duction)?|"
+    r"cookbooks?|e-?books?|digital\s+(?:cook)?books?|book\s+(?:preview|sample|cover)|"
+    r"copyright|all\s+rights\s+reserved|isbn|publisher|published|edition|"
+    r"volume|vol\.?|section|recipe\s+index"
+    r")\b"
+)
+
+
+def _ocr_text_looks_like_book_page(text: str) -> bool:
+    """Detect dense OCR blocks that look like cookbook/book/page screenshots.
+
+    These are usually end-card product shots or cookbook page previews. They can
+    contain real ingredient-looking words, but they are not evidence from the
+    reel's recipe and should not be force-preserved into the final ingredient
+    list. Keep this focused on book/page structure markers (chapters, page
+    numbers, contents, copyright, ISBN, ingredient/direction headings) rather
+    than broad food vocabulary.
+    """
+    lines = [_clean_ocr_line(line).lower() for line in (text or "").splitlines()]
+    lines = [line for line in lines if line]
+    if not lines:
+        return False
+
+    joined = "\n".join(lines)
+    markers = _OCR_BOOK_PAGE_MARKER_RE.findall(joined)
+    marker_count = len(markers)
+    word_count = len(re.findall(r"[a-z][a-z'-]{2,}", joined))
+    structural_marker_count = len(_OCR_BOOK_STRUCTURAL_MARKER_RE.findall(joined))
+    page_numberish = bool(
+        re.search(r"(?im)^\s*(?:page\s*)?\d{1,3}\s*$", joined)
+        or re.search(r"(?i)\b(?:page|chapter)\s+\d{1,3}\b", joined)
+        or re.search(r"(?i)(?<!\d)\b\d{1,3}\s*/\s*\d{1,3}\b(?!\s*(?:cup|cups|tsp|tbsp|g|kg|ml|l|oz|lb)\b)", joined)
+    )
+    paired_recipe_headings = bool(re.search(r"(?i)\bingredients?\b", joined) and re.search(r"(?i)\b(?:directions|instructions|method)\b", joined))
+
+    # A single line like "ingredients: chicken" is legitimate. Require either
+    # multiple structural book/page markers, or one marker plus density/page-num
+    # evidence. Product-page OCR often has many short lines from a photographed
+    # cookbook spread; normal reel overlays usually do not.
+    if marker_count >= 3 and structural_marker_count >= 1 and (len(lines) >= 5 or word_count >= 12 or page_numberish):
+        return True
+    if paired_recipe_headings and (len(lines) >= 5 or word_count >= 12) and re.search(
+        r"(?i)\b(?:cookbooks?|e-?books?|digital\s+(?:cook)?books?|chapters?|chapter\s*\d+|pages?|page\s*\d+|copyright|isbn|contents|index|edition)\b",
+        joined,
+    ):
+        return True
+    if marker_count >= 2 and structural_marker_count >= 1 and (len(lines) >= 5 or word_count >= 15 or page_numberish):
+        return True
+    if marker_count >= 1 and page_numberish and (len(lines) >= 4 or word_count >= 10):
+        return True
+    return False
+
+
+def _iter_non_book_ocr_blocks(source_text: str):
+    """Yield OCR blocks, skipping dense cookbook/book/page screenshots."""
+    for block in re.split(r"(?m)^\s*---\s*$", source_text or ""):
+        if not block.strip():
+            continue
+        if _ocr_text_looks_like_book_page(block):
+            continue
+        yield block
 
 
 def _extract_measured_ingredient_evidence(*source_texts: str) -> list[str]:
@@ -1555,72 +1683,73 @@ def _extract_measured_ingredient_evidence(*source_texts: str) -> list[str]:
     evidence: list[str] = []
 
     for source_text in source_texts:
-        for raw_line in (source_text or "").splitlines():
-            cleaned = _clean_ocr_line(raw_line)
-            if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", cleaned):
-                cleaned = re.sub(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b.*", "rice vinegar", cleaned)
-            if not cleaned:
-                continue
-
-            line_fragments: list[str] = []
-            matches = list(re.finditer(rf"(?i)(?<!\w)(?P<qty>{_MEASURED_INGREDIENT_QTY_RE})\b", cleaned))
-            if not matches:
-                fragment = _extract_ocr_recipe_fragment(cleaned)
-                if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", fragment):
-                    fragment = re.sub(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b.*", "rice vinegar", fragment)
-                matches = list(re.finditer(rf"(?i)(?<!\w)(?P<qty>{_MEASURED_INGREDIENT_QTY_RE})\b", fragment))
-                cleaned = fragment
-
-            for index, match in enumerate(matches):
-                end = matches[index + 1].start() if index + 1 < len(matches) else len(cleaned)
-                rest = _normalize_ingredient_phrase(cleaned[match.end():end])
-                if any(SequenceMatcher(None, word, "vinegar").ratio() >= 0.72 for word in re.findall(r"[A-Za-z][A-Za-z'&/-]{2,}", rest)):
-                    rest = re.sub(r"(?i)\b[a-z]*vine[a-z]*\b", "vinegar", rest)
-                    rest = re.sub(r"(?i)\b[yrnegar]+\b", "vinegar", rest)
-                    rest = re.sub(r"(?i)\brice\s+vinegar\b.*", "rice vinegar", rest)
-                if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", rest):
-                    rest = "rice vinegar"
-                if not rest:
+        for source_block in _iter_non_book_ocr_blocks(source_text):
+            for raw_line in source_block.splitlines():
+                cleaned = _clean_ocr_line(raw_line)
+                if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", cleaned):
+                    cleaned = re.sub(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b.*", "rice vinegar", cleaned)
+                if not cleaned:
                     continue
 
-                qty = re.sub(r"\s+", "", match.group("qty"))
-                qty = _repair_leading_ocr_digit_in_grams(qty, rest)
-                if re.search(r"(?i)^turmeric\b", rest) and qty.lower() in {"0.5tsp", "2tsp"}:
-                    qty = "1/2tsp"
-                qty = re.sub(rf"(?i)^(\d+(?:\.\d+|[./]\d+)?)(\s*)({_MEASURED_INGREDIENT_UNIT_RE})$", r"\1 \3", qty)
-                fragment = f"{qty} {rest}".strip()
+                line_fragments: list[str] = []
+                matches = list(re.finditer(rf"(?i)(?<!\w)(?P<qty>{_MEASURED_INGREDIENT_QTY_RE})\b", cleaned))
+                if not matches:
+                    fragment = _extract_ocr_recipe_fragment(cleaned)
+                    if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", fragment):
+                        fragment = re.sub(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b.*", "rice vinegar", fragment)
+                    matches = list(re.finditer(rf"(?i)(?<!\w)(?P<qty>{_MEASURED_INGREDIENT_QTY_RE})\b", fragment))
+                    cleaned = fragment
 
-                if _MACRO_ONLY_RE.match(fragment):
-                    continue
-                if _MACRO_ONLY_RE.search(fragment):
-                    continue
-                if re.search(r"(?i)^\s*\d+(?:\.\d+)?\s*(?:cals?|calories|cal\s+ories)\b", fragment):
-                    continue
-                if re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|cal\s+ories)\b", rest):
-                    continue
-                if re.search(r"(?i)\b(?:servings?|grams?|recipe\s+makes|these\s+salmon\s+bites)\b", rest):
-                    continue
-                if re.search(r"(?i)^\s*fat\b", rest):
-                    continue
-                if re.search(r"(?i)\bwater\b", rest) and re.search(r"(?i)\b(?:ix|pek|cup\s+water\s+[- ]?\d)\b", rest):
-                    continue
-                if not _ocr_fragment_has_food_signal(fragment):
-                    continue
-                if _ocr_line_has_recipe_signal(fragment):
-                    line_fragments.append(fragment)
+                for index, match in enumerate(matches):
+                    end = matches[index + 1].start() if index + 1 < len(matches) else len(cleaned)
+                    rest = _normalize_ingredient_phrase(cleaned[match.end():end])
+                    if any(SequenceMatcher(None, word, "vinegar").ratio() >= 0.72 for word in re.findall(r"[A-Za-z][A-Za-z'&/-]{2,}", rest)):
+                        rest = re.sub(r"(?i)\b[a-z]*vine[a-z]*\b", "vinegar", rest)
+                        rest = re.sub(r"(?i)\b[yrnegar]+\b", "vinegar", rest)
+                        rest = re.sub(r"(?i)\brice\s+vinegar\b.*", "rice vinegar", rest)
+                    if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", rest):
+                        rest = "rice vinegar"
+                    if not rest:
+                        continue
 
-            for match in _COUNTED_INGREDIENT_RE.finditer(cleaned):
-                fragment = f"{match.group('qty')} {match.group('rest')}".strip()
-                rest = match.group('rest')
-                if re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat|servings?|grams?|recipe\s+makes)\b", fragment):
-                    continue
-                if not _ocr_fragment_has_food_signal(fragment):
-                    continue
-                if _ocr_line_has_recipe_signal(fragment):
-                    line_fragments.append(fragment)
+                    qty = re.sub(r"\s+", "", match.group("qty"))
+                    qty = _repair_leading_ocr_digit_in_grams(qty, rest)
+                    if re.search(r"(?i)^turmeric\b", rest) and qty.lower() in {"0.5tsp", "2tsp"}:
+                        qty = "1/2tsp"
+                    qty = re.sub(rf"(?i)^(\d+(?:\.\d+|[./]\d+)?)(\s*)({_MEASURED_INGREDIENT_UNIT_RE})$", r"\1 \3", qty)
+                    fragment = f"{qty} {rest}".strip()
 
-            evidence.extend(_dedupe_ocr_lines(line_fragments))
+                    if _MACRO_ONLY_RE.match(fragment):
+                        continue
+                    if _MACRO_ONLY_RE.search(fragment):
+                        continue
+                    if re.search(r"(?i)^\s*\d+(?:\.\d+)?\s*(?:cals?|calories|cal\s+ories)\b", fragment):
+                        continue
+                    if re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|cal\s+ories)\b", rest):
+                        continue
+                    if re.search(r"(?i)\b(?:ingredients?|instructions?|directions?|servings?|grams?|recipe\s+makes|these\s+salmon\s+bites)\b", rest):
+                        continue
+                    if re.search(r"(?i)^\s*fat\b", rest):
+                        continue
+                    if re.search(r"(?i)\bwater\b", rest) and re.search(r"(?i)\b(?:ix|pek|cup\s+water\s+[- ]?\d)\b", rest):
+                        continue
+                    fragment = re.sub(r"(?i)\b&\.\s*ginger\b", "& ginger", fragment)
+                    if not _ocr_fragment_has_food_signal(fragment):
+                        continue
+                    if _ocr_line_has_recipe_signal(fragment):
+                        line_fragments.append(fragment)
 
+                for match in _COUNTED_INGREDIENT_RE.finditer(cleaned):
+                    fragment = f"{match.group('qty')} {match.group('rest')}".strip()
+                    rest = match.group('rest')
+                    if re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat|servings?|grams?|recipe\s+makes)\b", fragment):
+                        continue
+                    if not _ocr_fragment_has_food_signal(fragment):
+                        continue
+                    if _ocr_line_has_recipe_signal(fragment):
+                        line_fragments.append(fragment)
+
+                evidence.extend(_dedupe_ocr_lines(line_fragments))
     return _dedupe_ocr_lines(evidence)
 
 
@@ -1764,55 +1893,56 @@ def _extract_unmeasured_ingredient_evidence(*source_texts: str) -> list[str]:
     """
     evidence: list[str] = []
     for source_text in source_texts:
-        for raw_line in (source_text or "").splitlines():
-            cleaned = _clean_ocr_line(raw_line).lower()
-            if re.fullmatch(r"(?i)\d+\s+l\s+emon\s+juice", cleaned) or re.fullmatch(r"(?i)\d+\s+lemon\s+juice", cleaned):
-                cleaned = "lemon juice"
-            if not _ocr_line_has_recipe_signal(cleaned):
-                continue
-            measured_match = re.search(_MEASURED_INGREDIENT_QTY_RE, cleaned, flags=re.IGNORECASE)
-            if measured_match:
-                rest = _normalize_ingredient_phrase(cleaned[measured_match.end():]).lower()
-                if any(SequenceMatcher(None, word, "vinegar").ratio() >= 0.72 for word in re.findall(r"[a-z][a-z'&/-]{2,}", rest)):
-                    rest = re.sub(r"(?i)\b[a-z]*vine[a-z]*\b", "vinegar", rest)
-                    rest = re.sub(r"(?i)\b[yrnegar]+\b", "vinegar", rest)
-                    rest = re.sub(r"(?i)\brice\s+vinegar\b.*", "rice vinegar", rest)
-                if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", rest):
-                    rest = "rice vinegar"
-                words = re.findall(r"[a-z][a-z'&/-]{2,}", rest)
+        for source_block in _iter_non_book_ocr_blocks(source_text):
+            for raw_line in source_block.splitlines():
+                cleaned = _clean_ocr_line(raw_line).lower()
+                if re.fullmatch(r"(?i)\d+\s+l\s+emon\s+juice", cleaned) or re.fullmatch(r"(?i)\d+\s+lemon\s+juice", cleaned):
+                    cleaned = "lemon juice"
+                if not _ocr_line_has_recipe_signal(cleaned):
+                    continue
+                measured_match = re.search(_MEASURED_INGREDIENT_QTY_RE, cleaned, flags=re.IGNORECASE)
+                if measured_match:
+                    rest = _normalize_ingredient_phrase(cleaned[measured_match.end():]).lower()
+                    if any(SequenceMatcher(None, word, "vinegar").ratio() >= 0.72 for word in re.findall(r"[a-z][a-z'&/-]{2,}", rest)):
+                        rest = re.sub(r"(?i)\b[a-z]*vine[a-z]*\b", "vinegar", rest)
+                        rest = re.sub(r"(?i)\b[yrnegar]+\b", "vinegar", rest)
+                        rest = re.sub(r"(?i)\brice\s+vinegar\b.*", "rice vinegar", rest)
+                    if re.search(r"(?i)\brice\s+(?:yrnegar|vine\w*|yin)\b", rest):
+                        rest = "rice vinegar"
+                    words = re.findall(r"[a-z][a-z'&/-]{2,}", rest)
+                    if words and not any(_OCR_FOOD_WORD_RE.fullmatch(word) for word in words):
+                        continue
+                    if 1 <= len(words) <= 4 and not re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat)\b", rest):
+                        evidence.append(" ".join(words))
+                    continue
+                if re.fullmatch(r"(?i)\d+\s+[a-z][a-z'&/-]{2,}(?:\s+[a-z][a-z'&/-]{2,}){0,3}", cleaned):
+                    # A leading bare count can still be a label when the rest of the
+                    # line is concise: "1 lemon juice", "1 medium onion".
+                    cleaned = re.sub(r"^\d+\s+", "", cleaned)
+                if _MACRO_ONLY_RE.match(cleaned) or re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat)\b", cleaned):
+                    continue
+                if _OCR_UI_NOISE_RE.search(cleaned):
+                    continue
+                if _UNMEASURED_INSTRUCTION_RE.search(cleaned):
+                    continue
+
+                # Drop punctuation tails and obvious sentence clauses, then keep only
+                # concise labels like "bacon", "lemon juice", "cooking spray",
+                # "bbq sauce", or "french fried onions".
+                candidate = re.split(r"[,.;:!?|]", cleaned, maxsplit=1)[0]
+                stop_match = _UNMEASURED_LINE_STOP_RE.search(candidate)
+                if stop_match:
+                    candidate = candidate[:stop_match.start()]
+                candidate = _normalize_ingredient_phrase(candidate.lower()).lower()
+                words = re.findall(r"[a-z][a-z'&/-]{2,}", candidate)
                 if words and not any(_OCR_FOOD_WORD_RE.fullmatch(word) for word in words):
                     continue
-                if 1 <= len(words) <= 4 and not re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat)\b", rest):
+                if any(SequenceMatcher(None, word, "vinegar").ratio() >= 0.72 for word in words):
+                    candidate = re.sub(r"(?i)\b[a-z]*vine[a-z]*\b", "vinegar", candidate)
+                    candidate = re.sub(r"(?i)\byrnegar\b", "vinegar", candidate)
+                    words = re.findall(r"[a-z][a-z'&/-]{2,}", candidate)
+                if 1 <= len(words) <= 4:
                     evidence.append(" ".join(words))
-                continue
-            if re.fullmatch(r"(?i)\d+\s+[a-z][a-z'&/-]{2,}(?:\s+[a-z][a-z'&/-]{2,}){0,3}", cleaned):
-                # A leading bare count can still be a label when the rest of the
-                # line is concise: "1 lemon juice", "1 medium onion".
-                cleaned = re.sub(r"^\d+\s+", "", cleaned)
-            if _MACRO_ONLY_RE.match(cleaned) or re.search(r"(?i)\b(?:protein|calories|cals?|carbs?|fat)\b", cleaned):
-                continue
-            if _OCR_UI_NOISE_RE.search(cleaned):
-                continue
-            if _UNMEASURED_INSTRUCTION_RE.search(cleaned):
-                continue
-
-            # Drop punctuation tails and obvious sentence clauses, then keep only
-            # concise labels like "bacon", "lemon juice", "cooking spray",
-            # "bbq sauce", or "french fried onions".
-            candidate = re.split(r"[,.;:!?|]", cleaned, maxsplit=1)[0]
-            stop_match = _UNMEASURED_LINE_STOP_RE.search(candidate)
-            if stop_match:
-                candidate = candidate[:stop_match.start()]
-            candidate = _normalize_ingredient_phrase(candidate.lower()).lower()
-            words = re.findall(r"[a-z][a-z'&/-]{2,}", candidate)
-            if words and not any(_OCR_FOOD_WORD_RE.fullmatch(word) for word in words):
-                continue
-            if any(SequenceMatcher(None, word, "vinegar").ratio() >= 0.72 for word in words):
-                candidate = re.sub(r"(?i)\b[a-z]*vine[a-z]*\b", "vinegar", candidate)
-                candidate = re.sub(r"(?i)\byrnegar\b", "vinegar", candidate)
-                words = re.findall(r"[a-z][a-z'&/-]{2,}", candidate)
-            if 1 <= len(words) <= 4:
-                evidence.append(" ".join(words))
     return _dedupe_ocr_lines(evidence)
 
 
@@ -2773,9 +2903,13 @@ def convert_reel_to_recipe(url: str, force: bool = False) -> str:
             except Exception:
                 pass
 
-        # Format recipe from caption + OCR (no transcript for slideshows)
+        # Format recipe from caption + OCR (no transcript for slideshows).
+        # If the caption is already recipe-rich and OCR is low-signal, ignore
+        # decorative-photo OCR so background texture cannot hallucinate
+        # ingredients into the final recipe.
+        ocr_for_format = ocr_text if _should_use_slideshow_ocr(caption, ocr_text) else ""
         t0 = time.time()
-        recipe = format_recipe_combined(caption, "", ocr_text)
+        recipe = format_recipe_combined(caption, "", ocr_for_format)
         timings["format"] = time.time() - t0
 
         # Save to Recipe Glass with cover image
@@ -3149,8 +3283,9 @@ if __name__ == "__main__":
                             pass
 
                     _report_progress(job_id, "formatting", "Formatting…")
+                    ocr_for_format = ocr_text if _should_use_slideshow_ocr(preloaded_caption, ocr_text) else ""
                     t0 = time.time()
-                    recipe = format_recipe_combined(preloaded_caption, "", ocr_text)
+                    recipe = format_recipe_combined(preloaded_caption, "", ocr_for_format)
                     timings["format"] = time.time() - t0
 
                     _report_progress(job_id, "saving", "Saving…")
@@ -3202,8 +3337,9 @@ if __name__ == "__main__":
                             pass
 
                     _report_progress(job_id, "formatting", "Formatting…")
+                    ocr_for_format = ocr_text if _should_use_slideshow_ocr(preloaded_caption, ocr_text) else ""
                     t0 = time.time()
-                    recipe = format_recipe_combined(preloaded_caption, "", ocr_text)
+                    recipe = format_recipe_combined(preloaded_caption, "", ocr_for_format)
                     timings["format"] = time.time() - t0
 
                     _report_progress(job_id, "saving", "Saving…")
